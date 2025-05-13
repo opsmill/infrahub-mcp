@@ -28,22 +28,23 @@ Supports:
 ## Installation
 
 1. **Clone the repo**
-   ```bash
-   git clone https://github.com/your-org/infrahub-mcp-server.git
-   cd infrahub-mcp-server
-```
+
+    ```bash
+    git clone https://github.com/your-org/infrahub-mcp-server.git
+    cd infrahub-mcp-server
+    ```
 
 2. **Install dependencies**
 
-```bash
-   poetry install
-```
+    ```bash
+    poetry install
+    ```
 
 3. **Run the server**
 
-```bash
-   poetry run python -m infrahub_mcp_server.server --web
-```
+    ```bash
+    poetry run python -m infrahub_mcp_server.server --web
+    ```
 
 ## Configuration
 
