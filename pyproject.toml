@@ -6,9 +6,9 @@ authors = ["OpsMill <info@opsmill.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.10, < 3.13"
-mcp = "^1.4.1"
-infrahub-sdk = {version = "^1", extras = ["all"]}
+python = "^3.10, < 3.14"
+mcp = "^1.9.0"
+infrahub-sdk = {version = "^1.12.1"}
 requests = "^2.32.3"
 
 [tool.poetry.group.dev.dependencies]
