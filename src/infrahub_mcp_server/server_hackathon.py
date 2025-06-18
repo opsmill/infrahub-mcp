@@ -183,5 +183,6 @@ async def infrahub_get_nodes(  # noqa: PLR0913
     }
 
 if __name__ == "__main__":
-   mcp.run(transport="streamable-http", host="127.0.0.1", port=8001, path="/mcp")
+   mcp.run()
+   # mcp.run(transport="streamable-http", host="127.0.0.1", port=8001, path="/mcp")
 
