@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "infrahub-mcp-server"
+name = "infrahub_mcp_server"
 version = "0.1.0"
 description = "A MCP server for Infrahub."
 authors = ["OpsMill <info@opsmill.com>"]
