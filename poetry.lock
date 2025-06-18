@@ -616,14 +616,14 @@ all = ["flake8 (>=7.1.1)", "mypy (>=1.11.2)", "pytest (>=8.3.2)", "ruff (>=0.6.2
 
 [[package]]
 name = "infrahub-sdk"
-version = "1.12.1"
+version = "1.13.0"
 description = "Python Client to interact with Infrahub"
 optional = false
 python-versions = "<3.14,>=3.9"
 groups = ["main"]
 files = [
-    {file = "infrahub_sdk-1.12.1-py3-none-any.whl", hash = "sha256:4ca7e61ea8c2160549af83b3b9b645b5cedab004c1d2459fff3014d222f16388"},
-    {file = "infrahub_sdk-1.12.1.tar.gz", hash = "sha256:4898c2aaa5d98d8134a4e41cb05060e1e517dc7aad4b9e2e58c00bfd0a029a87"},
+    {file = "infrahub_sdk-1.13.0-py3-none-any.whl", hash = "sha256:e62ba8b13d5f5f3f0ec0b5618e0e5ffc298c574a661117a846f848163d0da773"},
+    {file = "infrahub_sdk-1.13.0.tar.gz", hash = "sha256:4c5b7b816c2d7144e4e97ecb5dd945b7a0456841db47e398ac4e33ba60f4c776"},
 ]
 
 [package.dependencies]
@@ -637,12 +637,12 @@ netutils = ">=1.0.0,<2.0.0"
 pydantic = ">=2.0.0,<2.0.1 || >2.0.1,<2.1.0 || >2.1.0,<3.0.0"
 pydantic-settings = ">=2.0"
 ujson = ">=5,<6"
-whenever = "0.7.2"
+whenever = ">=0.7.2,<0.8.0"
 
 [package.extras]
-all = ["Jinja2 (>=3,<4)", "click (==8.1.*)", "numpy (>=1.24.2,<2.0.0) ; python_version >= \"3.9\" and python_version < \"3.12\"", "numpy (>=1.26.2,<2.0.0) ; python_version >= \"3.12\"", "pyarrow (>=14)", "pytest", "pyyaml (>=6,<7)", "rich (>=13,<14)", "toml (>=0.10,<0.11)", "typer (>=0.12.3,<0.13.0)"]
-ctl = ["Jinja2 (>=3,<4)", "click (==8.1.*)", "numpy (>=1.24.2,<2.0.0) ; python_version >= \"3.9\" and python_version < \"3.12\"", "numpy (>=1.26.2,<2.0.0) ; python_version >= \"3.12\"", "pyarrow (>=14)", "pyyaml (>=6,<7)", "rich (>=13,<14)", "toml (>=0.10,<0.11)", "typer (>=0.12.3,<0.13.0)"]
-tests = ["Jinja2 (>=3,<4)", "pytest", "pyyaml (>=6,<7)", "rich (>=13,<14)"]
+all = ["Jinja2 (>=3,<4)", "click (==8.1.*)", "numpy (>=1.24.2,<2.0.0) ; python_version >= \"3.9\" and python_version < \"3.12\"", "numpy (>=1.26.2,<2.0.0) ; python_version >= \"3.12\"", "pyarrow (>=14)", "pytest", "pyyaml (>=6,<7)", "rich (>=12,<14)", "toml (>=0.10,<0.11)", "typer (>=0.12.3,<0.13.0)"]
+ctl = ["Jinja2 (>=3,<4)", "click (==8.1.*)", "numpy (>=1.24.2,<2.0.0) ; python_version >= \"3.9\" and python_version < \"3.12\"", "numpy (>=1.26.2,<2.0.0) ; python_version >= \"3.12\"", "pyarrow (>=14)", "pyyaml (>=6,<7)", "rich (>=12,<14)", "toml (>=0.10,<0.11)", "typer (>=0.12.3,<0.13.0)"]
+tests = ["Jinja2 (>=3,<4)", "pytest", "pyyaml (>=6,<7)", "rich (>=12,<14)"]
 
 [[package]]
 name = "isort"
@@ -1645,4 +1645,4 @@ dev = ["doc8", "flake8", "flake8-import-order", "rstcheck[sphinx]", "sphinx"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10, < 3.14"
-content-hash = "a7706bf5e3f34b0fe2c51fb9684fffa91eb2e682c74e5b4b783fee682705bac4"
+content-hash = "e7f165daef35636287f8f3af8af3c69ffce8448859035424caca08580e8c0031"
