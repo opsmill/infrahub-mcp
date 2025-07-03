@@ -1,6 +1,6 @@
 # Infrahub MCP Server
 
-A FastAPI + FastMCP server that bridges any JSON-RPC/HTTP client) to an Infrahub instance.
+A FastAPI + FastMCP server that bridges any JSON-RPC/HTTP client to an Infrahub instance.
 
 Supports:
 - JSON-RPC over stdin/stdout (daemon/oneshot)
