@@ -6,7 +6,7 @@ from typing import Any
 from fastmcp import Context, FastMCP
 from infrahub_sdk import InfrahubClient
 
-from .constants import NAMESPACES_INTERNAL
+from infrahub_mcp_server.constants import NAMESPACES_INTERNAL
 
 
 @dataclass
