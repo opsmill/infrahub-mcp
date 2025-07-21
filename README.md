@@ -1,10 +1,6 @@
 # Infrahub MCP Server
 
-A FastAPI + FastMCP server that bridges any JSON-RPC/HTTP client to an Infrahub instance.
-
-Supports:
-- JSON-RPC over stdin/stdout (daemon/oneshot)
-- HTTP POST (`--web` mode).
+MCP server to interact with Infrahub
 
 ## Features
 
@@ -20,8 +16,6 @@ Supports:
 ## Requirements
 
 - Python 3.8+
-- fastapi
-- uvicorn
 - fastmcp
 - infrahub_sdk
 
