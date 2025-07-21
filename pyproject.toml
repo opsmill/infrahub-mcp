@@ -1,23 +1,19 @@
-[tool.poetry]
-name = "infrahub_mcp_server"
+[project]
+name = "infrahub-mcp-server"
 version = "0.1.0"
-description = "A MCP server for Infrahub."
-authors = ["OpsMill <info@opsmill.com>"]
+description = "Add your description here"
 readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastmcp>=2.10.5",
+    "infrahub-sdk[all]>=1.13.3",
+]
 
-[tool.poetry.dependencies]
-python = "^3.10, < 3.14"
-mcp = "^1.9.0"
-infrahub-sdk = "1.13.0"
-requests = "^2.32.3"
-fastapi = "0.115.13"
-fastmcp = "2.8.1"
-
-[tool.poetry.group.dev.dependencies]
-ruff = "^0.9"
-mypy = "*"
-yamllint = "^1.35.1"
-pylint = "~3.1"
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+]
 
 [tool.mypy]
 pretty = true
@@ -25,7 +21,6 @@ ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 120
-exclude = ["schema-library"]
 
 [tool.ruff.lint]
 preview = true
@@ -46,7 +41,7 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.ruff.lint.isort]
-known-first-party = ["emma"]
+known-first-party = ["infrahub_mcp_server"]
 
 [tool.ruff.lint.pycodestyle]
 max-line-length = 150
@@ -54,62 +49,10 @@ max-line-length = 150
 [tool.ruff.lint.mccabe]
 max-complexity = 15
 
-[tool.ruff.lint.per-file-ignores]
 
-[tool.pylint.general]
-extension-pkg-whitelist = ["pydantic", "ujson"]
-
-[tool.pylint.format]
-disable = "logging-fstring-interpolation"
-
-[tool.pylint.basic]
-# No docstrings required for private methods (Pylint default), or for test_ functions.
-no-docstring-rgx = "^(_|test_)"
-
-[tool.pylint.messages_control]
-# Line length is enforced by Black, so pylint doesn't need to check it.
-# Pylint and Black disagree about how to format multi-line arrays; Black wins.
-# assigning-non-slot,no-member,unsupported-membership-test,unsubscriptable-object,unsupported-assignment-operation,not-an-iterable
-# are disabled because of our move to pydantic 2, pylint does not seem to respect the type hint for pydantic 2 model fields.
-disable = """,
-    line-too-long,
-    missing-module-docstring,
-    missing-function-docstring,
-    missing-class-docstring,
-    consider-using-from-import,
-    invalid-name,
-    too-many-arguments,
-    too-many-locals,
-    keyword-arg-before-vararg,
-    too-few-public-methods,
-    too-many-instance-attributes,
-    fixme,
-    consider-using-f-string,
-    protected-access,
-    import-self,
-    wrong-import-order,
-    assigning-non-slot,
-    no-member,
-    unsupported-membership-test,
-    unsubscriptable-object,
-    unsupported-assignment-operation,
-    not-an-iterable,
-    too-many-return-statements,
-    unnecessary-comprehension,
-    multiple-statements,
-    self-assigning-variable,
-    no-else-return,
-    """
-
-[tool.pylint.miscellaneous]
-notes = """,
-    FIXME,
-    XXX,
-    """
-
-[tool.pylint.similarities]
-min-similarity-lines = 20
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
