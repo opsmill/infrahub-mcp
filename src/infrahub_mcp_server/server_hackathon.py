@@ -1,68 +1,21 @@
 # server.py
-from typing import Any
+import sys
 
 from fastmcp import FastMCP
 from infrahub_sdk import InfrahubClient
-from infrahub_sdk.types import Order
-from infrahub_sdk.node.attribute import Attribute
-from infrahub_sdk.node import InfrahubNode, RelatedNode, RelationshipManager
 from infrahub_sdk.exceptions import GraphQLError, SchemaNotFoundError
+from infrahub_sdk.types import Order
+
+from .utils import convert_node_to_dict
 
 mcp = FastMCP("Demo 🚀")
 
-async def _convert_node_to_dict(*, obj: InfrahubNode, branch: str | None, include_id: bool = True) -> dict[str, Any]:
-    data = {}
-
-    if include_id:
-        data["index"] = obj.id or None
-
-    for attr_name in obj._schema.attribute_names:  # noqa: SLF001
-        attr: Attribute = getattr(obj, attr_name)
-        data[attr_name] = str(attr.value)
-
-    for rel_name in obj._schema.relationship_names:  # noqa: SLF001
-        rel = getattr(obj, rel_name)
-        if rel and isinstance(rel, RelatedNode):
-            if not rel.initialized:
-                await rel.fetch()
-            related_node = obj._client.store.get(
-                branch=branch,
-                key=rel.peer.id,
-                raise_when_missing=False,
-            )  # noqa: SLF001
-            if related_node:
-                data[rel_name] = (
-                    related_node.get_human_friendly_id_as_string(include_kind=True)
-                    if related_node.hfid
-                    else related_node.id
-                )
-        elif rel and isinstance(rel, RelationshipManager):
-            peers: list[dict[str, Any]] = []
-            if not rel.initialized:
-                await rel.fetch()
-            for peer in rel.peers:
-                # FIXME: We are using the store to avoid doing to many queries to Infrahub
-                # but we could end up doing store+infrahub if the store is not populated
-                related_node = obj._client.store.get(
-                    branch=branch,
-                    key=peer.id,
-                    raise_when_missing=False,
-                )  # noqa: SLF001
-                if not related_node:
-                    await peer.fetch()
-                    related_node = peer.peer
-                peers.append(
-                    related_node.get_human_friendly_id_as_string(include_kind=True)
-                    if related_node.hfid
-                    else related_node.id,
-                )
-            data[rel_name] = peers
-    return data
 
 @mcp.tool()
 def add(a: int, b: int) -> int:
     """Add two numbers"""
     return a + b
+
 
 @mcp.tool()
 async def infrahub_query_graphql(
@@ -86,18 +39,19 @@ async def infrahub_query_graphql(
         return {"success": True, "data": await client.execute_graphql(query=query)}
     except Exception as exc:  # noqa: BLE001
         print(exc)
-        exit(1)
+        sys.exit(1)
+
 
 @mcp.tool()
 async def infrahub_get_graphql_schema() -> dict:
-    """Retrieve the GraphQL schema from Infrahub
-    """
+    """Retrieve the GraphQL schema from Infrahub"""
     client = InfrahubClient()
-    resp = await client._get(url=f"{client.address}/schema.graphql")
-    return {"data": resp.text} 
+    resp = await client._get(url=f"{client.address}/schema.graphql")  # noqa: SLF001
+    return {"data": resp.text}
+
 
 @mcp.tool()
-async def infrahub_get_nodes(  # noqa: PLR0913
+async def infrahub_get_nodes(
     *,
     kind: str,
     branch: str | None = None,
@@ -137,9 +91,9 @@ async def infrahub_get_nodes(  # noqa: PLR0913
 
     try:
         schema = await client.schema.get(kind=kind, branch=branch)
-    except SchemaNotFoundError as exc:
+    except SchemaNotFoundError:
         print("Schema not found")
-        exit(1)
+        sys.exit(1)
 
     try:
         if complete_filters:
@@ -162,15 +116,14 @@ async def infrahub_get_nodes(  # noqa: PLR0913
                 # populate_store=True,
                 # prefetch_relationships=True,
             )
-    except GraphQLError as exc:
+    except GraphQLError:
         print("GraphQLError")
-        exit(1)
-
+        sys.exit(1)
 
     # Format the response with serializable data
     serialized_nodes = []
     for node in nodes:
-        node_data = await _convert_node_to_dict(branch=branch, obj=node)
+        node_data = await convert_node_to_dict(branch=branch, obj=node)
         serialized_nodes.append(node_data)
 
     # Return the serialized response
@@ -182,7 +135,7 @@ async def infrahub_get_nodes(  # noqa: PLR0913
         "nodes": serialized_nodes,
     }
 
-if __name__ == "__main__":
-   mcp.run()
-   # mcp.run(transport="streamable-http", host="127.0.0.1", port=8001, path="/mcp")
 
+if __name__ == "__main__":
+    mcp.run()
+    # mcp.run(transport="streamable-http", host="127.0.0.1", port=8001, path="/mcp")

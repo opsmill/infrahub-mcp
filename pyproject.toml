@@ -11,29 +11,71 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "invoke>=2.2.0",
+    "mypy>=1.17.0",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
+    "ruff>=0.12.4",
+    "yamllint>=1.37.1",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = []
 
 [tool.mypy]
 pretty = true
 ignore_missing_imports = true
 
+exclude = [
+    "server_initial\\.py$",  # TOML's double-quoted strings require escaping backslashes
+    "server_hackathon\\.py$",  # TOML's double-quoted strings require escaping backslashes
+]
+
 [tool.ruff]
 line-length = 120
+
+exclude = [
+    ".git",
+    ".venv",
+    "env",
+    "_build",
+    "build",
+    "dist",
+    "examples",
+]
 
 [tool.ruff.lint]
 preview = true
 
-task-tags = ["FIXME", "TODO", "XXX"]
+task-tags = ["FIXME", "TODO"]
 
-select = [
-    "ALL"
+select = ["ALL"]
+
+ignore = [
+    "D",      # pydocstyle
+    "DOC",    # pydoclint
+    "CPY",    # flake8-copyright
+    "T201",   # use of `print`
+    "ISC",    # flake8-implicit-str-concat
+    "COM812", # missing-trailing-comma
+    "N999",   # Invalid module name
+    "PD901",  # Avoid using the generic variable name `df` for DataFrames
+    "TD",
+    "FIX",    # TODO
+    "TRY",
+    "B008",   # Do not perform function call `Depends` in argument defaults
+    "EM102",  # Exception must not use an f-string literal
+    "SIM117", # Use a single `with` statement with multiple contexts instead of nested `with` statements
+    "G004",   # Logging statement uses f-string
+    "S311",   # Standard pseudo-random generators are not suitable
+    "LOG004", # `.exception()` call outside exception handlers
+    "FBT",    # Boolean-typed positional argument in function definition
+    "ANN401", # Dynamically typed expressions (typing.Any) are disallowed in `value`
+    "ERA001", # Found commented-out code
 ]
 
-ignore = []
-
-#https://docs.astral.sh/ruff/formatter/black/
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
@@ -46,12 +88,9 @@ known-first-party = ["infrahub_mcp_server"]
 [tool.ruff.lint.pycodestyle]
 max-line-length = 150
 
-[tool.ruff.lint.mccabe]
-max-complexity = 15
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]  # Allow assert in test files
 
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
 
 [build-system]
 requires = ["hatchling"]
