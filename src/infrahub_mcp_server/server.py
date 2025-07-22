@@ -26,6 +26,12 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: A
 
 mcp = FastMCP("Infrahub MCP", lifespan=app_lifespan)
 
+schema_attribute_type_mapping = {
+    "Text": "String",
+    "Number": "Integer",
+    "Boolean": "Boolean",
+}
+
 
 @mcp.tool
 async def get_objects(ctx: Context, kind: str, filters: dict | None = None) -> list[str]:
@@ -46,11 +52,34 @@ async def get_objects(ctx: Context, kind: str, filters: dict | None = None) -> l
 
 @mcp.tool
 async def get_node_filters(ctx: Context, kind: str) -> dict[str, Any]:
-    """Retrieve all the available filters for a specific schema node kind."""
+    """Retrieve all the available filters for a specific schema node kind.
+
+    There's multiple types of filters
+    attribute filters are in the form attribute__value
+
+    relationship filters are in the form relationship__attribute__value
+    you can find more information on the peer node of the relationship using the `get_schema` tool
+
+    Filters that start with parent refer to a related generic schema node.
+    You can find the type of that related node by inspected the output of the `get_schema` tool.
+    """
     client: InfrahubClient = ctx.request_context.lifespan_context.client
 
     schema = await client.schema.get(kind=kind)
-    return {f"{attribute.name}__value": "String" for attribute in schema.attributes}
+    filters = {
+        f"{attribute.name}__value": schema_attribute_type_mapping.get(attribute.kind, "String")
+        for attribute in schema.attributes
+    }
+
+    for relationship in schema.relationships:
+        relationship_schema = await client.schema.get(kind=relationship.peer)
+        relationship_filters = {
+            f"{relationship.name}__{attribute.name}__value": schema_attribute_type_mapping.get(attribute.kind, "String")
+            for attribute in relationship_schema.attributes
+        }
+        filters.update(relationship_filters)
+
+    return filters
 
 
 @mcp.tool
