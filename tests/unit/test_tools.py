@@ -5,7 +5,7 @@ from infrahub_mcp_server.server import mcp
 
 async def test_list_schema() -> None:
     async with Client(mcp) as client:
-        result = await client.call_tool("get_schema_mapping")
+        result = await client.call_tool("schema_get_mapping")
         assert isinstance(result.data, dict)
         assert "LocationSite" in result.data
 
