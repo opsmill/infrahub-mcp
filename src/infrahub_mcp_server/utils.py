@@ -1,10 +1,17 @@
-# server.py
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import Any
 
-from infrahub_sdk.node import InfrahubNode, RelatedNode, RelationshipManager
+from infrahub_sdk.node import Attribute, InfrahubNode, RelatedNode, RelationshipManager
 
-if TYPE_CHECKING:
-    from infrahub_sdk.node.attribute import Attribute
+CURRENT_DIRECTORY = Path(__file__).parent.resolve()
+PROMPTS_DIRECTORY = CURRENT_DIRECTORY / "prompts"
+
+
+def get_prompt(name: str) -> str:
+    prompt_file = PROMPTS_DIRECTORY / f"{name}.md"
+    if not prompt_file.exists():
+        raise FileNotFoundError(f"Prompt file '{prompt_file}' does not exist.")
+    return (PROMPTS_DIRECTORY / f"{name}.md").read_text()
 
 
 async def convert_node_to_dict(*, obj: InfrahubNode, branch: str | None, include_id: bool = True) -> dict[str, Any]:  # noqa: C901
@@ -41,9 +48,9 @@ async def convert_node_to_dict(*, obj: InfrahubNode, branch: str | None, include
                 # FIXME: We are using the store to avoid doing to many queries to Infrahub
                 # but we could end up doing store+infrahub if the store is not populated
                 related_node = obj._client.store.get(  # noqa: SLF001
-                    branch=branch,
                     key=peer.id,
                     raise_when_missing=False,
+                    branch=branch,
                 )
                 if not related_node:
                     await peer.fetch()
