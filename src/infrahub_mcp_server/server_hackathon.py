@@ -1,58 +1,20 @@
-# server.py
-import sys
+from typing import TYPE_CHECKING
 
-from fastmcp import FastMCP
-from infrahub_sdk import InfrahubClient
-from infrahub_sdk.exceptions import GraphQLError, SchemaNotFoundError
+from fastmcp import Context, FastMCP
 from infrahub_sdk.types import Order
 
 from .utils import convert_node_to_dict
 
-mcp = FastMCP("Demo 🚀")
+if TYPE_CHECKING:
+    from infrahub_sdk import InfrahubClient
+
+mcp = FastMCP("infrahub Hackathon MCP")
 
 
-@mcp.tool()
-def add(a: int, b: int) -> int:
-    """Add two numbers"""
-    return a + b
-
-
-@mcp.tool()
-async def infrahub_query_graphql(
-    *,
-    query: str,
-) -> dict:
-    """Execute a GraphQL query against Infrahub.
-
-    Args:
-        query: GraphQL query to execute.
-        at: Time when the query should be executed. Defaults to None.
-        infrahub_url: URL of the Infrahub instance. Defaults to None (uses environment variable).
-        infrahub_api_token: API token for Infrahub. Defaults to None (uses environment variable).
-
-    Returns:
-        Dictionary containing the result of the GraphQL query.
-
-    """
-    try:
-        client = InfrahubClient()
-        return {"success": True, "data": await client.execute_graphql(query=query)}
-    except Exception as exc:  # noqa: BLE001
-        print(exc)
-        sys.exit(1)
-
-
-@mcp.tool()
-async def infrahub_get_graphql_schema() -> dict:
-    """Retrieve the GraphQL schema from Infrahub"""
-    client = InfrahubClient()
-    resp = await client._get(url=f"{client.address}/schema.graphql")  # noqa: SLF001
-    return {"data": resp.text}
-
-
-@mcp.tool()
+@mcp.tool
 async def infrahub_get_nodes(
     *,
+    ctx: Context,
     kind: str,
     branch: str | None = None,
     filters: dict | None = None,
@@ -61,7 +23,6 @@ async def infrahub_get_nodes(
     """Retrieve objects from Infrahub.
 
     Args:
-        infrahub_client: Infrahub client to use
         kind: Kind of the objects to retrieve.
         branch: Branch to retrieve the objects from. Defaults to None (uses default branch).
         filters: Dictionary of filters to apply. Simple filters like {"name": "router1"} will be
@@ -69,14 +30,12 @@ async def infrahub_get_nodes(
                 You can also use explicit filters :
                 example: {"name__value": "router1", "tags__ids": ["tag1", "tag2"]}.
         partial_match: Whether to use partial matching for string filter
-        infrahub_url: URL of the Infrahub instance. Defaults to None (uses environment variable).
-        infrahub_api_token: API token for Infrahub. Defaults to None (uses environment variable).
 
     Returns:
         Dictionary containing objects and metadata.
 
     """
-    client = InfrahubClient()
+    client: InfrahubClient = ctx.request_context.lifespan_context.client
 
     complete_filters = {}
     if filters:
@@ -89,36 +48,28 @@ async def infrahub_get_nodes(
             else:
                 complete_filters[f"{key}__value"] = value
 
-    try:
-        schema = await client.schema.get(kind=kind, branch=branch)
-    except SchemaNotFoundError:
-        print("Schema not found")
-        sys.exit(1)
+    schema = await client.schema.get(kind=kind, branch=branch)
 
-    try:
-        if complete_filters:
-            nodes = await client.filters(
-                kind=schema.kind,
-                branch=branch,
-                partial_match=partial_match,
-                parallel=True,
-                order=Order(disable=True),
-                # populate_store=True,
-                # prefetch_relationships=True,
-                **complete_filters,
-            )
-        else:
-            nodes = await client.all(
-                kind=schema.kind,
-                branch=branch,
-                parallel=True,
-                order=Order(disable=True),
-                # populate_store=True,
-                # prefetch_relationships=True,
-            )
-    except GraphQLError:
-        print("GraphQLError")
-        sys.exit(1)
+    if complete_filters:
+        nodes = await client.filters(
+            kind=schema.kind,
+            branch=branch,
+            partial_match=partial_match,
+            parallel=True,
+            order=Order(disable=True),
+            # populate_store=True,
+            # prefetch_relationships=True,
+            **complete_filters,
+        )
+    else:
+        nodes = await client.all(
+            kind=schema.kind,
+            branch=branch,
+            parallel=True,
+            order=Order(disable=True),
+            # populate_store=True,
+            # prefetch_relationships=True,
+        )
 
     # Format the response with serializable data
     serialized_nodes = []
@@ -134,8 +85,3 @@ async def infrahub_get_nodes(
         "count": len(serialized_nodes),
         "nodes": serialized_nodes,
     }
-
-
-if __name__ == "__main__":
-    mcp.run()
-    # mcp.run(transport="streamable-http", host="127.0.0.1", port=8001, path="/mcp")

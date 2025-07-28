@@ -42,7 +42,7 @@ schema_attribute_type_mapping = {
 async def get_objects(ctx: Context, kind: str, filters: dict | None = None) -> list[str]:
     """Get all objects of a specific kind from Infrahub.
 
-    To retrieve the list of available kinds, use the `get_schema_mapping` tool.
+    To retrieve the list of available kinds, use the `schema_get_mapping` tool.
     To retrieve the list of available filters for a specific kind, use the `get_node_filters` tool.
     """
     client: InfrahubClient = ctx.request_context.lifespan_context.client
