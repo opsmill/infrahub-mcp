@@ -6,13 +6,15 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fastmcp>=2.10.5",
-    "infrahub-sdk[all]>=1.13.3",
+    "infrahub-sdk[all]>=1.13.5",
 ]
 
 [dependency-groups]
 dev = [
+    "deepeval>=3.3.2",
     "invoke>=2.2.0",
     "mypy>=1.17.0",
+    "openai-agents>=0.2.3",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
     "ruff>=0.12.4",
