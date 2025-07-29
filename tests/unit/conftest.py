@@ -1,7 +1,8 @@
 import pytest
 
+
 @pytest.fixture
-def locationsite_filters():
+def locationsite_filters() -> dict[str, str]:
     return {
         "contact__value": "String",
         "address__value": "String",
@@ -40,5 +41,5 @@ def locationsite_filters():
         "vlans__status__value": "String",
         "vlans__role__value": "String",
         "vlans__vlan_id__value": "Integer",
-        "vlans__description__value": "String"
+        "vlans__description__value": "String",
     }

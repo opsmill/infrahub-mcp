@@ -40,7 +40,6 @@ goldens = [
 
 @pytest.mark.parametrize("golden", goldens)
 async def test_llm_app(local_mcp_server: MCPServerStdio, main_prompt: str, golden: Golden) -> None:
-
     # NOTE: it should be possible to mode agent_context to a fixture, need to investigate
     async with agent_context(
         name="Assistant",

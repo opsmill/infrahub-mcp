@@ -10,7 +10,7 @@ async def test_list_schema() -> None:
         assert "LocationSite" in result.data
 
 
-async def test_get_node_filters(locationsite_filters) -> None:
+async def test_get_node_filters(locationsite_filters: dict[str, str]) -> None:
     async with Client(mcp) as client:
         result = await client.call_tool("get_node_filters", {"kind": "LocationSite"})
         assert isinstance(result.data, dict)
