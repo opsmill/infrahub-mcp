@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import Any
 
+from fastmcp import Context
+
 from infrahub_sdk.node import Attribute, InfrahubNode, RelatedNode, RelationshipManager
 
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
@@ -13,6 +15,21 @@ def get_prompt(name: str) -> str:
         raise FileNotFoundError(f"Prompt file '{prompt_file}' does not exist.")
     return (PROMPTS_DIRECTORY / f"{name}.md").read_text()
 
+
+def _log_and_return_error(
+        ctx: Context,
+        error: str | Exception,
+        remediation: str | None = None
+) -> dict:
+    """Log an error and return a standardized error response."""
+    if isinstance(error, Exception):
+        error = str(error)
+    ctx.error(message=error)
+    return {
+        "success": False,
+        "error": error,
+        "remediation": remediation,
+    }
 
 async def convert_node_to_dict(*, obj: InfrahubNode, branch: str | None, include_id: bool = True) -> dict[str, Any]:  # noqa: C901
     data = {}
