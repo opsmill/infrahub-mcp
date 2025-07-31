@@ -31,7 +31,7 @@ def format_all(context: Context) -> None:
     linter.format_all(context)
 
 
-@task(name="tests-all")
+@task(name="tests")
 def test_all(context: Context) -> None:
     tests.tests_unit(context)
     tests.tests_integration(context)
@@ -47,7 +47,7 @@ def tests_integration(context: Context) -> None:
     tests.tests_integration(context)
 
 
-@task(name="generate-doc")
+@task(name="docs")
 def generate_doc(context: Context) -> None:
     docs.generate_doc(context)
 
