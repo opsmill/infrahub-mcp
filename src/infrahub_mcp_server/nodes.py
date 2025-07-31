@@ -23,7 +23,7 @@ async def get_nodes(
         str | None,
         Field(default=None, description="Branch to retrieve the objects from. Defaults to None (uses default branch)."),
     ],
-    filters: Annotated[dict | None, Field(default=None, description="Dictionary of filters to apply.")],
+    filters: Annotated[dict[str, Any] | None, Field(default=None, description="Dictionary of filters to apply.")],
     partial_match: Annotated[bool, Field(default=False, description="Whether to use partial matching for filters.")],
 ) -> MCPResponse[list[str]]:
     """Get all objects of a specific kind from Infrahub.
@@ -156,7 +156,7 @@ async def get_related_nodes(
     ctx: Context,
     kind: Annotated[str, Field(description="Kind of the objects to retrieve.")],
     relation: Annotated[str, Field(description="Name of the relation to fetch.")],
-    filters: Annotated[dict | None, Field(default=None, description="Dictionary of filters to apply.")],
+    filters: Annotated[dict[str, Any] | None, Field(default=None, description="Dictionary of filters to apply.")],
     branch: Annotated[
         str | None,
         Field(default=None, description="Branch to retrieve the objects from. Defaults to None (uses default branch)."),
