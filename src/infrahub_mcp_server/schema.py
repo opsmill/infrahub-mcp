@@ -1,10 +1,12 @@
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastmcp import Context, FastMCP
 from infrahub_sdk.exceptions import BranchNotFoundError, SchemaNotFoundError
+from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from infrahub_mcp_server.constants import NAMESPACES_INTERNAL
-from infrahub_mcp_server.utils import MCPResponse, _log_and_return_error
+from infrahub_mcp_server.utils import MCPResponse, MCPToolStatus, _log_and_return_error
 
 if TYPE_CHECKING:
     from infrahub_sdk import InfrahubClient
@@ -12,10 +14,13 @@ if TYPE_CHECKING:
 mcp: FastMCP = FastMCP(name="Infrahub Schemas")
 
 
-@mcp.tool(tags=["schemas", "retrieve"])
+@mcp.tool(tags=["schemas", "retrieve"], annotations=ToolAnnotations(readOnlyHint=True))
 async def get_schema_mapping(
     ctx: Context,
-    branch: str | None = None,
+    branch: Annotated[
+        str | None,
+        Field(default=None, description="Branch to retrieve the mapping from. Defaults to None (uses default branch)."),
+    ],
 ) -> MCPResponse[dict[str, str]]:
     """List all schema nodes and generics available in Infrahub
 
@@ -42,16 +47,19 @@ async def get_schema_mapping(
     }
 
     return MCPResponse(
-        success=True,
+        status=MCPToolStatus.SUCCESS,
         data=schema_mapping,
     )
 
 
-@mcp.tool(tags=["schemas", "retrieve"])
+@mcp.tool(tags=["schemas", "retrieve"], annotations=ToolAnnotations(readOnlyHint=True))
 async def get_schema(
     ctx: Context,
-    kind: str,
-    branch: str | None = None,
+    kind: Annotated[str, Field(description="Schema Kind to retrieve.")],
+    branch: Annotated[
+        str | None,
+        Field(default=None, description="Branch to retrieve the schema from. Defaults to None (uses default branch)."),
+    ],
 ) -> MCPResponse[dict[str, Any]]:
     """Retrieve the full schema for a specific kind.
     This includes attributes, relationships, and their types.
@@ -78,17 +86,24 @@ async def get_schema(
     schema = await client.schema.get(kind=kind, branch=branch)
 
     return MCPResponse(
-        success=True,
+        status=MCPToolStatus.SUCCESS,
         data=schema.model_dump(),
     )
 
 
-@mcp.tool(tags=["schemas", "retrieve"])
+@mcp.tool(tags=["schemas", "retrieve"], annotations=ToolAnnotations(readOnlyHint=True))
 async def get_schemas(
     ctx: Context,
-    branch: str | None = None,
-    exclude_profiles: bool = True,
-    exclude_templates: bool = True,
+    branch: Annotated[
+        str | None,
+        Field(default=None, description="Branch to retrieve schemas from. Defaults to None (uses default branch)."),
+    ],
+    exclude_profiles: Annotated[
+        bool, Field(default=True, description="Whether to exclude Profile schemas. Defaults to True.")
+    ],
+    exclude_templates: Annotated[
+        bool, Field(default=True, description="Whether to exclude Template schemas. Defaults to True.")
+    ],
 ) -> MCPResponse[dict[str, dict[str, Any]]]:
     """Retrieve all schemas from Infrahub, optionally excluding Profiles and Templates.
 
@@ -120,6 +135,6 @@ async def get_schemas(
         filtered_schemas[kind] = schema.model_dump()
 
     return MCPResponse(
-        success=True,
+        status=MCPToolStatus.SUCCESS,
         data=filtered_schemas,
     )

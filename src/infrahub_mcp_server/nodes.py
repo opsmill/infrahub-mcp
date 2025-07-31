@@ -1,8 +1,10 @@
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastmcp import Context, FastMCP
 from infrahub_sdk.exceptions import GraphQLError, SchemaNotFoundError
 from infrahub_sdk.types import Order
+from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from infrahub_mcp_server.constants import schema_attribute_type_mapping
 from infrahub_mcp_server.utils import MCPResponse, MCPToolStatus, _log_and_return_error, convert_node_to_dict
@@ -13,13 +15,16 @@ if TYPE_CHECKING:
 mcp: FastMCP = FastMCP(name="Infrahub Nodes")
 
 
-@mcp.tool(tags=["nodes", "retrieve"])
+@mcp.tool(tags=["nodes", "retrieve"], annotations=ToolAnnotations(readOnlyHint=True))
 async def get_nodes(
     ctx: Context,
-    kind: str,
-    branch: str | None = None,
-    filters: dict | None = None,
-    partial_match: bool = False,
+    kind: Annotated[str, Field(description="Kind of the objects to retrieve.")],
+    branch: Annotated[
+        str | None,
+        Field(default=None, description="Branch to retrieve the objects from. Defaults to None (uses default branch)."),
+    ],
+    filters: Annotated[dict | None, Field(default=None, description="Dictionary of filters to apply.")],
+    partial_match: Annotated[bool, Field(default=False, description="Whether to use partial matching for filters.")],
 ) -> MCPResponse[list[str]]:
     """Get all objects of a specific kind from Infrahub.
 
@@ -33,7 +38,7 @@ async def get_nodes(
         partial_match: Whether to use partial matching for filters.
 
     Returns:
-        Dictionary with success status and objects.
+        MCPResponse with success status and objects.
 
     """
     client: InfrahubClient = ctx.request_context.lifespan_context.client
@@ -89,11 +94,14 @@ async def get_nodes(
     )
 
 
-@mcp.tool(tags=["nodes", "filters", "retrieve"])
+@mcp.tool(tags=["nodes", "filters", "retrieve"], annotations=ToolAnnotations(readOnlyHint=True))
 async def get_node_filters(
     ctx: Context,
-    kind: str,
-    branch: str | None = None,
+    kind: Annotated[str, Field(description="Kind of the objects to retrieve.")],
+    branch: Annotated[
+        str | None,
+        Field(default=None, description="Branch to retrieve the objects from. Defaults to None (uses default branch)."),
+    ],
 ) -> MCPResponse[dict[str, str]]:
     """Retrieve all the available filters for a specific schema node kind.
 
@@ -111,7 +119,7 @@ async def get_node_filters(
         branch: Branch to retrieve the objects from. Defaults to None (uses default branch).
 
     Returns:
-        Dictionary with success status and filters.
+        MCPResponse with success status and filters.
     """
     client: InfrahubClient = ctx.request_context.lifespan_context.client
     ctx.info(f"Fetching available filters for kind: {kind} from Infrahub...")
@@ -143,13 +151,16 @@ async def get_node_filters(
     )
 
 
-@mcp.tool(tags=["nodes", "retrieve"])
+@mcp.tool(tags=["nodes", "retrieve"], annotations=ToolAnnotations(readOnlyHint=True))
 async def get_related_nodes(
     ctx: Context,
-    kind: str,
-    relation: str,
-    filters: dict | None = None,
-    branch: str | None = None,
+    kind: Annotated[str, Field(description="Kind of the objects to retrieve.")],
+    relation: Annotated[str, Field(description="Name of the relation to fetch.")],
+    filters: Annotated[dict | None, Field(default=None, description="Dictionary of filters to apply.")],
+    branch: Annotated[
+        str | None,
+        Field(default=None, description="Branch to retrieve the objects from. Defaults to None (uses default branch)."),
+    ],
 ) -> MCPResponse[list[dict[str, Any]]]:
     """Retrieve related nodes by relation name and a kind.
 
@@ -160,7 +171,7 @@ async def get_related_nodes(
         branch: Branch to fetch the node from. Defaults to None (uses default branch).
 
     Returns:
-        Dictionary with success status and objects.
+        MCPResponse with success status and objects.
 
     """
     client: InfrahubClient = ctx.request_context.lifespan_context.client

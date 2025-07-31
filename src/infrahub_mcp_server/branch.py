@@ -1,8 +1,10 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
 from fastmcp import Context, FastMCP
 from infrahub_sdk.branch import BranchData
 from infrahub_sdk.exceptions import GraphQLError
+from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from infrahub_mcp_server.utils import MCPResponse, MCPToolStatus, _log_and_return_error
 
@@ -12,8 +14,15 @@ if TYPE_CHECKING:
 mcp: FastMCP = FastMCP(name="Infrahub Branches")
 
 
-@mcp.tool(tags=["branches", "create"])
-async def branch_create(ctx: Context, name: str, sync_with_git: bool = False) -> MCPResponse[dict[str, str]]:
+@mcp.tool(
+    tags=["branches", "create"],
+    annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True, destructiveHint=False),
+)
+async def branch_create(
+    ctx: Context,
+    name: Annotated[str, Field(description="Name of the branch to create.")],
+    sync_with_git: Annotated[bool, Field(default=False, description="Whether to sync the branch with git.")],
+) -> MCPResponse[dict[str, str]]:
     """Create a new branch in infrahub.
 
     Parameters:
@@ -42,7 +51,7 @@ async def branch_create(ctx: Context, name: str, sync_with_git: bool = False) ->
     )
 
 
-@mcp.tool(tags=["branches", "retrieve"])
+@mcp.tool(tags=["branches", "retrieve"], annotations=ToolAnnotations(readOnlyHint=True))
 async def get_branches(ctx: Context) -> MCPResponse[dict[str, BranchData]]:
     """Retrieve all branches from infrahub."""
 
