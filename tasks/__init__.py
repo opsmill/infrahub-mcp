@@ -4,12 +4,12 @@ from invoke import Collection, Context, task
 
 from . import docs, linter, tests
 
-ns = Collection("infrahub_sync")
+ns = Collection("infrahub_mcp_server")
 ns.configure(
     {
-        "infrahub_sync": {
-            "project_name": "infrahub_sync",
-            "python_ver": "3.10",
+        "infrahub_mcp_server": {
+            "project_name": "infrahub_mcp_server",
+            "python_ver": "3.13",
             "local": False,
         }
     }
