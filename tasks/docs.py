@@ -1,0 +1,63 @@
+import sys
+from pathlib import Path
+
+from invoke import Context, task
+
+from .utils import ESCAPED_REPO_PATH, check_if_command_available
+
+NAMESPACE = "INFRAHUB-SYNC-DOCS"
+CURRENT_DIRECTORY = Path(__file__).parent.resolve()
+DOCUMENTATION_DIRECTORY = CURRENT_DIRECTORY.parent / "docs"
+
+
+@task
+def generate(context: Context) -> None:
+    """Generate documentation for the infrahub-sync cli."""
+    pass
+
+
+@task
+def markdownlint(context: Context) -> None:
+    has_markdownlint = check_if_command_available(context=context, command_name="markdownlint-cli2")
+
+    if not has_markdownlint:
+        print("Warning, markdownlint-cli2 is not installed")
+        return
+    exec_cmd = "markdownlint-cli2 **/*.{md,mdx} '#**/node_modules/**'"
+    print(" - [docs] Lint docs with markdownlint-cli2")
+    with context.cd(ESCAPED_REPO_PATH):
+        context.run(exec_cmd)
+
+
+@task
+def format_markdownlint(context: Context) -> None:
+    """Run markdownlint-cli2 to format all .md/mdx files."""
+
+    print(" - [docs] Format code with markdownlint-cli2")
+    exec_cmd = "markdownlint-cli2 **/*.{md,mdx} --fix"
+    with context.cd(ESCAPED_REPO_PATH):
+        context.run(exec_cmd)
+
+
+@task
+def format(context: Context) -> None:  # noqa: A001
+    """This will run all formatters."""
+    format_markdownlint(context)
+
+
+@task
+def lint(context: Context) -> None:
+    """This will run all linters."""
+    markdownlint(context)
+
+
+@task
+def docusaurus(context: Context) -> None:
+    """Build documentation website."""
+    exec_cmd = "npm run build"
+
+    with context.cd(DOCUMENTATION_DIRECTORY):
+        output = context.run(exec_cmd)
+
+    if output.exited != 0:
+        sys.exit(-1)
