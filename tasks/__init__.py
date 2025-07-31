@@ -31,7 +31,7 @@ def format_all(context: Context) -> None:
     linter.format_all(context)
 
 
-@task(name="tests")
+@task(name="tests-all")
 def test_all(context: Context) -> None:
     tests.tests_unit(context)
     tests.tests_integration(context)
@@ -47,12 +47,12 @@ def tests_integration(context: Context) -> None:
     tests.tests_integration(context)
 
 
-@task(name="docs")
+@task(name="generate-doc")
 def generate_doc(context: Context) -> None:
     docs.generate_doc(context)
 
 
-@task(name="docusaurus")
+@task(name="docs")
 def docusaurus(context: Context) -> None:
     docs.docusaurus(context)
 
