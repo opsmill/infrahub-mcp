@@ -8,9 +8,12 @@ node_modules/*
 **/.ruff_cache
 docs/build
 
+__pycache__
+
 # Env
 .direnv/
 .envrc
 *.env
 
 
+.deepeval/

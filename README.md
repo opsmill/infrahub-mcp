@@ -1,27 +1,10 @@
 # Infrahub MCP Server
 
-A FastAPI + FastMCP server that bridges any JSON-RPC/HTTP client to an Infrahub instance.
-
-Supports:
-- JSON-RPC over stdin/stdout (daemon/oneshot)
-- HTTP POST (`--web` mode).
-
-## Features
-
-- **infrahub_get_nodes**: retrieve objects by kind, with flexible filters
-- **infrahub_get_schema**: retrieve schema(s) by kind or get all schemas
-- **tools/discover** & **tools/call**: JSON-RPC integration for dynamic discovery and invocation
-- **Filter mapping**: simple filters are auto-mapped (`field` → `field__value`, lists → `field__values`). For “any attribute” searches, use the `any` key.  
-- **Output formats**: returns data as JSON with `nodes` and `count`, or schema objects
-- **Modes**:
-  - **CLI / stdin-stdout** mode for pipelines and scripts
-  - **HTTP API** mode via FastAPI (`--web`)
+MCP server to interact with Infrahub
 
 ## Requirements
 
-- Python 3.8+
-- fastapi
-- uvicorn
+- Python 3.13+
 - fastmcp
 - infrahub_sdk
 
@@ -30,20 +13,20 @@ Supports:
 1. **Clone the repo**
 
     ```bash
-    git clone https://github.com/your-org/infrahub-mcp-server.git
+    git clone https://github.com/opsmill/infrahub-mcp-server.git
     cd infrahub-mcp-server
     ```
 
 2. **Install dependencies**
 
     ```bash
-    poetry install
+    uv sync
     ```
 
 3. **Run the server**
 
     ```bash
-    poetry run python -m infrahub_mcp_server.server --web
+    uv run fastmcp run src/infrahub_mcp_server/server.py:mcp
     ```
 
 ## Configuration
@@ -52,7 +35,7 @@ Set the following environment variables as needed:
 
 | Variable            | Description                         | Default                  |
 |---------------------|-------------------------------------|--------------------------|
-| `INFRAHUB_URL`      | URL of your Infrahub instance       | `http://localhost:8000`  |
+| `INFRAHUB_ADDRESS`  | URL of your Infrahub instance       | `http://localhost:8000`  |
 | `INFRAHUB_API_TOKEN`| API token for Infrahub              | `placeholder UUID`       |
 | `MCP_HOST`          | Host for the web server             | `0.0.0.0`                |
 | `MCP_PORT`          | Port for the web server             | `8001`                   |
@@ -83,7 +66,7 @@ curl -X POST http://localhost:8001/ \\
 ### CLI / stdin-stdout mode
 
 ```bash
-poetry run python server.py
+uv run fastmcp run src/infrahub_mcp_server/server.py:mcp
 ```
 
 Then send JSON-RPC requests to stdin:

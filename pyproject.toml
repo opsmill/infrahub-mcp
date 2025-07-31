@@ -1,42 +1,83 @@
-[tool.poetry]
+[project]
 name = "infrahub-mcp-server"
 version = "0.1.0"
-description = "A MCP server for Infrahub."
-authors = ["OpsMill <info@opsmill.com>"]
+description = "Add your description here"
 readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastmcp>=2.10.5",
+    "infrahub-sdk>=1.13.5",
+]
 
-[tool.poetry.dependencies]
-python = "^3.10, < 3.14"
-mcp = "^1.9.0"
-infrahub-sdk = {version = "^1.12.1"}
-requests = "^2.32.3"
+[dependency-groups]
+dev = [
+    "deepeval>=3.3.2",
+    "invoke>=2.2.0",
+    "mypy>=1.17.0",
+    "openai-agents>=0.2.3",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "ruff>=0.12.4",
+    "yamllint>=1.37.1",
+]
 
-[tool.poetry.group.dev.dependencies]
-ruff = "^0.9"
-mypy = "*"
-yamllint = "^1.35.1"
-pylint = "~3.1"
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = []
 
 [tool.mypy]
 pretty = true
 ignore_missing_imports = true
 
+exclude = [
+    "server_initial\\.py$",  # TOML's double-quoted strings require escaping backslashes
+    "server_hackathon\\.py$",  # TOML's double-quoted strings require escaping backslashes
+]
+
 [tool.ruff]
 line-length = 120
-exclude = ["schema-library"]
+
+exclude = [
+    ".git",
+    ".venv",
+    "env",
+    "_build",
+    "build",
+    "dist",
+    "examples",
+]
 
 [tool.ruff.lint]
 preview = true
 
-task-tags = ["FIXME", "TODO", "XXX"]
+task-tags = ["FIXME", "TODO"]
 
-select = [
-    "ALL"
+select = ["ALL"]
+
+ignore = [
+    "D",      # pydocstyle
+    "DOC",    # pydoclint
+    "CPY",    # flake8-copyright
+    "T201",   # use of `print`
+    "ISC",    # flake8-implicit-str-concat
+    "COM812", # missing-trailing-comma
+    "N999",   # Invalid module name
+    "PD901",  # Avoid using the generic variable name `df` for DataFrames
+    "TD",
+    "FIX",    # TODO
+    "TRY",
+    "B008",   # Do not perform function call `Depends` in argument defaults
+    "EM102",  # Exception must not use an f-string literal
+    "SIM117", # Use a single `with` statement with multiple contexts instead of nested `with` statements
+    "G004",   # Logging statement uses f-string
+    "S311",   # Standard pseudo-random generators are not suitable
+    "LOG004", # `.exception()` call outside exception handlers
+    "FBT",    # Boolean-typed positional argument in function definition
+    "ANN401", # Dynamically typed expressions (typing.Any) are disallowed in `value`
+    "ERA001", # Found commented-out code
 ]
 
-ignore = []
-
-#https://docs.astral.sh/ruff/formatter/black/
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
@@ -44,70 +85,15 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.ruff.lint.isort]
-known-first-party = ["emma"]
+known-first-party = ["infrahub_mcp_server"]
 
 [tool.ruff.lint.pycodestyle]
 max-line-length = 150
 
-[tool.ruff.lint.mccabe]
-max-complexity = 15
-
 [tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]  # Allow assert in test files
 
-[tool.pylint.general]
-extension-pkg-whitelist = ["pydantic", "ujson"]
-
-[tool.pylint.format]
-disable = "logging-fstring-interpolation"
-
-[tool.pylint.basic]
-# No docstrings required for private methods (Pylint default), or for test_ functions.
-no-docstring-rgx = "^(_|test_)"
-
-[tool.pylint.messages_control]
-# Line length is enforced by Black, so pylint doesn't need to check it.
-# Pylint and Black disagree about how to format multi-line arrays; Black wins.
-# assigning-non-slot,no-member,unsupported-membership-test,unsubscriptable-object,unsupported-assignment-operation,not-an-iterable
-# are disabled because of our move to pydantic 2, pylint does not seem to respect the type hint for pydantic 2 model fields.
-disable = """,
-    line-too-long,
-    missing-module-docstring,
-    missing-function-docstring,
-    missing-class-docstring,
-    consider-using-from-import,
-    invalid-name,
-    too-many-arguments,
-    too-many-locals,
-    keyword-arg-before-vararg,
-    too-few-public-methods,
-    too-many-instance-attributes,
-    fixme,
-    consider-using-f-string,
-    protected-access,
-    import-self,
-    wrong-import-order,
-    assigning-non-slot,
-    no-member,
-    unsupported-membership-test,
-    unsubscriptable-object,
-    unsupported-assignment-operation,
-    not-an-iterable,
-    too-many-return-statements,
-    unnecessary-comprehension,
-    multiple-statements,
-    self-assigning-variable,
-    no-else-return,
-    """
-
-[tool.pylint.miscellaneous]
-notes = """,
-    FIXME,
-    XXX,
-    """
-
-[tool.pylint.similarities]
-min-similarity-lines = 20
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
