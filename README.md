@@ -4,7 +4,7 @@ MCP server to interact with Infrahub
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.13+
 - fastmcp
 - infrahub_sdk
 
