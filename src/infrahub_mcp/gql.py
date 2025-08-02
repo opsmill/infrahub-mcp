@@ -4,7 +4,7 @@ from fastmcp import Context, FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from infrahub_mcp_server.utils import MCPResponse, MCPToolStatus
+from infrahub_mcp.utils import MCPResponse, MCPToolStatus
 
 if TYPE_CHECKING:
     from infrahub_sdk import InfrahubClient

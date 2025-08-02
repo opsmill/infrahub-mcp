@@ -1,6 +1,6 @@
 from fastmcp import Client
 
-from infrahub_mcp_server.server import mcp
+from infrahub_mcp.server import mcp
 
 
 async def test_list_schema() -> None:
