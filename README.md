@@ -7,8 +7,8 @@ MCP server to interact with Infrahub
 1. **Clone the repo**
 
 ```bash
-git clone https://github.com/opsmill/infrahub-mcp-server.git
-cd infrahub-mcp-server
+git clone https://github.com/opsmill/infrahub-mcp.git
+cd infrahub-mcp
 uv sync
 uv run fastmcp run src/infrahub_mcp/server.py:mcp
 ```
