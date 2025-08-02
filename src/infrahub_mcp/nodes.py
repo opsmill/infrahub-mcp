@@ -6,8 +6,8 @@ from infrahub_sdk.types import Order
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from infrahub_mcp_server.constants import schema_attribute_type_mapping
-from infrahub_mcp_server.utils import MCPResponse, MCPToolStatus, _log_and_return_error, convert_node_to_dict
+from infrahub_mcp.constants import schema_attribute_type_mapping
+from infrahub_mcp.utils import MCPResponse, MCPToolStatus, _log_and_return_error, convert_node_to_dict
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient

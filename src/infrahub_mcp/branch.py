@@ -6,7 +6,7 @@ from infrahub_sdk.exceptions import GraphQLError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from infrahub_mcp_server.utils import MCPResponse, MCPToolStatus, _log_and_return_error
+from infrahub_mcp.utils import MCPResponse, MCPToolStatus, _log_and_return_error
 
 if TYPE_CHECKING:
     from infrahub_sdk import InfrahubClient

@@ -1,7 +1,7 @@
 [project]
-name = "infrahub-mcp-server"
+name = "infrahub-mcp"
 version = "0.1.0"
-description = "Add your description here"
+description = "MCP server to interact with Infrahub"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -85,7 +85,7 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.ruff.lint.isort]
-known-first-party = ["infrahub_mcp_server"]
+known-first-party = ["infrahub_mcp"]
 
 [tool.ruff.lint.pycodestyle]
 max-line-length = 150
