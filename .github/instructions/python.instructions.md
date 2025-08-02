@@ -2,14 +2,20 @@
 applyTo: '**/*.py'
 ---
 
-# Python rules
+# Python Coding Standards
 
-- Use type hints for all function parameters and return values
-- Use Async whenever possible
-- Use `async def` for asynchronous functions
-- Use `await` for asynchronous calls
-- Use Pydantic models for dataclasses
-- All python functions should have a docstring
+- Use Python 3.10+ syntax and features.
+- Follow PEP 8 for code style and formatting.
+- Use type annotations for all function signatures and variables.
+- Prefer f-strings for string formatting.
+- Avoid wildcard imports; import only what you need.
+- Organize imports using `ruff` or `isort` conventions: standard library, third-party, local.
+- Write small, single-responsibility functions and classes.
+- Avoid global variables; prefer dependency injection or class attributes.
+- Use context managers (`with` statements) for resource management.
+- Prefer list comprehensions and generator expressions over manual loops when appropriate.
+- Use built-in exceptions or define custom exceptions for error handling.
+- Document all public modules, classes, and functions.
 
 ## Formatting and Linting
 
