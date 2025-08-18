@@ -8,6 +8,7 @@ MCP server to interact with Infrahub
 - fastmcp
 - infrahub_sdk
 
+
 ## Installation
 
 1. **Clone the repo**
@@ -29,6 +30,7 @@ MCP server to interact with Infrahub
     uv run fastmcp run src/infrahub_mcp_server/server.py:mcp
     ```
 
+
 ## Configuration
 
 Set the following environment variables as needed:
@@ -39,6 +41,7 @@ Set the following environment variables as needed:
 | `INFRAHUB_API_TOKEN`| API token for Infrahub              | `placeholder UUID`       |
 | `MCP_HOST`          | Host for the web server             | `0.0.0.0`                |
 | `MCP_PORT`          | Port for the web server             | `8001`                   |
+
 
 ## Usage
 
@@ -144,3 +147,4 @@ Response (all schemas):
   "schemas": [ { ... }, ... ]
 }
 ```
+

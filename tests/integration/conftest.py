@@ -3,7 +3,8 @@ from pathlib import Path
 import pytest
 from agents.mcp import MCPServerStdio, MCPServerStdioParams
 
-from infrahub_mcp_server.utils import get_prompt
+from infrahub_mcp.utils import get_prompt
+
 
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 ROOT_DIRECTORY = CURRENT_DIRECTORY.parent.parent.resolve()
@@ -30,7 +31,7 @@ def local_mcp_server() -> MCPServerStdio:
                 "fastmcp",
                 "run",
                 "--no-banner",
-                "src/infrahub_mcp_server/server.py:mcp",
+                "src/infrahub_mcp/server.py:mcp",
             ],
             env={
                 "INFRAHUB_ADDRESS": "https://sandbox.infrahub.app",
