@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - stable
+      - develop
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
