@@ -87,6 +87,7 @@ line-ending = "auto"
 [tool.ruff.lint.isort]
 known-first-party = ["infrahub_mcp"]
 
+
 [tool.ruff.lint.pycodestyle]
 max-line-length = 150
 

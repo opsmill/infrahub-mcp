@@ -5,6 +5,7 @@ from agents.mcp import MCPServerStdio, MCPServerStdioParams
 
 from infrahub_mcp.utils import get_prompt
 
+
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 ROOT_DIRECTORY = CURRENT_DIRECTORY.parent.parent.resolve()
 
