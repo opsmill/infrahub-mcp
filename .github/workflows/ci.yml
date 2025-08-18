@@ -26,7 +26,7 @@ jobs:
       yaml: ${{ steps.changes.outputs.yaml_all }}
     steps:
       - name: "Check out repository code"
-        uses: "actions/checkout@v4"
+        uses: "actions/checkout@v5"
       - name: Check for file changes
         uses: opsmill/paths-filter@v3.0.2
         id: changes
@@ -45,7 +45,7 @@ jobs:
   #   timeout-minutes: 5
   #   steps:
   #     - name: "Check out repository code"
-  #       uses: "actions/checkout@v4"
+  #       uses: "actions/checkout@v5"
 
   #     - name: "Set up Python ${{ matrix.python-version }}"
   #       uses: "actions/setup-python@v5"
@@ -60,7 +60,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: "Check out repository code"
-        uses: "actions/checkout@v4"
+        uses: "actions/checkout@v5"
         with:
           submodules: true
       - name: "Setup environment"
@@ -82,7 +82,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: "Check out repository code"
-        uses: "actions/checkout@v4"
+        uses: "actions/checkout@v5"
         with:
           submodules: true
       - name: Install NodeJS
@@ -108,7 +108,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: "Check out repository code"
-        uses: "actions/checkout@v4"
+        uses: "actions/checkout@v5"
         with:
           submodules: true
 
