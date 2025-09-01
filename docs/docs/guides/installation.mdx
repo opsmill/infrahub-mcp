@@ -12,13 +12,9 @@ This guide provides step-by-step instructions for installing and configuring dif
 - Ensure you have access to an Infrahub MCP server endpoint
 - Each client may have additional prerequisites listed in their respective sections
 
-:::info
-You can use multiple clients to interact with the Infrahub MCP server, depending on your workflow and language preferences.
-:::
-
 ## Install & run the Infrahub MCP server
 
-1. **Clone the repo**
+1. **Clone the repository**
 
     ```bash
     git clone https://github.com/opsmill/infrahub-mcp-server.git
@@ -26,6 +22,12 @@ You can use multiple clients to interact with the Infrahub MCP server, depending
     ```
 
 2. **Install dependencies**
+
+<!-- vale off -->
+- Python 3.13+
+- fastmcp
+- infrahub_sdk
+<!-- vale on -->
 
     ```bash
     uv sync
@@ -97,7 +99,7 @@ Use the command line:
 code --add-mcp '{"type":"stdio","name":"infrahub-mcp","version":"0.0.1","description":"MCP server to interact with Infrahub","command":"uv","args":["run","fastmcp","run","src/infrahub_mcp/server.py:mcp"],"author":"Opsmill","tags":["infrahub-mcp","mcp","server"],"categories":["mcp"],"env":{"MCP_HOST":"0.0.0.0","MCP_PORT":"8001","INFRAHUB_ADDRESS":"http://localhost:8000","INFRAHUB_API_TOKEN":"placeholder UUID"}}'
 ```
 
-Then open the MCP Servers Config file (Cmd+Shift+P and type "MCP: Open User Configuration") and replace the default env values with your own.
+Then open the MCP Servers configuration file (Cmd+Shift+P and type "MCP: Open User Configuration") and replace the default env values with your own.
 
 Then go to **Extensions**, find the **Infrahub MCP** server in the list, open the menu with right-click and click on **Start Server**.
 
@@ -107,8 +109,10 @@ Then go to **Extensions**, find the **Infrahub MCP** server in the list, open th
 ### Manual steps:
 
 - Go to **Settings > Developer**
+<!-- vale off -->
 - Click **Edit config** to open the **claude_desktop_config.json** file
-- Add the MCP server configuration to the mcpServers section
+<!-- vale on -->
+- Add the MCP server configuration to the `mcpServers` section
 - Paste the configuration below
 - **Modify the default env values with your own**
 - Save the file to apply the configuration

@@ -1,52 +1,19 @@
-# Infrahub MCP Server
+<!-- markdownlint-disable -->
+![Infrahub Logo](https://assets-global.website-files.com/657aff4a26dd8afbab24944b/657b0e0678f7fd35ce130776_Logo%20INFRAHUB.svg)
+<!-- markdownlint-restore -->
 
-MCP server to interact with Infrahub
+# Infrahub MCP
 
-## Requirements
+[Infrahub](https://github.com/opsmill/infrahub) by [OpsMill](https://opsmill.com) acts as a central hub to manage the data, templates and playbooks that powers your infrastructure. At its heart, Infrahub is built on 3 fundamental pillars:
 
-- Python 3.13+
-- fastmcp
-- infrahub_sdk
+- **A Flexible Schema**: A model of the infrastructure and the relation between the objects in the model, that's easily extensible.
+- **Version Control**: Natively integrated into the graph database which opens up some new capabilities like branching, diffing, and merging data directly in the database.
+- **Unified Storage**: By combining a graph database and git, Infrahub stores data and code needed to manage the infrastructure.
 
+## Introduction
 
-## Usage
+Infrahub MCP Server connects your AI assistants to Infrahub using the open MCP standard—so agents can read and (optionally) change your infra state through a consistent, audited, human-approved interface.
 
-### HTTP API mode
+## Using Infrahub MCP
 
-```bash
-poetry run python server.py --web
-```
-
-Send a POST request to the root endpoint (/):
-
-```bash
-curl -X POST http://localhost:8001/ \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "tool": "infrahub_get_nodes",
-    "params": {
-      "kind": "Tag",
-      "filters": { "any": "blue" },
-      "partial_match": false
-    }
-  }'
-```
-
-### CLI / stdin-stdout mode
-
-```bash
-uv run fastmcp run src/infrahub_mcp_server/server.py:mcp
-```
-
-Then send JSON-RPC requests to stdin:
-
-```bash
-{"jsonrpc":"2.0","method":"tools/discover","params":{}}
-{"jsonrpc":"2.0","method":"tools/call","params":{"name": "infrahub_get_nodes","arguments": {"kind":"Router","filters": {"location":"eu-west"}}}}
-```
-
-Process one-shot request with --oneshot:
-
-```bash
-echo '{"method":"tools/discover"}' | poetry run python server.py --oneshot
-```
+Documentation for using Infrahub Sync is available [here](https://docs.infrahub.app/mcp/)
