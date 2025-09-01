@@ -1,6 +1,6 @@
 # LLM Context Guide for Infrahub MCP Server
 
-Infrahub MCP Server is XXX
+Infrahub MCP Server connects your AI assistants to Infrahub using the open MCP standard—so agents can read and (optionally) change your infra state through a consistent, audited, human-approved interface.
 
 ## Key Directories
 
