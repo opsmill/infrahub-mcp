@@ -8,14 +8,15 @@ title: Infrahub MCP methods
 ### get_schema_mapping
 <!-- vale on -->
 
-**Capabilities**
+### Capabilities
+
 - read-only
 - idempotent
 - no destroy
 
 List all schema nodes and generics available in Infrahub.
 
-**Parameters**
+### Parameters
 
 - **branch** (string): branch to read from; default is the server’s default branch
 
@@ -23,14 +24,15 @@ List all schema nodes and generics available in Infrahub.
 ### get_schema
 <!-- vale on -->
 
-**Capabilities**
+### Capabilities
+
 - read-only
 - idempotent
 - no destroy
 
 Retrieve the full schema for a specific kind (attributes, relationships, and types).
 
-**Parameters**
+### Parameters
 
 - **kind** (string, required): schema Kind to retrieve
 - **branch** (string): branch to read from; default is the server’s default branch
@@ -39,14 +41,15 @@ Retrieve the full schema for a specific kind (attributes, relationships, and typ
 ### get_schemas
 <!-- vale on -->
 
-**Capabilities**
+### Capabilities
+
 - read-only
 - idempotent
 - no destroy
 
 Retrieve all schemas, optionally excluding Profiles and Templates.
 
-**Parameters**
+### Parameters
 
 <!-- vale off -->
 - **branch** (string): branch to read from; default is the server’s default branch
@@ -60,7 +63,8 @@ Retrieve all schemas, optionally excluding Profiles and Templates.
 ### get_nodes
 <!-- vale on -->
 
-**Capabilities**
+### Capabilities
+
 - read-only
 - idempotent
 - no destroy
@@ -68,7 +72,7 @@ Retrieve all schemas, optionally excluding Profiles and Templates.
 Get all objects of a specific kind from Infrahub.
 Use `get_schema_mapping` to discover kinds and `get_node_filters` to discover filter keys.
 
-**Parameters**
+### Parameters
 
 <!-- vale off -->
 - **kind** (string, required): kind of the objects to retrieve
@@ -77,43 +81,45 @@ Use `get_schema_mapping` to discover kinds and `get_node_filters` to discover fi
 - **partial_match** (boolean, default: false): enable substring matches for string filters
 <!-- vale on -->
 
-**Response**
-
 <!-- vale off -->
 ### get_node_filters
 <!-- vale on -->
 
-**Capabilities**
+### Capabilities
+
 - read-only
 - idempotent
 - no destroy
 
 Retrieve all available filters for a specific schema node kind.
 
-**Parameters**
+### Parameters
 
 - **kind** (string, required): node kind (example: "Router")
 - **branch** (string): branch name
 
-**Notes**
+:::info
 
 - Attribute filters: `attribute__value`
 - Relationship filters: `relationship__attribute__value`
 - Filters starting with `parent__` refer to a related generic node
 - Use `get_schema` to inspect peer kinds and attributes used in relationship filters
 
+:::
+
 <!-- vale off -->
 ### get_related_nodes
 <!-- vale on -->
 
-**Capabilities**
+### Capabilities
+
 - read-only
 - idempotent
 - no destroy
 
 Retrieve related nodes by relation name for a given kind.
 
-**Parameters**
+### Parameters
 
 - **kind** (string, required): source node kind (example: "Device")
 - **relation** (string, required): relationship name to follow (example: "interfaces")
@@ -126,14 +132,15 @@ Retrieve related nodes by relation name for a given kind.
 ### branch_create
 <!-- vale on -->
 
-**Capabilities**
+### Capabilities
+
 - write
 - idempotent
 - no destroy
 
 Create a new branch in Infrahub.
 
-**Parameters**
+### Parameters
 
 <!-- vale off -->
 - **name** (string, required): name of the branch to create
@@ -144,7 +151,8 @@ Create a new branch in Infrahub.
 ### get_branches
 <!-- vale on -->
 
-**Capabilities**
+### Capabilities
+
 - read-only
 - idempotent
 - no destroy
@@ -157,27 +165,26 @@ Retrieve all branches from Infrahub.
 ### get_graphql_schema
 <!-- vale on -->
 
-**Capabilities**
+### Capabilities
+
 - read-only
 - idempotent
 - no destroy
 
 Retrieve the GraphQL schema from Infrahub as a string.
 
-**Parameters**
-_none_
-
 <!-- vale off -->
 ### query_graphql
 <!-- vale on -->
 
-**Capabilities**
+### Capabilities
+
 - may write (depends on operation)
 - idempotent for queries; non-idempotent for mutations
 - destructive potential depends on mutation
 
 Execute a GraphQL operation against Infrahub.
 
-**Parameters**
+### Parameters
 
 - **query** (string, required): GraphQL document (use `query { ... }` for reads, `mutation { ... }` for writes)
