@@ -16,10 +16,10 @@ This guide provides step-by-step instructions for installing and configuring dif
 
 1. **Clone the repository**
 
-    ```bash
-    git clone https://github.com/opsmill/infrahub-mcp-server.git
-    cd infrahub-mcp-server
-    ```
+```bash
+git clone https://github.com/opsmill/infrahub-mcp-server.git
+cd infrahub-mcp-server
+```
 
 2. **Install dependencies**
 
@@ -29,16 +29,15 @@ This guide provides step-by-step instructions for installing and configuring dif
 - infrahub_sdk
 <!-- vale on -->
 
-    ```bash
-    uv sync
-    ```
+```bash
+uv sync
+```
 
 3. **Run the server**
 
-    ```bash
-    uv run fastmcp run src/infrahub_mcp_server/server.py:mcp
-    ```
-
+```bash
+uv run fastmcp run src/infrahub_mcp/server.py:mcp
+```
 
 ### Configuration
 
@@ -56,7 +55,7 @@ Set the following environment variables as needed:
 <Tabs>
 <TabItem value="cursor" label="Cursor">
 
-### Manual steps:
+### Manual steps
 
 - Go to **Settings > Cursor Settings > Tools & Integrations**
 - Under **MCP tools**, click **Add Custom MCP**
@@ -65,7 +64,7 @@ Set the following environment variables as needed:
 - Save the file to apply the configuration
 - Restart Cursor if prompted
 
-### Configuration:
+### Configuration
 
 ```json
 {
@@ -91,9 +90,9 @@ Set the following environment variables as needed:
 </TabItem>
 <TabItem value="vs-code" label="VS Code">
 
-### Manual steps:
+### Manual steps
 
-Use the command line:
+Use the command line
 
 ```console
 code --add-mcp '{"type":"stdio","name":"infrahub-mcp","version":"0.0.1","description":"MCP server to interact with Infrahub","command":"uv","args":["run","fastmcp","run","src/infrahub_mcp/server.py:mcp"],"author":"Opsmill","tags":["infrahub-mcp","mcp","server"],"categories":["mcp"],"env":{"MCP_HOST":"0.0.0.0","MCP_PORT":"8001","INFRAHUB_ADDRESS":"http://localhost:8000","INFRAHUB_API_TOKEN":"placeholder UUID"}}'
@@ -106,7 +105,7 @@ Then go to **Extensions**, find the **Infrahub MCP** server in the list, open th
 </TabItem>
 <TabItem value="claude-desktop" label="Claude Desktop">
 
-### Manual steps:
+### Manual steps
 
 - Go to **Settings > Developer**
 <!-- vale off -->
@@ -118,7 +117,7 @@ Then go to **Extensions**, find the **Infrahub MCP** server in the list, open th
 - Save the file to apply the configuration
 - Restart Claude Desktop
 
-### Configuration:
+### Configuration
 
 ```json
 {
