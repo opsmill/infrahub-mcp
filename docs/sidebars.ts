@@ -4,7 +4,7 @@ const sidebars: SidebarsConfig = {
   mcpSidebar: [
     'readme',
     'guides/installation',
-    'reference/methods',
+    'references/methods',
   ]
 };
 
