@@ -3,8 +3,20 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 const sidebars: SidebarsConfig = {
   mcpSidebar: [
     'readme',
-    'guides/installation',
-    'references/methods',
+    {
+      type: 'category',
+      label: 'Guides',
+      items: [
+        'guides/installation',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Reference',
+      items: [
+        'references/methods',
+      ],
+    },
   ]
 };
 
