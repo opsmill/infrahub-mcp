@@ -1,0 +1,190 @@
+---
+title: Infrahub MCP methods
+---
+
+## Schema
+
+<!-- vale off -->
+### get_schema_mapping
+<!-- vale on -->
+
+### Capabilities
+
+- read-only
+- idempotent
+- no destroy
+
+List all schema nodes and generics available in Infrahub.
+
+### Parameters
+
+- **branch** (string): branch to read from; default is the server’s default branch
+
+<!-- vale off -->
+### get_schema
+<!-- vale on -->
+
+### Capabilities
+
+- read-only
+- idempotent
+- no destroy
+
+Retrieve the full schema for a specific kind (attributes, relationships, and types).
+
+### Parameters
+
+- **kind** (string, required): schema Kind to retrieve
+- **branch** (string): branch to read from; default is the server’s default branch
+
+<!-- vale off -->
+### get_schemas
+<!-- vale on -->
+
+### Capabilities
+
+- read-only
+- idempotent
+- no destroy
+
+Retrieve all schemas, optionally excluding Profiles and Templates.
+
+### Parameters
+
+<!-- vale off -->
+- **branch** (string): branch to read from; default is the server’s default branch
+- **exclude_profiles** (boolean, default: true): omit Profile schemas
+- **exclude_templates** (boolean, default: true): omit Template schemas
+<!-- vale on -->
+
+## Nodes
+
+<!-- vale off -->
+### get_nodes
+<!-- vale on -->
+
+### Capabilities
+
+- read-only
+- idempotent
+- no destroy
+
+Get all objects of a specific kind from Infrahub.
+Use `get_schema_mapping` to discover kinds and `get_node_filters` to discover filter keys.
+
+### Parameters
+
+<!-- vale off -->
+- **kind** (string, required): kind of the objects to retrieve
+- **branch** (string): branch name (default: server’s default branch)
+- **filters** (object): dictionary of filters to apply
+- **partial_match** (boolean, default: false): enable substring matches for string filters
+<!-- vale on -->
+
+<!-- vale off -->
+### get_node_filters
+<!-- vale on -->
+
+### Capabilities
+
+- read-only
+- idempotent
+- no destroy
+
+Retrieve all available filters for a specific schema node kind.
+
+### Parameters
+
+- **kind** (string, required): node kind (example: "Router")
+- **branch** (string): branch name
+
+:::info
+
+- Attribute filters: `attribute__value`
+- Relationship filters: `relationship__attribute__value`
+- Filters starting with `parent__` refer to a related generic node
+- Use `get_schema` to inspect peer kinds and attributes used in relationship filters
+
+:::
+
+<!-- vale off -->
+### get_related_nodes
+<!-- vale on -->
+
+### Capabilities
+
+- read-only
+- idempotent
+- no destroy
+
+Retrieve related nodes by relation name for a given kind.
+
+### Parameters
+
+- **kind** (string, required): source node kind (example: "Device")
+- **relation** (string, required): relationship name to follow (example: "interfaces")
+- **filters** (object): filters applied to the **source** nodes before following the relation
+- **branch** (string): branch name
+
+## Branches
+
+<!-- vale off -->
+### branch_create
+<!-- vale on -->
+
+### Capabilities
+
+- write
+- idempotent
+- no destroy
+
+Create a new branch in Infrahub.
+
+### Parameters
+
+<!-- vale off -->
+- **name** (string, required): name of the branch to create
+- **sync_with_git** (boolean, default: false): whether to sync the branch with Git
+<!-- vale on -->
+
+<!-- vale off -->
+### get_branches
+<!-- vale on -->
+
+### Capabilities
+
+- read-only
+- idempotent
+- no destroy
+
+Retrieve all branches from Infrahub.
+
+## GraphQL
+
+<!-- vale off -->
+### get_graphql_schema
+<!-- vale on -->
+
+### Capabilities
+
+- read-only
+- idempotent
+- no destroy
+
+Retrieve the GraphQL schema from Infrahub as a string.
+
+<!-- vale off -->
+### query_graphql
+<!-- vale on -->
+
+### Capabilities
+
+- may write (depends on operation)
+- idempotent for queries; non-idempotent for mutations
+- destructive potential depends on mutation
+
+Execute a GraphQL operation against Infrahub.
+
+### Parameters
+
+- **query** (string, required): GraphQL document (use `query { ... }` for reads, `mutation { ... }` for writes)

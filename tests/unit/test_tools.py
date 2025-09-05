@@ -5,7 +5,7 @@ from infrahub_mcp.server import mcp
 
 async def test_list_schema() -> None:
     async with Client(mcp) as client:
-        result = await client.call_tool("schema_get_mapping")
+        result = await client.call_tool("get_schema_mapping")
         assert isinstance(result.data, dict)
         assert "LocationSite" in result.data
 
@@ -17,9 +17,9 @@ async def test_get_node_filters(locationsite_filters: dict[str, str]) -> None:
         assert result.data == locationsite_filters
 
 
-async def test_get_objects() -> None:
+async def test_get_nodes() -> None:
     async with Client(mcp) as client:
-        result = await client.call_tool("get_objects", {"kind": "LocationSite"})
+        result = await client.call_tool("get_nodes", {"kind": "LocationSite"})
         assert isinstance(result.data, list)
         assert result.data == [
             "atl1",

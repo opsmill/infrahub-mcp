@@ -1,0 +1,147 @@
+---
+title: Installing Infrahub MCP
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+This guide provides step-by-step instructions for installing and configuring different MCP clients to connect to the Infrahub MCP server.
+
+## Prerequisites
+
+- Ensure you have access to an Infrahub MCP server endpoint
+- Each client may have additional prerequisites listed in their respective sections
+
+## Install & run the Infrahub MCP server
+
+1. **Clone the repository**
+
+```bash
+git clone https://github.com/opsmill/infrahub-mcp-server.git
+cd infrahub-mcp-server
+```
+
+2. **Install dependencies**
+
+<!-- vale off -->
+- Python 3.13+
+- fastmcp
+- infrahub_sdk
+<!-- vale on -->
+
+```bash
+uv sync
+```
+
+3. **Run the server**
+
+```bash
+uv run fastmcp run src/infrahub_mcp/server.py:mcp
+```
+
+### Configuration
+
+Set the following environment variables as needed:
+
+| Variable            | Description                         | Default                  |
+|---------------------|-------------------------------------|--------------------------|
+| `INFRAHUB_ADDRESS`  | URL of your Infrahub instance       | `http://localhost:8000`  |
+| `INFRAHUB_API_TOKEN`| API token for Infrahub              | `placeholder UUID`       |
+| `MCP_HOST`          | Host for the web server             | `0.0.0.0`                |
+| `MCP_PORT`          | Port for the web server             | `8001`                   |
+
+## Add to your MCP client
+
+<Tabs>
+<TabItem value="cursor" label="Cursor">
+
+### Manual steps
+
+- Go to **Settings > Cursor Settings > Tools & Integrations**
+- Under **MCP tools**, click **Add Custom MCP**
+- Paste the configuration below into mcp.json
+- **MCP tools, click Add Custom MCP**
+- Save the file to apply the configuration
+- Restart Cursor if prompted
+
+### Configuration
+
+```json
+{
+  "mcpServers": {
+    "infrahub_mcp": {
+      "command": "uv",
+      "args": [
+        "run",
+        "fastmcp",
+        "run",
+        "src/infrahub_mcp/server.py:mcp"
+      ],
+      "env": {
+        "PYENV_VERSION": "3.13.3",
+        "INFRAHUB_ADDRESS": "http://localhost:8000",
+        "INFRAHUB_API_TOKEN": "06438eb2-8019-4776-878c-0941b1f1d1ec",
+      }
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="vs-code" label="VS Code">
+
+### Manual steps
+
+Use the command line
+
+```console
+code --add-mcp '{"type":"stdio","name":"infrahub-mcp","version":"0.0.1","description":"MCP server to interact with Infrahub","command":"uv","args":["run","fastmcp","run","src/infrahub_mcp/server.py:mcp"],"author":"Opsmill","tags":["infrahub-mcp","mcp","server"],"categories":["mcp"],"env":{"MCP_HOST":"0.0.0.0","MCP_PORT":"8001","INFRAHUB_ADDRESS":"http://localhost:8000","INFRAHUB_API_TOKEN":"placeholder UUID"}}'
+```
+
+Then open the MCP Servers configuration file (Cmd+Shift+P and type "MCP: Open User Configuration") and replace the default env values with your own.
+
+Then go to **Extensions**, find the **Infrahub MCP** server in the list, open the menu with right-click and click on **Start Server**.
+
+</TabItem>
+<TabItem value="claude-desktop" label="Claude Desktop">
+
+### Manual steps
+
+- Go to **Settings > Developer**
+<!-- vale off -->
+- Click **Edit config** to open the **claude_desktop_config.json** file
+<!-- vale on -->
+- Add the MCP server configuration to the `mcpServers` section
+- Paste the configuration below
+- **Modify the default env values with your own**
+- Save the file to apply the configuration
+- Restart Claude Desktop
+
+### Configuration
+
+```json
+{
+  "mcpServers": {
+    "infrahub_mcp": {
+      "transport": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "fastmcp",
+        "run",
+        "src/infrahub_mcp/server.py:mcp"
+      ],
+      "env": {
+        "PYENV_VERSION": "3.13.3",
+        "INFRAHUB_ADDRESS": "http://localhost:8000",
+        "INFRAHUB_API_TOKEN": "06438eb2-8019-4776-878c-0941b1f1d1ec",
+      }
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+## Related resources

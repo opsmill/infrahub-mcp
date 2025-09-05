@@ -5,8 +5,8 @@ from infrahub_sdk.exceptions import BranchNotFoundError, SchemaNotFoundError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from infrahub_mcp_server.constants import NAMESPACES_INTERNAL
-from infrahub_mcp_server.utils import MCPResponse, MCPToolStatus, _log_and_return_error
+from infrahub_mcp.constants import NAMESPACES_INTERNAL
+from infrahub_mcp.utils import MCPResponse, MCPToolStatus, _log_and_return_error
 
 if TYPE_CHECKING:
     from infrahub_sdk import InfrahubClient

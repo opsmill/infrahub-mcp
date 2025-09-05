@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from fastmcp import FastMCP
 from infrahub_sdk.client import InfrahubClient
 
-from infrahub_mcp.branch import mcp as branch_mcp
-from infrahub_mcp.gql import mcp as graphql_mcp
-from infrahub_mcp.nodes import mcp as nodes_mcp
-from infrahub_mcp.schema import mcp as schema_mcp
+from infrahub_mcp.tools.branch import mcp as branch_mcp
+from infrahub_mcp.tools.gql import mcp as graphql_mcp
+from infrahub_mcp.tools.nodes import mcp as nodes_mcp
+from infrahub_mcp.tools.schema import mcp as schema_mcp
 
 
 @dataclass

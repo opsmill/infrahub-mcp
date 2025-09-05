@@ -33,7 +33,7 @@ goldens = [
         name="find_kind",
         input="what is the proper kind for a device",
         expected_output="The proper kind for a device is InfraDevice.",
-        expected_tools=[ToolCall(name="schema_get_mapping", input_parameters=None)],
+        expected_tools=[ToolCall(name="get_schema_mapping", input_parameters=None)],
     ),
 ]
 
