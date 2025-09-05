@@ -1,6 +1,6 @@
 ---
-yamllint disable rule:truthy
-name: Sync Folders
+# yamllint disable rule:truthy rule:truthy rule:line-length
+name: Sync Docs Folders
 
 on:
   push:
