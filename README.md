@@ -16,4 +16,4 @@ Infrahub MCP Server connects your AI assistants to Infrahub using the open MCP s
 
 ## Using Infrahub MCP
 
-Documentation for using Infrahub Sync is available [here](https://docs.infrahub.app/mcp/)
+Documentation for using Infrahub MCP is available [here](https://docs.infrahub.app/mcp/)
