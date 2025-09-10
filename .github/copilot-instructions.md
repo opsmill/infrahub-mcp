@@ -1,1 +1,1 @@
-LLMS.md
+../LLMS.md
