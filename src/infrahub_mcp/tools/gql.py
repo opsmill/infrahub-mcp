@@ -12,8 +12,8 @@ if TYPE_CHECKING:
 mcp: FastMCP = FastMCP(name="Infrahub GraphQL")
 
 
-@mcp.tool(tags=["schemas", "retrieve"], annotations=ToolAnnotations(readOnlyHint=True))
-async def get_graphql_schema(ctx: Context) -> MCPResponse[str]:
+@mcp.tool(tags={"schemas", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
+async def get_graphql_schema(ctx: Context) -> MCPResponse:
     """Retrieve the GraphQL schema from Infrahub
 
     Parameters:
@@ -27,7 +27,7 @@ async def get_graphql_schema(ctx: Context) -> MCPResponse[str]:
     return MCPResponse(status=MCPToolStatus.SUCCESS, data=resp.text)
 
 
-@mcp.tool(tags=["schemas", "retrieve"], annotations=ToolAnnotations(readOnlyHint=False))
+@mcp.tool(tags={"schemas", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=False))
 async def query_graphql(
     ctx: Context, query: Annotated[str, Field(description="GraphQL query to execute.")]
 ) -> MCPResponse[dict[str, Any]]:
@@ -41,4 +41,6 @@ async def query_graphql(
 
     """
     client: InfrahubClient = ctx.request_context.lifespan_context.client
-    return await client.execute_graphql(query=query)
+    data = await client.execute_graphql(query=query)
+
+    return MCPResponse(status=MCPToolStatus.SUCCESS, data=data)
