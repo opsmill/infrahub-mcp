@@ -32,11 +32,11 @@ def get_prompt(name: str) -> str:
     return (PROMPTS_DIRECTORY / f"{name}.md").read_text()
 
 
-def _log_and_return_error(ctx: Context, error: str | Exception, remediation: str | None = None) -> MCPResponse:
+async def _log_and_return_error(ctx: Context, error: str | Exception, remediation: str | None = None) -> MCPResponse:
     """Log an error and return a standardized error response."""
     if isinstance(error, Exception):
         error = str(error)
-    ctx.error(message=error)
+    await ctx.error(message=error)
     return MCPResponse(
         status=MCPToolStatus.ERROR,
         error=error,

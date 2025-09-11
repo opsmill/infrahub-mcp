@@ -14,14 +14,14 @@ if TYPE_CHECKING:
 mcp: FastMCP = FastMCP(name="Infrahub Schemas")
 
 
-@mcp.tool(tags=["schemas", "retrieve"], annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"schemas", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
 async def get_schema_mapping(
     ctx: Context,
     branch: Annotated[
         str | None,
         Field(default=None, description="Branch to retrieve the mapping from. Defaults to None (uses default branch)."),
     ],
-) -> MCPResponse[dict[str, str]]:
+) -> MCPResponse:
     """List all schema nodes and generics available in Infrahub
 
     Parameters:
@@ -32,14 +32,14 @@ async def get_schema_mapping(
     """
     client: InfrahubClient = ctx.request_context.lifespan_context.client
     if branch:
-        ctx.info(f"Fetching schema mapping for {branch} from Infrahub...")
+        await ctx.info(f"Fetching schema mapping for {branch} from Infrahub...")
     else:
-        ctx.info("Fetching schema mapping from Infrahub...")
+        await ctx.info("Fetching schema mapping from Infrahub...")
 
     try:
         all_schemas = await client.schema.all(branch=branch)
     except BranchNotFoundError as exc:
-        return _log_and_return_error(ctx=ctx, error=exc, remediation="Check the branch name or your permissions.")
+        return await _log_and_return_error(ctx=ctx, error=exc, remediation="Check the branch name or your permissions.")
 
     # TODO: Should we add the description ?
     schema_mapping = {
@@ -52,7 +52,7 @@ async def get_schema_mapping(
     )
 
 
-@mcp.tool(tags=["schemas", "retrieve"], annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"schemas", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
 async def get_schema(
     ctx: Context,
     kind: Annotated[str, Field(description="Schema Kind to retrieve.")],
@@ -60,7 +60,7 @@ async def get_schema(
         str | None,
         Field(default=None, description="Branch to retrieve the schema from. Defaults to None (uses default branch)."),
     ],
-) -> MCPResponse[dict[str, Any]]:
+) -> MCPResponse:
     """Retrieve the full schema for a specific kind.
     This includes attributes, relationships, and their types.
 
@@ -72,16 +72,16 @@ async def get_schema(
         Dictionary with success status and schema.
     """
     client: InfrahubClient = ctx.request_context.lifespan_context.client
-    ctx.info(f"Fetching schema of {kind} from Infrahub...")
+    await ctx.info(f"Fetching schema of {kind} from Infrahub...")
 
     try:
         schema = await client.schema.get(kind=kind, branch=branch)
     except SchemaNotFoundError:
         error_msg = f"Schema not found for kind: {kind}."
         remediation_msg = "Use the `get_schema_mapping` tool to list available kinds."
-        return _log_and_return_error(ctx=ctx, error=error_msg, remediation=remediation_msg)
+        return await _log_and_return_error(ctx=ctx, error=error_msg, remediation=remediation_msg)
     except BranchNotFoundError as exc:
-        return _log_and_return_error(ctx=ctx, error=exc, remediation="Check the branch name or your permissions.")
+        return await _log_and_return_error(ctx=ctx, error=exc, remediation="Check the branch name or your permissions.")
 
     schema = await client.schema.get(kind=kind, branch=branch)
 
@@ -91,7 +91,7 @@ async def get_schema(
     )
 
 
-@mcp.tool(tags=["schemas", "retrieve"], annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"schemas", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
 async def get_schemas(
     ctx: Context,
     branch: Annotated[
@@ -104,7 +104,7 @@ async def get_schemas(
     exclude_templates: Annotated[
         bool, Field(default=True, description="Whether to exclude Template schemas. Defaults to True.")
     ],
-) -> MCPResponse[dict[str, dict[str, Any]]]:
+) -> MCPResponse:
     """Retrieve all schemas from Infrahub, optionally excluding Profiles and Templates.
 
     Parameters:
@@ -118,12 +118,12 @@ async def get_schemas(
 
     """
     client: InfrahubClient = ctx.request_context.lifespan_context.client
-    ctx.info(f"Fetching all schemas in branch {branch or 'main'} from Infrahub...")
+    await ctx.info(f"Fetching all schemas in branch {branch or 'main'} from Infrahub...")
 
     try:
         all_schemas = await client.schema.all(branch=branch)
     except BranchNotFoundError as exc:
-        return _log_and_return_error(ctx=ctx, error=exc, remediation="Check the branch name or your permissions.")
+        return await _log_and_return_error(ctx=ctx, error=exc, remediation="Check the branch name or your permissions.")
 
     # Filter out Profile and Template if requested
     filtered_schemas = {}

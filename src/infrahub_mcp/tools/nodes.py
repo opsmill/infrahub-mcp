@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 mcp: FastMCP = FastMCP(name="Infrahub Nodes")
 
 
-@mcp.tool(tags=["nodes", "retrieve"], annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"nodes", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
 async def get_nodes(
     ctx: Context,
     kind: Annotated[str, Field(description="Kind of the objects to retrieve.")],
@@ -25,7 +25,7 @@ async def get_nodes(
     ],
     filters: Annotated[dict[str, Any] | None, Field(default=None, description="Dictionary of filters to apply.")],
     partial_match: Annotated[bool, Field(default=False, description="Whether to use partial matching for filters.")],
-) -> MCPResponse[list[str]]:
+) -> MCPResponse:
     """Get all objects of a specific kind from Infrahub.
 
     To retrieve the list of available kinds, use the `get_schema_mapping` tool.
@@ -42,7 +42,7 @@ async def get_nodes(
 
     """
     client: InfrahubClient = ctx.request_context.lifespan_context.client
-    ctx.info(f"Fetching nodes of kind: {kind} with filters: {filters} from Infrahub...")
+    await ctx.info(f"Fetching nodes of kind: {kind} with filters: {filters} from Infrahub...")
 
     # Verify if the kind exists in the schema and guide Tool if not
     try:
@@ -50,12 +50,13 @@ async def get_nodes(
     except SchemaNotFoundError:
         error_msg = f"Schema not found for kind: {kind}."
         remediation_msg = "Use the `get_schema_mapping` tool to list available kinds."
-        return _log_and_return_error(ctx=ctx, error=error_msg, remediation=remediation_msg)
+        return await _log_and_return_error(ctx=ctx, error=error_msg, remediation=remediation_msg)
 
     # TODO: Verify if the filters are valid for the kind and guide Tool if not
 
     try:
         if filters:
+            await ctx.debug(f"Applying filters: {filters} with partial_match={partial_match}")
             nodes = await client.filters(
                 kind=schema.kind,
                 branch=branch,
@@ -76,7 +77,7 @@ async def get_nodes(
                 prefetch_relationships=True,
             )
     except GraphQLError as exc:
-        return _log_and_return_error(ctx=ctx, error=exc, remediation="Check the provided filters or the kind name.")
+        return await _log_and_return_error(ctx=ctx, error=exc, remediation="Check the provided filters or the kind name.")
 
     # Format the response with serializable data
     # serialized_nodes = []
@@ -86,7 +87,7 @@ async def get_nodes(
     serialized_nodes = [obj.display_label for obj in nodes]
 
     # Return the serialized response
-    ctx.debug(f"Retrieved {len(serialized_nodes)} nodes of kind {kind}")
+    await ctx.debug(f"Retrieved {len(serialized_nodes)} nodes of kind {kind}")
 
     return MCPResponse(
         status=MCPToolStatus.SUCCESS,
@@ -94,7 +95,7 @@ async def get_nodes(
     )
 
 
-@mcp.tool(tags=["nodes", "filters", "retrieve"], annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"nodes", "filters", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
 async def get_node_filters(
     ctx: Context,
     kind: Annotated[str, Field(description="Kind of the objects to retrieve.")],
@@ -102,7 +103,7 @@ async def get_node_filters(
         str | None,
         Field(default=None, description="Branch to retrieve the objects from. Defaults to None (uses default branch)."),
     ],
-) -> MCPResponse[dict[str, str]]:
+) -> MCPResponse:
     """Retrieve all the available filters for a specific schema node kind.
 
     There's multiple types of filters
@@ -122,7 +123,7 @@ async def get_node_filters(
         MCPResponse with success status and filters.
     """
     client: InfrahubClient = ctx.request_context.lifespan_context.client
-    ctx.info(f"Fetching available filters for kind: {kind} from Infrahub...")
+    await ctx.info(f"Fetching available filters for kind: {kind} from Infrahub...")
 
     # Verify if the kind exists in the schema and guide Tool if not
     try:
@@ -130,7 +131,7 @@ async def get_node_filters(
     except SchemaNotFoundError:
         error_msg = f"Schema not found for kind: {kind}."
         remediation_msg = "Use the `get_schema_mapping` tool to list available kinds."
-        return _log_and_return_error(ctx=ctx, error=error_msg, remediation=remediation_msg)
+        return await _log_and_return_error(ctx=ctx, error=error_msg, remediation=remediation_msg)
 
     filters = {
         f"{attribute.name}__value": schema_attribute_type_mapping.get(attribute.kind, "String")
@@ -151,7 +152,7 @@ async def get_node_filters(
     )
 
 
-@mcp.tool(tags=["nodes", "retrieve"], annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"nodes", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
 async def get_related_nodes(
     ctx: Context,
     kind: Annotated[str, Field(description="Kind of the objects to retrieve.")],
@@ -161,7 +162,7 @@ async def get_related_nodes(
         str | None,
         Field(default=None, description="Branch to retrieve the objects from. Defaults to None (uses default branch)."),
     ],
-) -> MCPResponse[list[dict[str, Any]]]:
+) -> MCPResponse:
     """Retrieve related nodes by relation name and a kind.
 
     Args:
@@ -177,9 +178,9 @@ async def get_related_nodes(
     client: InfrahubClient = ctx.request_context.lifespan_context.client
     filters = filters or {}
     if branch:
-        ctx.info(f"Fetching nodes related to {kind} with filters {filters} in branch {branch} from Infrahub...")
+        await ctx.info(f"Fetching nodes related to {kind} with filters {filters} in branch {branch} from Infrahub...")
     else:
-        ctx.info(f"Fetching nodes related to {kind} with filters {filters} from Infrahub...")
+        await ctx.info(f"Fetching nodes related to {kind} with filters {filters} from Infrahub...")
 
     try:
         node_id = node_hfid = None
@@ -206,11 +207,11 @@ async def get_related_nodes(
                 populate_store=True,
             )
     except Exception as exc:  # noqa: BLE001
-        return _log_and_return_error(exc)
+        return await _log_and_return_error(ctx=ctx, error=exc)
 
     rel = getattr(node, relation, None)
     if not rel:
-        _log_and_return_error(
+        return await _log_and_return_error(
             ctx=ctx,
             error=f"Relation '{relation}' not found in kind '{kind}'.",
             remediation="Check the schema for the kind to confirm if the relation exists.",
