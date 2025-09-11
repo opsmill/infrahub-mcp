@@ -1,7 +1,8 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Annotated
 
 from fastmcp import Context, FastMCP
-from infrahub_sdk.branch import BranchData
 from infrahub_sdk.exceptions import GraphQLError
 from mcp.types import ToolAnnotations
 from pydantic import Field
@@ -10,6 +11,7 @@ from infrahub_mcp.utils import MCPResponse, MCPToolStatus, _log_and_return_error
 
 if TYPE_CHECKING:
     from infrahub_sdk import InfrahubClient
+    from infrahub_sdk.branch import BranchData
 
 mcp: FastMCP = FastMCP(name="Infrahub Branches")
 

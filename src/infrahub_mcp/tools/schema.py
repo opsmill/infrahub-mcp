@@ -1,4 +1,6 @@
-from typing import TYPE_CHECKING, Annotated, Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Annotated
 
 from fastmcp import Context, FastMCP
 from infrahub_sdk.exceptions import BranchNotFoundError, SchemaNotFoundError
@@ -14,7 +16,7 @@ if TYPE_CHECKING:
 mcp: FastMCP = FastMCP(name="Infrahub Schemas")
 
 
-@mcp.tool(tags={"schemas", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"schemas", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
 async def get_schema_mapping(
     ctx: Context,
     branch: Annotated[
@@ -52,7 +54,7 @@ async def get_schema_mapping(
     )
 
 
-@mcp.tool(tags={"schemas", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"schemas", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
 async def get_schema(
     ctx: Context,
     kind: Annotated[str, Field(description="Schema Kind to retrieve.")],
@@ -91,7 +93,7 @@ async def get_schema(
     )
 
 
-@mcp.tool(tags={"schemas", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"schemas", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
 async def get_schemas(
     ctx: Context,
     branch: Annotated[

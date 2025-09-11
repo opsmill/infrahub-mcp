@@ -1,10 +1,14 @@
+from __future__ import annotations
+
 from enum import Enum
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
-from fastmcp import Context
 from infrahub_sdk.node import Attribute, InfrahubNode, RelatedNode, RelationshipManager
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from fastmcp import Context
 
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 PROMPTS_DIRECTORY = CURRENT_DIRECTORY / "prompts"
@@ -23,13 +27,6 @@ class MCPResponse[T](BaseModel):
     data: T | None = None
     error: str | None = None
     remediation: str | None = None
-
-
-def get_prompt(name: str) -> str:
-    prompt_file = PROMPTS_DIRECTORY / f"{name}.md"
-    if not prompt_file.exists():
-        raise FileNotFoundError(f"Prompt file '{prompt_file}' does not exist.")
-    return (PROMPTS_DIRECTORY / f"{name}.md").read_text()
 
 
 async def _log_and_return_error(ctx: Context, error: str | Exception, remediation: str | None = None) -> MCPResponse:

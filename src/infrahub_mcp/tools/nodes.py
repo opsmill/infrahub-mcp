@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Annotated, Any
 
 from fastmcp import Context, FastMCP
@@ -15,8 +17,11 @@ if TYPE_CHECKING:
 mcp: FastMCP = FastMCP(name="Infrahub Nodes")
 
 
-@mcp.tool(tags={"nodes", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
-async def get_nodes(
+# FIXME: deactivate for now until we figure out what is the issue with the filters
+@mcp.tool(
+    tags={"nodes", "retrieve"}, enabled=False, annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True)
+)
+async def get_nodes(  # noqa: PLR0913, PLR0917
     ctx: Context,
     kind: Annotated[str, Field(description="Kind of the objects to retrieve.")],
     branch: Annotated[
@@ -25,6 +30,7 @@ async def get_nodes(
     ],
     filters: Annotated[dict[str, Any] | None, Field(default=None, description="Dictionary of filters to apply.")],
     partial_match: Annotated[bool, Field(default=False, description="Whether to use partial matching for filters.")],
+    limit: Annotated[int, Field(default=100, description="Maximum number of objects to retrieve. Defaults to 100.")],
 ) -> MCPResponse:
     """Get all objects of a specific kind from Infrahub.
 
@@ -36,6 +42,7 @@ async def get_nodes(
         branch: Branch to retrieve the objects from. Defaults to None (uses default branch).
         filters: Dictionary of filters to apply.
         partial_match: Whether to use partial matching for filters.
+        limit: Maximum number of objects to retrieve. Defaults to 100.
 
     Returns:
         MCPResponse with success status and objects.
@@ -65,6 +72,7 @@ async def get_nodes(
                 order=Order(disable=True),
                 populate_store=True,
                 prefetch_relationships=True,
+                limit=limit,
                 **filters,
             )
         else:
@@ -75,18 +83,16 @@ async def get_nodes(
                 order=Order(disable=True),
                 populate_store=True,
                 prefetch_relationships=True,
+                limit=limit,
             )
     except GraphQLError as exc:
-        return await _log_and_return_error(ctx=ctx, error=exc, remediation="Check the provided filters or the kind name.")
+        return await _log_and_return_error(
+            ctx=ctx, error=exc, remediation="Check the provided filters or the kind name."
+        )
 
-    # Format the response with serializable data
-    # serialized_nodes = []
-    # for node in nodes:
-    #     node_data = await convert_node_to_dict(obj=node, branch=branch)
-    #     serialized_nodes.append(node_data)
-    serialized_nodes = [obj.display_label for obj in nodes]
+    # Format the response with serializable data using convert_node_to_dict
+    serialized_nodes = [await convert_node_to_dict(obj=node, branch=branch) for node in nodes]
 
-    # Return the serialized response
     await ctx.debug(f"Retrieved {len(serialized_nodes)} nodes of kind {kind}")
 
     return MCPResponse(
@@ -95,7 +101,7 @@ async def get_nodes(
     )
 
 
-@mcp.tool(tags={"nodes", "filters", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"nodes", "filters", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
 async def get_node_filters(
     ctx: Context,
     kind: Annotated[str, Field(description="Kind of the objects to retrieve.")],
@@ -152,7 +158,7 @@ async def get_node_filters(
     )
 
 
-@mcp.tool(tags={"nodes", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"nodes", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
 async def get_related_nodes(
     ctx: Context,
     kind: Annotated[str, Field(description="Kind of the objects to retrieve.")],
@@ -184,6 +190,7 @@ async def get_related_nodes(
 
     try:
         node_id = node_hfid = None
+        node = None
         if filters.get("ids"):
             node_id = filters["ids"][0]
         elif filters.get("hfid"):
@@ -209,6 +216,12 @@ async def get_related_nodes(
     except Exception as exc:  # noqa: BLE001
         return await _log_and_return_error(ctx=ctx, error=exc)
 
+    if not node:
+        return await _log_and_return_error(
+            ctx=ctx,
+            error=f"No {kind} found with provided filters: {filters}",
+            remediation="Verify the kind and filters are correct. Use the `get_node_filters` tool to list available filters.",
+        )
     rel = getattr(node, relation, None)
     if not rel:
         return await _log_and_return_error(

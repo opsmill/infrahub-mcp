@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 NAMESPACES_INTERNAL = ["Internal", "Profile", "Template"]
 
 schema_attribute_type_mapping = {
