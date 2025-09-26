@@ -1,0 +1,73 @@
+---
+# yamllint disable rule:truthy
+name: Publish Infrahub Sync Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs-on:
+        description: "The OS to run the job on"
+        required: false
+        default: "ubuntu-22.04"
+        type: string
+      version:
+        type: string
+        required: false
+        description: The string to extract semver labels from.
+        default: ''
+      publish:
+        type: boolean
+        description: Whether to publish the package to Pypi
+        required: false
+        default: false
+  workflow_call:
+    inputs:
+      runs-on:
+        description: "The OS to run the job on"
+        required: false
+        default: "ubuntu-22.04"
+        type: string
+      version:
+        type: string
+        required: false
+        description: The string to extract semver labels from.
+        default: ''
+      publish:
+        type: boolean
+        description: Whether to publish the package to Pypi
+        required: false
+        default: false
+
+jobs:
+  publish_to_pypi:
+    name: "Publish Infrahub MCP to PyPI"
+    runs-on: "ubuntu-22.04"
+    strategy:
+      matrix:
+        python-version:
+          - "3.13"
+    steps:
+      - name: "Set up Python ${{ matrix.python-version }}"
+        uses: "actions/setup-python@v5"
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      # FIXME: Do we really need to sync it ? I don't think so. Temporary
+      - name: Install dependencies (locked)
+        run: uv sync --all-extras --frozen
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Show artifacts
+        run: ls -la dist/
+
+      - name: Publish to PyPI
+        if: ${{ inputs.publish == true }}
+        run: uv publish --token "${{ secrets.PYPI_TOKEN }}"
