@@ -2,6 +2,8 @@
 ![Infrahub Logo](https://assets-global.website-files.com/657aff4a26dd8afbab24944b/657b0e0678f7fd35ce130776_Logo%20INFRAHUB.svg)
 <!-- markdownlint-restore -->
 
+<!-- mcp-name: io.github.opsmill/infrahub-mcp -->
+
 # Infrahub MCP
 
 [Infrahub](https://github.com/opsmill/infrahub) by [OpsMill](https://opsmill.com) acts as a central hub to manage the data, templates and playbooks that powers your infrastructure. At its heart, Infrahub is built on 3 fundamental pillars:
