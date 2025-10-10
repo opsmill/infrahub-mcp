@@ -1,18 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
-  "name": "io.github.opsmill/infrahub-mcp",
+  "name": "com.opsmill/infrahub-mcp",
   "description": "An MCP server connects your AI assistants to Infrahub using the open MCP standard.",
   "repository": {
     "url": "https://github.com/opsmill/infrahub-mcp",
     "source": "github"
   },
-  "version": "0.1.1",
+  "version": "{{version}}",
   "packages": [
     {
       "registryType": "pypi",
-      "registryBaseUrl": "https://pypi.org",
       "identifier": "infrahub-mcp",
-      "version": "0.1.1",
+      "version": "{{version}}",
       "transport": {
         "type": "stdio"
       },
