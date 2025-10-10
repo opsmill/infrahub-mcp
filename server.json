@@ -6,12 +6,12 @@
     "url": "https://github.com/opsmill/infrahub-mcp",
     "source": "github"
   },
-  "version": "{{version}}",
+  "version": "0.1.1",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "infrahub-mcp",
-      "version": "{{version}}",
+      "version": "0.1.1",
       "transport": {
         "type": "stdio"
       },
