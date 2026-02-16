@@ -29,18 +29,24 @@ async def get_graphql_schema(ctx: Context) -> MCPResponse:
 
 @mcp.tool(tags={"schemas", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=False))
 async def query_graphql(
-    ctx: Context, query: Annotated[str, Field(description="GraphQL query to execute.")]
+    ctx: Context,
+    query: Annotated[str, Field(description="GraphQL query to execute.")],
+    branch: Annotated[
+        str | None,
+        Field(default=None, description="Branch to execute the query against. Defaults to None (uses default branch)."),
+    ],
 ) -> MCPResponse[dict[str, Any]]:
     """Execute a GraphQL query against Infrahub.
 
     Parameters:
         query: GraphQL query to execute.
+        branch: Branch to execute the query against. Defaults to None (uses default branch).
 
     Returns:
         MCPResponse with the result of the query.
 
     """
     client: InfrahubClient = ctx.request_context.lifespan_context.client
-    data = await client.execute_graphql(query=query)
+    data = await client.execute_graphql(query=query, branch_name=branch)
 
     return MCPResponse(status=MCPToolStatus.SUCCESS, data=data)
