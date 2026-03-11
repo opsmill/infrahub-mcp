@@ -159,6 +159,77 @@ Create a new branch in Infrahub.
 
 Retrieve all branches from Infrahub.
 
+<!-- vale off -->
+### branch_merge
+<!-- vale on -->
+
+### Capabilities
+
+- write
+- not idempotent
+- no destroy
+
+Merge a branch into the default branch in Infrahub.
+
+### Parameters
+
+- **name** (string, required): name of the branch to merge
+
+<!-- vale off -->
+### branch_delete
+<!-- vale on -->
+
+### Capabilities
+
+- write
+- not idempotent
+- destructive
+
+Delete a branch from Infrahub.
+
+### Parameters
+
+- **name** (string, required): name of the branch to delete
+
+## Artifacts
+
+<!-- vale off -->
+### generate_artifact
+<!-- vale on -->
+
+### Capabilities
+
+- write
+- idempotent
+- no destroy
+
+Generate artifacts from an artifact definition. Optionally scope generation to specific nodes.
+
+### Parameters
+
+<!-- vale off -->
+- **artifact_definition_id** (string, required): ID of the CoreArtifactDefinition
+- **nodes** (list of strings): optional list of node IDs to generate artifacts for
+<!-- vale on -->
+
+<!-- vale off -->
+### generate_artifact_for_node
+<!-- vale on -->
+
+### Capabilities
+
+- write
+- idempotent
+- no destroy
+
+Generate a specific artifact for a target node.
+
+### Parameters
+
+- **kind** (string, required): kind of the target node (e.g. "Device")
+- **node_id** (string, required): ID of the target node
+- **artifact_name** (string, required): name of the artifact to generate
+
 ## GraphQL
 
 <!-- vale off -->

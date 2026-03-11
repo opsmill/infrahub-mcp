@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from fastmcp import FastMCP
 from infrahub_sdk.client import InfrahubClient
 
+from infrahub_mcp.tools.artifact import mcp as artifact_mcp
 from infrahub_mcp.tools.branch import mcp as branch_mcp
 from infrahub_mcp.tools.gql import mcp as graphql_mcp
 from infrahub_mcp.tools.nodes import mcp as nodes_mcp
@@ -29,6 +30,7 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: A
 mcp: FastMCP = FastMCP(name="Infrahub MCP Server", version="0.1.0", lifespan=app_lifespan)
 
 # Mount the various MCPs to the main server
+mcp.mount(artifact_mcp)
 mcp.mount(branch_mcp)
 mcp.mount(graphql_mcp)
 mcp.mount(nodes_mcp)
