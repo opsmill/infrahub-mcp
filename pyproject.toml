@@ -25,6 +25,7 @@ dev = [
 asyncio_mode = "auto"
 testpaths = ["tests"]
 filterwarnings = []
+addopts = "-p no:pytest-infrahub"
 
 [tool.mypy]
 pretty = true

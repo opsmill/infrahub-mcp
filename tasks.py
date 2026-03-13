@@ -64,6 +64,14 @@ def lint_all(context: Context) -> None:
     lint_pylint(context)
 
 
+@task(name="ui")
+def ui_dev(context: Context) -> None:
+    """Launch the FastMCP inspector UI for interactive testing (HTTP transport on :6274)."""
+    exec_cmd = "uv run fastmcp dev src/infrahub_mcp/server.py:mcp"
+    with context.cd(MAIN_DIRECTORY_PATH):
+        context.run(exec_cmd)
+
+
 @task(name="docs")
 def docs_build(context: Context) -> None:
     """Build documentation website."""

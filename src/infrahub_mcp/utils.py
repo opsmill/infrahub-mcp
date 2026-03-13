@@ -1,14 +1,19 @@
+import secrets
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from fastmcp import Context
 from infrahub_sdk.node import Attribute, InfrahubNode, RelatedNode, RelationshipManager
 from pydantic import BaseModel
 
+if TYPE_CHECKING:
+    from infrahub_sdk.client import InfrahubClient
+
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 PROMPTS_DIRECTORY = CURRENT_DIRECTORY / "prompts"
-
 
 T = TypeVar("T")
 
@@ -23,6 +28,30 @@ class MCPResponse[T](BaseModel):
     data: T | None = None
     error: str | None = None
     remediation: str | None = None
+
+
+@dataclass
+class AppContext:
+    """Application context held for the lifetime of an MCP connection."""
+
+    client: "InfrahubClient"
+    session_branch: str | None = field(default=None)
+
+
+async def get_or_create_session_branch(ctx: Context) -> str:
+    """Return the session branch, auto-creating it on the first write of the session.
+
+    Branch name format: ``mcp/session-YYYYMMDD-<8 hex chars>``.
+    """
+    app_ctx: AppContext = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    if app_ctx.session_branch is None:
+        slug = secrets.token_hex(4)
+        date = datetime.now(UTC).strftime("%Y%m%d")
+        branch_name = f"mcp/session-{date}-{slug}"
+        await ctx.info(f"Auto-creating session branch: {branch_name}")
+        await app_ctx.client.branch.create(branch_name=branch_name, sync_with_git=False, background_execution=False)
+        app_ctx.session_branch = branch_name
+    return app_ctx.session_branch
 
 
 def get_prompt(name: str) -> str:

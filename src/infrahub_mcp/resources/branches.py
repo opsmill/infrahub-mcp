@@ -1,0 +1,37 @@
+import json
+from typing import TYPE_CHECKING, Any
+
+from fastmcp import Context, FastMCP
+
+if TYPE_CHECKING:
+    from infrahub_sdk.client import InfrahubClient
+
+mcp: FastMCP = FastMCP(name="Infrahub Branch Resources")
+
+
+@mcp.resource(
+    "infrahub://branches",
+    name="Branches",
+    description=(
+        "All branches currently present in this Infrahub instance, "
+        "including the active session branch when one has been created. "
+        "Read this to know which branches are available before querying or proposing changes."
+    ),
+    mime_type="application/json",
+)
+async def branches(ctx: Context) -> str:
+    """Return all branches as a JSON object keyed by branch name."""
+    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[assignment]
+
+    raw = await client.branch.all()
+
+    result: dict[str, Any] = {
+        name: {
+            "id": b.id,
+            "description": b.description,
+            "is_default": b.is_default,
+            "sync_with_git": b.sync_with_git,
+        }
+        for name, b in raw.items()
+    }
+    return json.dumps(result, indent=2)
