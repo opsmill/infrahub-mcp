@@ -1,6 +1,7 @@
 import json
 from typing import TYPE_CHECKING, Any
 
+import toon
 from fastmcp import Context, FastMCP
 from infrahub_sdk.exceptions import BranchNotFoundError, SchemaNotFoundError
 
@@ -45,12 +46,13 @@ async def schema_catalog(ctx: Context) -> str:
     description=(
         "Full schema definition for a specific node kind: attributes, relationships, "
         "and the complete set of filters accepted by get_nodes. "
-        "Fetch this before filtering nodes of an unfamiliar kind."
+        "Fetch this before filtering nodes of an unfamiliar kind. "
+        "Arrays are encoded in TOON tabular format: header declares fields once, each row is one entry."
     ),
-    mime_type="application/json",
+    mime_type="text/plain",
 )
 async def schema_kind_detail(kind: str, ctx: Context) -> str:
-    """Return full schema definition and available filters for *kind*."""
+    """Return full schema definition and available filters for *kind* encoded as TOON."""
     client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[assignment]
 
     try:
@@ -64,18 +66,23 @@ async def schema_kind_detail(kind: str, ctx: Context) -> str:
             separators=(",", ":"),
         )
 
-    # Build filters map
-    filters: dict[str, str] = {
-        f"{attr.name}__value": schema_attribute_type_mapping.get(attr.kind, "String")
+    # Build filters as list-of-dicts so TOON can tabularise them
+    filter_list: list[dict[str, str]] = [
+        {"filter": f"{attr.name}__value", "type": schema_attribute_type_mapping.get(attr.kind, "String")}
         for attr in schema.attributes
-    }
+    ]
     for rel in schema.relationships:
         try:
             rel_schema = await client.schema.get(kind=rel.peer)
         except SchemaNotFoundError:
             continue
-        for attr in rel_schema.attributes:
-            filters[f"{rel.name}__{attr.name}__value"] = schema_attribute_type_mapping.get(attr.kind, "String")
+        filter_list.extend(
+            {
+                "filter": f"{rel.name}__{attr.name}__value",
+                "type": schema_attribute_type_mapping.get(attr.kind, "String"),
+            }
+            for attr in rel_schema.attributes
+        )
 
     payload: dict[str, Any] = {
         "kind": schema.kind,
@@ -86,17 +93,12 @@ async def schema_kind_detail(kind: str, ctx: Context) -> str:
             for a in schema.attributes
         ],
         "relationships": [
-            {
-                "name": r.name,
-                "peer": r.peer,
-                "cardinality": r.cardinality,
-                "optional": r.optional,
-            }
+            {"name": r.name, "peer": r.peer, "cardinality": r.cardinality, "optional": r.optional}
             for r in schema.relationships
         ],
-        "filters": filters,
+        "filters": filter_list,
     }
-    return json.dumps(payload, separators=(",", ":"))
+    return toon.encode(payload)
 
 
 @mcp.resource(

@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Annotated, Any
 
+import toon
 from fastmcp import Context, FastMCP
 from infrahub_sdk.exceptions import GraphQLError, SchemaNotFoundError
 from infrahub_sdk.types import Order
@@ -36,7 +37,7 @@ async def get_nodes(  # noqa: PLR0913, PLR0917
         bool,
         Field(
             default=False,
-            description="When True, return full attribute values instead of just display labels. "
+            description="When True, return full attribute values in TOON tabular format instead of just display labels. "
             "More expensive — omit when you only need names/counts.",
         ),
     ],
@@ -97,10 +98,11 @@ async def get_nodes(  # noqa: PLR0913, PLR0917
 
     capped = nodes if limit == -1 else nodes[:limit]
     if include_attributes:
-        serialized = [await convert_node_to_dict(obj=node, branch=branch) for node in capped]
-    else:
-        serialized = [obj.display_label for obj in capped]
+        dicts = [await convert_node_to_dict(obj=node, branch=branch) for node in capped]
+        await ctx.debug(f"Retrieved {len(dicts)} nodes of kind {kind} with attributes")
+        return MCPResponse(status=MCPToolStatus.SUCCESS, data=toon.encode(dicts))
 
+    serialized = [obj.display_label for obj in capped]
     await ctx.debug(f"Retrieved {len(serialized)} nodes of kind {kind}")
     return MCPResponse(status=MCPToolStatus.SUCCESS, data=serialized)
 

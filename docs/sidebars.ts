@@ -8,6 +8,7 @@ const sidebars: SidebarsConfig = {
       label: 'Guides',
       items: [
         'guides/installation',
+        'guides/docker',
       ],
     },
     {
