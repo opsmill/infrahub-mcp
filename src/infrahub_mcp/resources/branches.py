@@ -26,12 +26,7 @@ async def branches(ctx: Context) -> str:
     raw = await client.branch.all()
 
     result: dict[str, Any] = {
-        name: {
-            "id": b.id,
-            "description": b.description,
-            "is_default": b.is_default,
-            "sync_with_git": b.sync_with_git,
-        }
+        name: {"is_default": b.is_default, "description": b.description or ""}
         for name, b in raw.items()
     }
-    return json.dumps(result, indent=2)
+    return json.dumps(result, separators=(",", ":"))

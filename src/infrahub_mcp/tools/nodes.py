@@ -40,6 +40,14 @@ async def get_nodes(  # noqa: PLR0913, PLR0917
             "More expensive — omit when you only need names/counts.",
         ),
     ],
+    limit: Annotated[
+        int,
+        Field(
+            default=50,
+            ge=-1,
+            description="Maximum nodes to return. Default 50. Pass -1 for all results (caution: may be expensive).",
+        ),
+    ] = 50,
 ) -> MCPResponse:
     """Retrieve objects of a specific kind from Infrahub.
 
@@ -52,6 +60,7 @@ async def get_nodes(  # noqa: PLR0913, PLR0917
         filters: Dictionary of filters to apply.
         partial_match: Whether to use partial matching for string filters.
         include_attributes: Return full attribute dict instead of display labels only.
+        limit: Cap on results returned (default 50). Pass -1 for all.
 
     Returns:
         MCPResponse with a list of display labels (default) or full attribute dicts.
@@ -86,10 +95,11 @@ async def get_nodes(  # noqa: PLR0913, PLR0917
             ctx=ctx, error=exc, remediation=f"Check the provided filters against infrahub://schema/{kind}."
         )
 
+    capped = nodes if limit == -1 else nodes[:limit]
     if include_attributes:
-        serialized = [await convert_node_to_dict(obj=node, branch=branch) for node in nodes]
+        serialized = [await convert_node_to_dict(obj=node, branch=branch) for node in capped]
     else:
-        serialized = [obj.display_label for obj in nodes]
+        serialized = [obj.display_label for obj in capped]
 
     await ctx.debug(f"Retrieved {len(serialized)} nodes of kind {kind}")
     return MCPResponse(status=MCPToolStatus.SUCCESS, data=serialized)

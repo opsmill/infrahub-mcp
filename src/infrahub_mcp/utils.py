@@ -73,7 +73,7 @@ async def _log_and_return_error(ctx: Context, error: str | Exception, remediatio
     )
 
 
-async def convert_node_to_dict(*, obj: InfrahubNode, branch: str | None, include_id: bool = True) -> dict[str, Any]:  # noqa: C901
+async def convert_node_to_dict(*, obj: InfrahubNode, branch: str | None, include_id: bool = False) -> dict[str, Any]:  # noqa: C901
     data = {}
 
     if include_id:

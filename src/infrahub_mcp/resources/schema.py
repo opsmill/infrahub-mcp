@@ -29,14 +29,14 @@ async def schema_catalog(ctx: Context) -> str:
     try:
         all_schemas = await client.schema.all()
     except BranchNotFoundError as exc:
-        return json.dumps({"error": str(exc)})
+        return json.dumps({"error": str(exc)}, separators=(",", ":"))
 
     result = {
         kind: node.label or kind
         for kind, node in all_schemas.items()
         if node.namespace not in NAMESPACES_INTERNAL
     }
-    return json.dumps(result, indent=2)
+    return json.dumps(result, separators=(",", ":"))
 
 
 @mcp.resource(
@@ -60,7 +60,8 @@ async def schema_kind_detail(kind: str, ctx: Context) -> str:
             {
                 "error": f"Schema not found for kind '{kind}'.",
                 "remediation": "Read infrahub://schema to list valid kind names.",
-            }
+            },
+            separators=(",", ":"),
         )
 
     # Build filters map
@@ -95,7 +96,7 @@ async def schema_kind_detail(kind: str, ctx: Context) -> str:
         ],
         "filters": filters,
     }
-    return json.dumps(payload, indent=2)
+    return json.dumps(payload, separators=(",", ":"))
 
 
 @mcp.resource(

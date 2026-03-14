@@ -27,10 +27,8 @@ async def node_upsert(
         dict[str, Any],
         Field(
             description=(
-                "Flat dict of attribute name → value pairs to set. "
-                'Example: {"name": "router-1", "status": "active"}. '
-                "Attribute names and valid values are listed under infrahub://schema/{kind}. "
-                "Relationship fields are not supported here — use query_graphql for those."
+                "Flat {attribute: value} map. See infrahub://schema/{kind} for valid names. "
+                "Scalar attributes only; use query_graphql for relationships."
             )
         ),
     ],
