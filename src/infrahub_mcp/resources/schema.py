@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import TYPE_CHECKING, Any
 
@@ -71,10 +72,22 @@ async def schema_kind_detail(kind: str, ctx: Context) -> str:
         {"filter": f"{attr.name}__value", "type": schema_attribute_type_mapping.get(attr.kind, "String")}
         for attr in schema.attributes
     ]
-    for rel in schema.relationships:
+
+    # Fetch peer schemas in parallel, deduplicating repeated peer kinds
+    unique_peer_kinds: list[str] = list(dict.fromkeys(rel.peer for rel in schema.relationships))
+
+    async def _fetch_peer(peer_kind: str) -> tuple[str, Any]:
         try:
-            rel_schema = await client.schema.get(kind=rel.peer)
+            return peer_kind, await client.schema.get(kind=peer_kind)
         except SchemaNotFoundError:
+            return peer_kind, None
+
+    peer_results = await asyncio.gather(*[_fetch_peer(pk) for pk in unique_peer_kinds])
+    peer_schemas: dict[str, Any] = {pk: s for pk, s in peer_results if s is not None}
+
+    for rel in schema.relationships:
+        rel_schema = peer_schemas.get(rel.peer)
+        if rel_schema is None:
             continue
         filter_list.extend(
             {

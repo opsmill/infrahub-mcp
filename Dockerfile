@@ -17,7 +17,7 @@ EXPOSE 8001
 ENV MCP_HOST=0.0.0.0
 ENV MCP_PORT=8001
 
-CMD ["uv", "run", "fastmcp", "run", "src/infrahub_mcp/server.py:mcp", \
-     "--transport", "streamable-http", \
-     "--host", "0.0.0.0", \
-     "--port", "8001"]
+CMD uv run fastmcp run src/infrahub_mcp/server.py:mcp \
+    --transport streamable-http \
+    --host "$MCP_HOST" \
+    --port "$MCP_PORT"

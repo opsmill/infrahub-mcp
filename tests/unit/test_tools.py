@@ -1,3 +1,6 @@
+import json
+
+import toon
 from fastmcp import Client
 
 from infrahub_mcp.server import mcp
@@ -7,8 +10,6 @@ async def test_schema_catalog_resource() -> None:
     async with Client(mcp) as client:
         resources = await client.read_resource("infrahub://schema")
         assert len(resources) > 0
-        import json
-
         data = json.loads(resources[0].text)  # type: ignore[attr-defined]
         assert isinstance(data, dict)
         assert "LocationSite" in data
@@ -18,22 +19,18 @@ async def test_schema_kind_resource() -> None:
     async with Client(mcp) as client:
         resources = await client.read_resource("infrahub://schema/LocationSite")
         assert len(resources) > 0
-        import json
-
-        data = json.loads(resources[0].text)  # type: ignore[attr-defined]
+        data = toon.decode(resources[0].text)  # type: ignore[attr-defined]
         assert data["kind"] == "LocationSite"
         assert "attributes" in data
         assert "filters" in data
         # Filters for known attributes should be present
-        assert "name__value" in data["filters"]
+        assert any(d.get("filter") == "name__value" for d in data["filters"])
 
 
 async def test_branches_resource() -> None:
     async with Client(mcp) as client:
         resources = await client.read_resource("infrahub://branches")
         assert len(resources) > 0
-        import json
-
         data = json.loads(resources[0].text)  # type: ignore[attr-defined]
         assert isinstance(data, dict)
         # Default Infrahub instances always have a main branch

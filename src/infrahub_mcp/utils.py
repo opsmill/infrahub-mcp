@@ -1,3 +1,4 @@
+import asyncio
 import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -36,6 +37,7 @@ class AppContext:
 
     client: "InfrahubClient"
     session_branch: str | None = field(default=None)
+    _session_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 async def get_or_create_session_branch(ctx: Context) -> str:
@@ -44,13 +46,16 @@ async def get_or_create_session_branch(ctx: Context) -> str:
     Branch name format: ``mcp/session-YYYYMMDD-<8 hex chars>``.
     """
     app_ctx: AppContext = ctx.request_context.lifespan_context  # type: ignore[assignment]
-    if app_ctx.session_branch is None:
-        slug = secrets.token_hex(4)
-        date = datetime.now(UTC).strftime("%Y%m%d")
-        branch_name = f"mcp/session-{date}-{slug}"
-        await ctx.info(f"Auto-creating session branch: {branch_name}")
-        await app_ctx.client.branch.create(branch_name=branch_name, sync_with_git=False, background_execution=False)
-        app_ctx.session_branch = branch_name
+    async with app_ctx._session_branch_lock:  # noqa: SLF001
+        if app_ctx.session_branch is None:
+            slug = secrets.token_hex(4)
+            date = datetime.now(UTC).strftime("%Y%m%d")
+            branch_name = f"mcp/session-{date}-{slug}"
+            await ctx.info(f"Auto-creating session branch: {branch_name}")
+            await app_ctx.client.branch.create(
+                branch_name=branch_name, sync_with_git=False, background_execution=False
+            )
+            app_ctx.session_branch = branch_name
     return app_ctx.session_branch
 
 

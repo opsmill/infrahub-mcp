@@ -14,6 +14,10 @@ if TYPE_CHECKING:
 
 mcp: FastMCP = FastMCP(name="Infrahub Nodes")
 
+_RESERVED_FILTER_KEYS: frozenset[str] = frozenset(
+    {"kind", "branch", "partial_match", "parallel", "order", "populate_store", "prefetch_relationships"}
+)
+
 
 @mcp.tool(tags={"nodes", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
 async def get_nodes(  # noqa: PLR0913, PLR0917
@@ -22,17 +26,17 @@ async def get_nodes(  # noqa: PLR0913, PLR0917
     branch: Annotated[
         str | None,
         Field(default=None, description="Branch to query. Defaults to the default branch."),
-    ],
+    ] = None,
     filters: Annotated[
         dict[str, Any] | None,
         Field(
             default=None,
             description="Attribute/relationship filters. See infrahub://schema/{kind} for the full filter map.",
         ),
-    ],
+    ] = None,
     partial_match: Annotated[
         bool, Field(default=False, description="Use partial (substring) matching for string filters.")
-    ],
+    ] = False,
     include_attributes: Annotated[
         bool,
         Field(
@@ -40,7 +44,7 @@ async def get_nodes(  # noqa: PLR0913, PLR0917
             description="When True, return full attribute values in TOON tabular format instead of just display labels. "
             "More expensive — omit when you only need names/counts.",
         ),
-    ],
+    ] = False,
     limit: Annotated[
         int,
         Field(
@@ -67,7 +71,10 @@ async def get_nodes(  # noqa: PLR0913, PLR0917
         MCPResponse with a list of display labels (default) or full attribute dicts.
     """
     client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[assignment]
-    await ctx.info(f"Fetching nodes of kind: {kind} with filters: {filters}")
+    await ctx.info(
+        f"Fetching {kind} nodes: branch={branch!r}, "
+        f"filter_keys={sorted(filters) if filters else []}, limit={limit}"
+    )
 
     try:
         schema = await client.schema.get(kind=kind, branch=branch)
@@ -77,6 +84,15 @@ async def get_nodes(  # noqa: PLR0913, PLR0917
             error=f"Schema not found for kind: {kind}.",
             remediation="Read infrahub://schema to list available kinds.",
         )
+
+    if filters:
+        reserved = set(filters) & _RESERVED_FILTER_KEYS
+        if reserved:
+            return await _log_and_return_error(
+                ctx=ctx,
+                error=f"Filters contain reserved key(s): {sorted(reserved)}.",
+                remediation=f"Remove reserved key(s) and check infrahub://schema/{kind} for valid filter names.",
+            )
 
     try:
         kwargs: dict[str, Any] = {
@@ -98,7 +114,7 @@ async def get_nodes(  # noqa: PLR0913, PLR0917
 
     capped = nodes if limit == -1 else nodes[:limit]
     if include_attributes:
-        dicts = [await convert_node_to_dict(obj=node, branch=branch) for node in capped]
+        dicts = [await convert_node_to_dict(obj=node, branch=branch, include_id=True) for node in capped]
         await ctx.debug(f"Retrieved {len(dicts)} nodes of kind {kind} with attributes")
         return MCPResponse(status=MCPToolStatus.SUCCESS, data=toon.encode(dicts))
 
@@ -118,7 +134,7 @@ async def search_nodes(
     branch: Annotated[
         str | None,
         Field(default=None, description="Branch to query. Defaults to the default branch."),
-    ],
+    ] = None,
     limit: Annotated[int, Field(default=10, ge=1, le=100, description="Maximum number of results to return.")] = 10,
 ) -> MCPResponse:
     """Search nodes of a specific kind by partial name match.
@@ -136,7 +152,7 @@ async def search_nodes(
         MCPResponse with a list of matching node display labels.
     """
     client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[assignment]
-    await ctx.info(f"Searching nodes of kind {kind} matching '{query}'")
+    await ctx.info(f"Searching {kind} nodes: branch={branch!r}, query_len={len(query)}")
 
     try:
         schema = await client.schema.get(kind=kind, branch=branch)
@@ -160,5 +176,5 @@ async def search_nodes(
         return await _log_and_return_error(ctx=ctx, error=exc)
 
     results = [obj.display_label for obj in nodes[:limit]]
-    await ctx.debug(f"Found {len(results)} matches for '{query}' in {kind}")
+    await ctx.debug(f"Found {len(results)} matches in {kind}: query_len={len(query)}")
     return MCPResponse(status=MCPToolStatus.SUCCESS, data=results)

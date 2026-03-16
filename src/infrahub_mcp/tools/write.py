@@ -1,3 +1,4 @@
+import logging
 from typing import TYPE_CHECKING, Annotated, Any
 
 from fastmcp import Context, FastMCP
@@ -11,6 +12,7 @@ if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
 
 mcp: FastMCP = FastMCP(name="Infrahub Write")
+logger = logging.getLogger(__name__)
 
 _NO_IDENTIFIER_MSG = "Provide either 'id' (UUID) or 'hfid' (human-friendly ID list) to identify the node."
 _BRANCH_NOTE = "All writes target the active session branch, auto-created on the first write of a session."
@@ -94,10 +96,18 @@ async def node_upsert(
 
             await ctx.info(f"Updating {kind} node on branch {session_branch}")
             node = await client.get(**get_kwargs)
+            unknown_attrs: list[str] = []
             for attr_name, attr_payload in sdk_data.items():
                 attr = getattr(node, attr_name, None)
                 if attr is not None and hasattr(attr, "value"):
                     attr.value = attr_payload["value"]
+                else:
+                    unknown_attrs.append(attr_name)
+            if unknown_attrs:
+                identifier = id or hfid
+                logger.warning(
+                    "Unknown attribute(s) %s on %s node %s; skipping", unknown_attrs, kind, identifier
+                )
             await node.save()
         else:
             # Create path
@@ -199,8 +209,18 @@ async def propose_changes(
         str | None,
         Field(default=None, description="Optional description explaining the motivation for the changes."),
     ] = None,
+    destination_branch: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "Branch to merge into. Defaults to the instance's default branch (resolved automatically). "
+                "Override only when merging into a non-default branch."
+            ),
+        ),
+    ] = None,
 ) -> MCPResponse:
-    """Open a proposed change (pull request) from the active session branch to main.
+    """Open a proposed change (pull request) from the active session branch to the default branch.
 
     Creates a ``CoreProposedChange`` in Infrahub so a human can review, approve,
     and merge the changes made during this session. The session branch remains
@@ -209,6 +229,7 @@ async def propose_changes(
     Parameters:
         title: Title of the proposed change.
         description: Optional description of the changes.
+        destination_branch: Target branch (default: resolved from Infrahub's default branch).
 
     Returns:
         MCPResponse with proposed change id and URL on success.
@@ -224,14 +245,20 @@ async def propose_changes(
         )
 
     session_branch: str = app_ctx.session_branch  # type: ignore[union-attr]
-    await ctx.info(f"Creating proposed change from branch {session_branch}")
+
+    if destination_branch is None:
+        branches = await client.branch.all()
+        resolved = next((name for name, b in branches.items() if b.is_default), "main")
+        destination_branch = resolved
+
+    await ctx.info(f"Creating proposed change from branch {session_branch} to {destination_branch}")
 
     try:
         node = await client.create(
             kind="CoreProposedChange",
             name={"value": title},
             source_branch={"value": session_branch},
-            destination_branch={"value": "main"},
+            destination_branch={"value": destination_branch},
             description={"value": description or ""},
         )
         await node.save()
@@ -244,6 +271,6 @@ async def propose_changes(
             "id": node.id,
             "title": title,
             "source_branch": session_branch,
-            "destination_branch": "main",
+            "destination_branch": destination_branch,
         },
     )
