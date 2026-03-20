@@ -40,8 +40,9 @@ async def test_branches_resource() -> None:
 async def test_get_nodes() -> None:
     async with Client(mcp) as client:
         result = await client.call_tool("get_nodes", {"kind": "LocationSite"})
-        assert isinstance(result.data, list)  # type: ignore[attr-defined]
-        assert result.data == [  # type: ignore[attr-defined]
+        assert result.is_error is False
+        assert isinstance(result.data, list)
+        assert sorted(result.data) == [
             "atl1",
             "den1",
             "dfw1",
@@ -53,10 +54,13 @@ async def test_get_nodes() -> None:
 async def test_get_nodes_with_attributes() -> None:
     async with Client(mcp) as client:
         result = await client.call_tool("get_nodes", {"kind": "LocationSite", "include_attributes": True})
-        assert isinstance(result.data, list)  # type: ignore[attr-defined]
-        assert len(result.data) > 0  # type: ignore[attr-defined]
-        # Each item should be a dict with attribute data
-        first = result.data[0]  # type: ignore[attr-defined]
+        assert result.is_error is False
+        # Data is TOON-encoded when include_attributes is True
+        assert isinstance(result.data, str)
+        decoded = toon.decode(result.data)
+        assert isinstance(decoded, list)
+        assert len(decoded) > 0
+        first = decoded[0]
         assert isinstance(first, dict)
         assert "name" in first
 
@@ -64,12 +68,14 @@ async def test_get_nodes_with_attributes() -> None:
 async def test_search_nodes() -> None:
     async with Client(mcp) as client:
         result = await client.call_tool("search_nodes", {"query": "atl", "kind": "LocationSite"})
-        assert isinstance(result.data, list)  # type: ignore[attr-defined]
-        assert "atl1" in result.data  # type: ignore[attr-defined]
+        assert result.is_error is False
+        assert isinstance(result.data, list)
+        assert "atl1" in result.data
 
 
 async def test_get_nodes_unknown_kind() -> None:
     async with Client(mcp) as client:
-        result = await client.call_tool("get_nodes", {"kind": "DoesNotExist"})
-        assert result.data["status"] == "error"  # type: ignore[attr-defined,index]
-        assert result.data["remediation"] is not None  # type: ignore[attr-defined,index]
+        result = await client.call_tool("get_nodes", {"kind": "DoesNotExist"}, raise_on_error=False)
+        assert result.is_error is True
+        text = result.content[0].text  # type: ignore[union-attr]
+        assert "Remediation:" in text

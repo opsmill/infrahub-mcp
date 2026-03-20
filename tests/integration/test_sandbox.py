@@ -1,5 +1,5 @@
 import pytest
-from agents import Runner
+from agents import RunConfig, Runner
 from agents.mcp import MCPServerStdio
 from deepeval import assert_test
 from deepeval.dataset.golden import Golden
@@ -39,14 +39,16 @@ goldens = [
 
 
 @pytest.mark.parametrize("golden", goldens)
-async def test_llm_app(local_mcp_server: MCPServerStdio, main_prompt: str, golden: Golden) -> None:
+async def test_llm_app(
+    local_mcp_server: MCPServerStdio, main_prompt: str, run_config: RunConfig, golden: Golden
+) -> None:
     # NOTE: it should be possible to mode agent_context to a fixture, need to investigate
     async with agent_context(
         name="Assistant",
         instructions=main_prompt,
         mcp_servers=[local_mcp_server],
     ) as agent:
-        result = await Runner.run(agent, input=golden.input)
+        result = await Runner.run(agent, input=golden.input, run_config=run_config)
 
         # Extract the `tools` called during the run
         # This is useful to check if the agent called the expected tools

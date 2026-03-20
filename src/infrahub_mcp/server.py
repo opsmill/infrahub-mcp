@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastmcp import FastMCP
 from infrahub_sdk.client import InfrahubClient
 
+from infrahub_mcp.prompts.prompts import mcp as prompts_mcp
 from infrahub_mcp.resources.branches import mcp as branches_resources_mcp
 from infrahub_mcp.resources.schema import mcp as schema_resources_mcp
 from infrahub_mcp.tools.gql import mcp as graphql_mcp
@@ -55,6 +56,9 @@ def infrahub_agent() -> str:
 # Resources — consumed as context, not as tool calls
 mcp.mount(schema_resources_mcp)
 mcp.mount(branches_resources_mcp)
+
+# Prompts — parameterized workflow guides
+mcp.mount(prompts_mcp)
 
 # Tools
 mcp.mount(graphql_mcp)

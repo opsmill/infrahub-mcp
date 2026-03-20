@@ -7,7 +7,7 @@ from infrahub_sdk.types import Order
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from infrahub_mcp.utils import MCPResponse, MCPToolStatus, _log_and_return_error, convert_node_to_dict
+from infrahub_mcp.utils import _log_and_raise_error, convert_node_to_dict
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
@@ -22,7 +22,9 @@ _RESERVED_FILTER_KEYS: frozenset[str] = frozenset(
 @mcp.tool(tags={"nodes", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
 async def get_nodes(  # noqa: PLR0913, PLR0917
     ctx: Context,
-    kind: Annotated[str, Field(description="Kind of the objects to retrieve. Check infrahub://schema for valid kinds.")],
+    kind: Annotated[
+        str, Field(description="Kind of the objects to retrieve. Check infrahub://schema for valid kinds.")
+    ],
     branch: Annotated[
         str | None,
         Field(default=None, description="Branch to query. Defaults to the default branch."),
@@ -53,7 +55,7 @@ async def get_nodes(  # noqa: PLR0913, PLR0917
             description="Maximum nodes to return. Default 50. Pass -1 for all results (caution: may be expensive).",
         ),
     ] = 50,
-) -> MCPResponse:
+) -> list[str] | str:
     """Retrieve objects of a specific kind from Infrahub.
 
     To discover available kinds read the resource ``infrahub://schema``.
@@ -68,18 +70,17 @@ async def get_nodes(  # noqa: PLR0913, PLR0917
         limit: Cap on results returned (default 50). Pass -1 for all.
 
     Returns:
-        MCPResponse with a list of display labels (default) or full attribute dicts.
+        A list of display labels (default) or a TOON-encoded string of full attribute dicts.
     """
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[assignment]
+    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
     await ctx.info(
-        f"Fetching {kind} nodes: branch={branch!r}, "
-        f"filter_keys={sorted(filters) if filters else []}, limit={limit}"
+        f"Fetching {kind} nodes: branch={branch!r}, filter_keys={sorted(filters) if filters else []}, limit={limit}"
     )
 
     try:
         schema = await client.schema.get(kind=kind, branch=branch)
     except SchemaNotFoundError:
-        return await _log_and_return_error(
+        await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",
             remediation="Read infrahub://schema to list available kinds.",
@@ -88,7 +89,7 @@ async def get_nodes(  # noqa: PLR0913, PLR0917
     if filters:
         reserved = set(filters) & _RESERVED_FILTER_KEYS
         if reserved:
-            return await _log_and_return_error(
+            await _log_and_raise_error(
                 ctx=ctx,
                 error=f"Filters contain reserved key(s): {sorted(reserved)}.",
                 remediation=f"Remove reserved key(s) and check infrahub://schema/{kind} for valid filter names.",
@@ -108,7 +109,7 @@ async def get_nodes(  # noqa: PLR0913, PLR0917
         else:
             nodes = await client.all(**kwargs)
     except GraphQLError as exc:
-        return await _log_and_return_error(
+        await _log_and_raise_error(
             ctx=ctx, error=exc, remediation=f"Check the provided filters against infrahub://schema/{kind}."
         )
 
@@ -116,11 +117,11 @@ async def get_nodes(  # noqa: PLR0913, PLR0917
     if include_attributes:
         dicts = [await convert_node_to_dict(obj=node, branch=branch, include_id=True) for node in capped]
         await ctx.debug(f"Retrieved {len(dicts)} nodes of kind {kind} with attributes")
-        return MCPResponse(status=MCPToolStatus.SUCCESS, data=toon.encode(dicts))
+        return toon.encode(dicts)
 
     serialized = [obj.display_label for obj in capped]
     await ctx.debug(f"Retrieved {len(serialized)} nodes of kind {kind}")
-    return MCPResponse(status=MCPToolStatus.SUCCESS, data=serialized)
+    return serialized
 
 
 @mcp.tool(tags={"nodes", "search"}, annotations=ToolAnnotations(readOnlyHint=True))
@@ -136,7 +137,7 @@ async def search_nodes(
         Field(default=None, description="Branch to query. Defaults to the default branch."),
     ] = None,
     limit: Annotated[int, Field(default=10, ge=1, le=100, description="Maximum number of results to return.")] = 10,
-) -> MCPResponse:
+) -> list[str]:
     """Search nodes of a specific kind by partial name match.
 
     A convenience wrapper around get_nodes with ``partial_match=True`` and a ``name__value``
@@ -149,15 +150,15 @@ async def search_nodes(
         limit: Maximum results (1-100, default 10).
 
     Returns:
-        MCPResponse with a list of matching node display labels.
+        A list of matching node display labels.
     """
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[assignment]
+    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
     await ctx.info(f"Searching {kind} nodes: branch={branch!r}, query_len={len(query)}")
 
     try:
         schema = await client.schema.get(kind=kind, branch=branch)
     except SchemaNotFoundError:
-        return await _log_and_return_error(
+        await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",
             remediation="Read infrahub://schema to list available kinds.",
@@ -173,8 +174,8 @@ async def search_nodes(
             order=Order(disable=True),
         )
     except GraphQLError as exc:
-        return await _log_and_return_error(ctx=ctx, error=exc)
+        await _log_and_raise_error(ctx=ctx, error=exc)
 
     results = [obj.display_label for obj in nodes[:limit]]
     await ctx.debug(f"Found {len(results)} matches in {kind}: query_len={len(query)}")
-    return MCPResponse(status=MCPToolStatus.SUCCESS, data=results)
+    return results

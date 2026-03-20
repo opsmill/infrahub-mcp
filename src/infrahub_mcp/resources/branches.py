@@ -20,13 +20,20 @@ mcp: FastMCP = FastMCP(name="Infrahub Branch Resources")
     mime_type="application/json",
 )
 async def branches(ctx: Context) -> str:
-    """Return all branches as a JSON object keyed by branch name."""
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[assignment]
+    """Return all branches as a JSON object keyed by branch name.
+
+    Parameters:
+        ctx: MCP request context providing access to the Infrahub client.
+
+    Returns:
+        Compact JSON object keyed by branch name, where each value contains
+        ``is_default`` (bool) and ``description`` (str) fields.
+    """
+    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
 
     raw = await client.branch.all()
 
     result: dict[str, Any] = {
-        name: {"is_default": b.is_default, "description": b.description or ""}
-        for name, b in raw.items()
+        name: {"is_default": b.is_default, "description": b.description or ""} for name, b in raw.items()
     }
     return json.dumps(result, separators=(",", ":"))

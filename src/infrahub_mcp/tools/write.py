@@ -6,7 +6,7 @@ from infrahub_sdk.exceptions import GraphQLError, NodeNotFoundError, SchemaNotFo
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from infrahub_mcp.utils import MCPResponse, MCPToolStatus, _log_and_return_error, get_or_create_session_branch
+from infrahub_mcp.utils import _log_and_raise_error, get_or_create_session_branch
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
@@ -48,7 +48,7 @@ async def node_upsert(
             ),
         ),
     ] = None,
-) -> MCPResponse:
+) -> dict[str, Any]:
     """Create or update a node in Infrahub on the active session branch.
 
     The session branch is auto-created on the first write of the session
@@ -68,16 +68,16 @@ async def node_upsert(
         hfid: Human-friendly ID segments of the node to update (update mode).
 
     Returns:
-        MCPResponse with node id and display_label on success.
+        Dict with node id, display_label, and branch on success.
     """
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[assignment]
+    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
     session_branch = await get_or_create_session_branch(ctx)
 
     # Validate kind exists
     try:
         schema = await client.schema.get(kind=kind, branch=session_branch)
     except SchemaNotFoundError:
-        return await _log_and_return_error(
+        await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",
             remediation="Read infrahub://schema to list available kinds.",
@@ -105,9 +105,7 @@ async def node_upsert(
                     unknown_attrs.append(attr_name)
             if unknown_attrs:
                 identifier = id or hfid
-                logger.warning(
-                    "Unknown attribute(s) %s on %s node %s; skipping", unknown_attrs, kind, identifier
-                )
+                logger.warning("Unknown attribute(s) %s on %s node %s; skipping", unknown_attrs, kind, identifier)
             await node.save()
         else:
             # Create path
@@ -116,16 +114,13 @@ async def node_upsert(
             await node.save()
 
     except NodeNotFoundError as exc:
-        return await _log_and_return_error(ctx=ctx, error=exc, remediation=_NO_IDENTIFIER_MSG)
+        await _log_and_raise_error(ctx=ctx, error=exc, remediation=_NO_IDENTIFIER_MSG)
     except GraphQLError as exc:
-        return await _log_and_return_error(
+        await _log_and_raise_error(
             ctx=ctx, error=exc, remediation=f"Check attribute names against infrahub://schema/{kind}."
         )
 
-    return MCPResponse(
-        status=MCPToolStatus.SUCCESS,
-        data={"id": node.id, "display_label": node.display_label, "branch": session_branch},
-    )
+    return {"id": node.id, "display_label": node.display_label, "branch": session_branch}
 
 
 @mcp.tool(
@@ -143,7 +138,7 @@ async def node_delete(
         list[str] | None,
         Field(default=None, description="Human-friendly ID of the node to delete, as a list of string segments."),
     ] = None,
-) -> MCPResponse:
+) -> dict[str, Any]:
     """Delete a node in Infrahub on the active session branch.
 
     The deletion is applied to the session branch only and is not visible on the
@@ -155,22 +150,22 @@ async def node_delete(
         hfid: Human-friendly ID segments of the node to delete.
 
     Returns:
-        MCPResponse confirming deletion on success.
+        Dict confirming deletion on success.
     """
     if id is None and hfid is None:
-        return MCPResponse(
-            status=MCPToolStatus.ERROR,
+        await _log_and_raise_error(
+            ctx=ctx,
             error="No node identifier provided.",
             remediation=_NO_IDENTIFIER_MSG,
         )
 
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[assignment]
+    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
     session_branch = await get_or_create_session_branch(ctx)
 
     try:
         schema = await client.schema.get(kind=kind, branch=session_branch)
     except SchemaNotFoundError:
-        return await _log_and_return_error(
+        await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",
             remediation="Read infrahub://schema to list available kinds.",
@@ -188,14 +183,11 @@ async def node_delete(
         await node.delete()
 
     except NodeNotFoundError as exc:
-        return await _log_and_return_error(ctx=ctx, error=exc, remediation="Verify the id/hfid is correct.")
+        await _log_and_raise_error(ctx=ctx, error=exc, remediation="Verify the id/hfid is correct.")
     except GraphQLError as exc:
-        return await _log_and_return_error(ctx=ctx, error=exc)
+        await _log_and_raise_error(ctx=ctx, error=exc)
 
-    return MCPResponse(
-        status=MCPToolStatus.SUCCESS,
-        data={"deleted_id": id or hfid, "branch": session_branch},
-    )
+    return {"deleted_id": id or hfid, "branch": session_branch}
 
 
 @mcp.tool(
@@ -219,7 +211,7 @@ async def propose_changes(
             ),
         ),
     ] = None,
-) -> MCPResponse:
+) -> dict[str, Any]:
     """Open a proposed change (pull request) from the active session branch to the default branch.
 
     Creates a ``CoreProposedChange`` in Infrahub so a human can review, approve,
@@ -232,14 +224,14 @@ async def propose_changes(
         destination_branch: Target branch (default: resolved from Infrahub's default branch).
 
     Returns:
-        MCPResponse with proposed change id and URL on success.
+        Dict with proposed change id and branch details on success.
     """
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[assignment]
-    app_ctx = ctx.request_context.lifespan_context
+    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    app_ctx = ctx.request_context.lifespan_context  # type: ignore[union-attr]
 
     if app_ctx.session_branch is None:  # type: ignore[union-attr]
-        return MCPResponse(
-            status=MCPToolStatus.ERROR,
+        await _log_and_raise_error(
+            ctx=ctx,
             error="No session branch exists yet.",
             remediation="Make at least one write (node_upsert / node_delete) before proposing changes.",
         )
@@ -263,14 +255,11 @@ async def propose_changes(
         )
         await node.save()
     except GraphQLError as exc:
-        return await _log_and_return_error(ctx=ctx, error=exc)
+        await _log_and_raise_error(ctx=ctx, error=exc)
 
-    return MCPResponse(
-        status=MCPToolStatus.SUCCESS,
-        data={
-            "id": node.id,
-            "title": title,
-            "source_branch": session_branch,
-            "destination_branch": destination_branch,
-        },
-    )
+    return {
+        "id": node.id,
+        "title": title,
+        "source_branch": session_branch,
+        "destination_branch": destination_branch,
+    }

@@ -1,6 +1,8 @@
 from pathlib import Path
 
 import pytest
+from agents import RunConfig
+from agents.extensions.models.litellm_model import LitellmModel
 from agents.mcp import MCPServerStdio, MCPServerStdioParams
 
 from infrahub_mcp.utils import get_prompt
@@ -12,6 +14,12 @@ ROOT_DIRECTORY = CURRENT_DIRECTORY.parent.parent.resolve()
 @pytest.fixture(scope="session")
 def main_prompt() -> str:
     return get_prompt("main")
+
+
+@pytest.fixture(scope="session")
+def run_config() -> RunConfig:
+    """RunConfig that routes inference to Claude via litellm."""
+    return RunConfig(model=LitellmModel(model="anthropic/claude-sonnet-4-20250514"))
 
 
 @pytest.fixture(scope="session")

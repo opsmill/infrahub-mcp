@@ -26,7 +26,7 @@ mcp: FastMCP = FastMCP(name="Infrahub Schema Resources")
 )
 async def schema_catalog(ctx: Context) -> str:
     """Return the complete non-internal schema kind catalog."""
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[assignment]
+    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
 
     try:
         all_schemas = await client.schema.all()
@@ -34,9 +34,7 @@ async def schema_catalog(ctx: Context) -> str:
         return json.dumps({"error": str(exc)}, separators=(",", ":"))
 
     result = {
-        kind: node.label or kind
-        for kind, node in all_schemas.items()
-        if node.namespace not in NAMESPACES_INTERNAL
+        kind: node.label or kind for kind, node in all_schemas.items() if node.namespace not in NAMESPACES_INTERNAL
     }
     return json.dumps(result, separators=(",", ":"))
 
@@ -54,7 +52,7 @@ async def schema_catalog(ctx: Context) -> str:
 )
 async def schema_kind_detail(kind: str, ctx: Context) -> str:
     """Return full schema definition and available filters for *kind* encoded as TOON."""
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[assignment]
+    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
 
     try:
         schema = await client.schema.get(kind=kind)
@@ -101,10 +99,7 @@ async def schema_kind_detail(kind: str, ctx: Context) -> str:
         "kind": schema.kind,
         "label": schema.label,
         "namespace": schema.namespace,
-        "attributes": [
-            {"name": a.name, "kind": a.kind, "optional": a.optional}
-            for a in schema.attributes
-        ],
+        "attributes": [{"name": a.name, "kind": a.kind, "optional": a.optional} for a in schema.attributes],
         "relationships": [
             {"name": r.name, "peer": r.peer, "cardinality": r.cardinality, "optional": r.optional}
             for r in schema.relationships
@@ -125,6 +120,6 @@ async def schema_kind_detail(kind: str, ctx: Context) -> str:
 )
 async def graphql_schema(ctx: Context) -> str:
     """Return the raw GraphQL SDL from Infrahub."""
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[assignment]
+    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
     resp = await client._get(url=f"{client.address}/schema.graphql")  # noqa: SLF001
     return resp.text

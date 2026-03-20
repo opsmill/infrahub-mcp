@@ -2,33 +2,18 @@ import asyncio
 import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from fastmcp import Context
+from fastmcp.exceptions import ToolError
 from infrahub_sdk.node import Attribute, InfrahubNode, RelatedNode, RelationshipManager
-from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
 
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 PROMPTS_DIRECTORY = CURRENT_DIRECTORY / "prompts"
-
-T = TypeVar("T")
-
-
-class MCPToolStatus(Enum):
-    SUCCESS = "success"
-    ERROR = "error"
-
-
-class MCPResponse[T](BaseModel):
-    status: MCPToolStatus
-    data: T | None = None
-    error: str | None = None
-    remediation: str | None = None
 
 
 @dataclass
@@ -45,16 +30,14 @@ async def get_or_create_session_branch(ctx: Context) -> str:
 
     Branch name format: ``mcp/session-YYYYMMDD-<8 hex chars>``.
     """
-    app_ctx: AppContext = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    app_ctx: AppContext = ctx.request_context.lifespan_context  # type: ignore[union-attr]
     async with app_ctx._session_branch_lock:  # noqa: SLF001
         if app_ctx.session_branch is None:
             slug = secrets.token_hex(4)
             date = datetime.now(UTC).strftime("%Y%m%d")
             branch_name = f"mcp/session-{date}-{slug}"
             await ctx.info(f"Auto-creating session branch: {branch_name}")
-            await app_ctx.client.branch.create(
-                branch_name=branch_name, sync_with_git=False, background_execution=False
-            )
+            await app_ctx.client.branch.create(branch_name=branch_name, sync_with_git=False, background_execution=False)
             app_ctx.session_branch = branch_name
     return app_ctx.session_branch
 
@@ -66,16 +49,13 @@ def get_prompt(name: str) -> str:
     return (PROMPTS_DIRECTORY / f"{name}.md").read_text()
 
 
-async def _log_and_return_error(ctx: Context, error: str | Exception, remediation: str | None = None) -> MCPResponse:
-    """Log an error and return a standardized error response."""
-    if isinstance(error, Exception):
-        error = str(error)
-    await ctx.error(message=error)
-    return MCPResponse(
-        status=MCPToolStatus.ERROR,
-        error=error,
-        remediation=remediation,
-    )
+async def _log_and_raise_error(ctx: Context, error: str | Exception, remediation: str | None = None) -> NoReturn:
+    """Log an error and raise ToolError with remediation hint."""
+    msg = str(error) if isinstance(error, Exception) else error
+    await ctx.error(message=msg)
+    if remediation:
+        msg = f"{msg}\n\nRemediation: {remediation}"
+    raise ToolError(msg)
 
 
 async def convert_node_to_dict(*, obj: InfrahubNode, branch: str | None, include_id: bool = False) -> dict[str, Any]:  # noqa: C901
