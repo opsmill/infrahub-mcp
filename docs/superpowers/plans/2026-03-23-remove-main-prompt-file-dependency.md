@@ -1,6 +1,6 @@
-# Remove main.md File Dependency Implementation Plan
+# Remove main.md file dependency implementation plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For AI agent workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Eliminate the deleted `main.md` file dependency by making `infrahub_agent()` generate its prompt dynamically, then clean up dead code.
 
@@ -10,7 +10,7 @@
 
 ---
 
-## File Map
+## File map
 
 | Action | File | Responsibility |
 |--------|------|----------------|
@@ -245,7 +245,7 @@ git commit -m "fix: update integration test fixture to use infrahub_agent direct
 
 ---
 
-### Task 5: Final verification
+### Task 5: final verification
 
 - [ ] **Step 1: Run full pre-commit suite**
 
