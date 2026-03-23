@@ -5,7 +5,7 @@ from agents import RunConfig
 from agents.extensions.models.litellm_model import LitellmModel
 from agents.mcp import MCPServerStdio, MCPServerStdioParams
 
-from infrahub_mcp.utils import get_prompt
+from infrahub_mcp.server import infrahub_agent
 
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 ROOT_DIRECTORY = CURRENT_DIRECTORY.parent.parent.resolve()
@@ -13,7 +13,7 @@ ROOT_DIRECTORY = CURRENT_DIRECTORY.parent.parent.resolve()
 
 @pytest.fixture(scope="session")
 def main_prompt() -> str:
-    return get_prompt("main")
+    return infrahub_agent()
 
 
 @pytest.fixture(scope="session")
