@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
 
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
-PROMPTS_DIRECTORY = CURRENT_DIRECTORY / "prompts"
 
 
 @dataclass
@@ -40,13 +39,6 @@ async def get_or_create_session_branch(ctx: Context) -> str:
             await app_ctx.client.branch.create(branch_name=branch_name, sync_with_git=False, background_execution=False)
             app_ctx.session_branch = branch_name
     return app_ctx.session_branch
-
-
-def get_prompt(name: str) -> str:
-    prompt_file = PROMPTS_DIRECTORY / f"{name}.md"
-    if not prompt_file.exists():
-        raise FileNotFoundError(f"Prompt file '{prompt_file}' does not exist.")
-    return (PROMPTS_DIRECTORY / f"{name}.md").read_text()
 
 
 async def _log_and_raise_error(ctx: Context, error: str | Exception, remediation: str | None = None) -> NoReturn:
