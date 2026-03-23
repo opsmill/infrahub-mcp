@@ -12,6 +12,11 @@ RUN uv sync --no-dev --frozen
 # Copy source
 COPY src/ ./src/
 
+# Run as non-root user
+RUN groupadd --system app && useradd --system --gid app app \
+    && chown -R app:app /app
+USER app
+
 EXPOSE 8001
 
 ENV MCP_HOST=0.0.0.0
