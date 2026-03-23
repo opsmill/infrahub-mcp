@@ -1,3 +1,5 @@
+"""Write tools for the Infrahub MCP server."""
+
 import logging
 from typing import TYPE_CHECKING, Annotated, Any
 
@@ -11,6 +13,7 @@ from infrahub_mcp.utils import _log_and_raise_error, get_or_create_session_branc
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
 
+# pylint: disable=duplicate-code
 mcp: FastMCP = FastMCP(name="Infrahub Write")
 logger = logging.getLogger(__name__)
 
@@ -22,9 +25,12 @@ _BRANCH_NOTE = "All writes target the active session branch, auto-created on the
     tags={"nodes", "write"},
     annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False, destructiveHint=False),
 )
-async def node_upsert(
+async def node_upsert(  # pylint: disable=too-many-locals
     ctx: Context,
-    kind: Annotated[str, Field(description="Kind of the node to create or update. Check infrahub://schema.")],
+    kind: Annotated[
+        str,
+        Field(description="Kind of the node to create or update. Check infrahub://schema."),
+    ],
     data: Annotated[
         dict[str, Any],
         Field(
@@ -34,7 +40,7 @@ async def node_upsert(
             )
         ),
     ],
-    id: Annotated[  # noqa: A002
+    id: Annotated[  # noqa: A002  # pylint: disable=redefined-builtin
         str | None,
         Field(default=None, description="UUID of an existing node to update. Omit to create a new node."),
     ] = None,
@@ -105,7 +111,12 @@ async def node_upsert(
                     unknown_attrs.append(attr_name)
             if unknown_attrs:
                 identifier = id or hfid
-                logger.warning("Unknown attribute(s) %s on %s node %s; skipping", unknown_attrs, kind, identifier)
+                logger.warning(
+                    "Unknown attribute(s) %s on %s node %s; skipping",
+                    unknown_attrs,
+                    kind,
+                    identifier,
+                )
             await node.save()
         else:
             # Create path
@@ -117,7 +128,9 @@ async def node_upsert(
         await _log_and_raise_error(ctx=ctx, error=exc, remediation=_NO_IDENTIFIER_MSG)
     except GraphQLError as exc:
         await _log_and_raise_error(
-            ctx=ctx, error=exc, remediation=f"Check attribute names against infrahub://schema/{kind}."
+            ctx=ctx,
+            error=exc,
+            remediation=f"Check attribute names against infrahub://schema/{kind}.",
         )
 
     return {"id": node.id, "display_label": node.display_label, "branch": session_branch}
@@ -130,7 +143,7 @@ async def node_upsert(
 async def node_delete(
     ctx: Context,
     kind: Annotated[str, Field(description="Kind of the node to delete. Check infrahub://schema.")],
-    id: Annotated[  # noqa: A002
+    id: Annotated[  # noqa: A002  # pylint: disable=redefined-builtin
         str | None,
         Field(default=None, description="UUID of the node to delete."),
     ] = None,
@@ -196,7 +209,10 @@ async def node_delete(
 )
 async def propose_changes(
     ctx: Context,
-    title: Annotated[str, Field(description="Title for the proposed change (equivalent to a PR title).")],
+    title: Annotated[
+        str,
+        Field(description="Title for the proposed change (equivalent to a PR title)."),
+    ],
     description: Annotated[
         str | None,
         Field(default=None, description="Optional description explaining the motivation for the changes."),
@@ -206,7 +222,8 @@ async def propose_changes(
         Field(
             default=None,
             description=(
-                "Branch to merge into. Defaults to the instance's default branch (resolved automatically). "
+                "Branch to merge into. Defaults to the instance's "
+                "default branch (resolved automatically). "
                 "Override only when merging into a non-default branch."
             ),
         ),

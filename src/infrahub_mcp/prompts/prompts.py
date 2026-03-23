@@ -61,8 +61,10 @@ Read the resource `infrahub://schema/{kind_ref}` to understand:
 - The complete **filter map** (all valid filter keys for `get_nodes`)
 
 ### Step 3 — Retrieve the data
-Call `get_nodes(kind="{kind_ref}"{branch_arg}{include_attrs})` with appropriate filters derived from the schema.
-If you need a fuzzy lookup instead, use `search_nodes(query=..., kind="{kind_ref}"{branch_arg})`.
+Call `get_nodes(kind="{kind_ref}"{branch_arg}{include_attrs})` \
+with appropriate filters derived from the schema.
+If you need a fuzzy lookup instead, \
+use `search_nodes(query=..., kind="{kind_ref}"{branch_arg})`.
 
 ### Step 4 — Traverse relationships if needed
 If the answer requires data from related nodes, use `query_graphql` with a targeted GraphQL query.
@@ -97,6 +99,9 @@ def make_infra_change(
     branch_note = f" on branch `{branch}`" if branch else ""
     placeholder = "{kind}"  # noqa: RUF027
     kind_ref = kind or placeholder
+    catalog_hint = (
+        "" if kind else "If you are unsure which kind to target, read `infrahub://schema` first to browse the catalog."
+    )
 
     body = f"""Make the following infrastructure change{kind_note}{branch_note}:
 
@@ -110,7 +115,7 @@ Read `infrahub://schema/{kind_ref}` to confirm:
 - Valid attribute names and types
 - Relationship structure
 
-{"" if kind else "If you are unsure which kind to target, read `infrahub://schema` first to browse the catalog."}
+{catalog_hint}
 
 ### Step 2 — Apply the change
 - To **create or update** a node: call `node_upsert(kind="{kind_ref}", data={{...}})`.
@@ -119,7 +124,8 @@ Read `infrahub://schema/{kind_ref}` to confirm:
   - **Always confirm with the user before deleting.**
 
 ### Step 3 — Verify the change
-Read back the affected nodes using `get_nodes` on the session branch to confirm the change was applied correctly.
+Read back the affected nodes using `get_nodes` on the session branch \
+to confirm the change was applied correctly.
 
 ### Step 4 — Propose for review
 Call `propose_changes(title=..., description=...)` to open a proposed change for human review.
@@ -128,7 +134,8 @@ Call `propose_changes(title=..., description=...)` to open a proposed change for
 - All writes target a **session branch** (auto-created on first write as `mcp/session-YYYYMMDD-<hex>`).
 - The default branch is **never modified directly**.
 - You can continue making changes after calling `propose_changes`.
-- Only scalar attributes are supported in `node_upsert` data — use `query_graphql` for relationship mutations."""
+- Only scalar attributes are supported in `node_upsert` data — \
+use `query_graphql` for relationship mutations."""
 
     return [Message(body)]
 

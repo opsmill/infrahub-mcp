@@ -1,3 +1,5 @@
+"""Branch resources for the Infrahub MCP server."""
+
 import json
 from typing import TYPE_CHECKING, Any
 

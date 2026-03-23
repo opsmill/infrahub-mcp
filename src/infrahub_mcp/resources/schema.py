@@ -1,3 +1,5 @@
+"""Schema resources for the Infrahub MCP server."""
+
 import asyncio
 import json
 from typing import TYPE_CHECKING, Any
@@ -46,7 +48,8 @@ async def schema_catalog(ctx: Context) -> str:
         "Full schema definition for a specific node kind: attributes, relationships, "
         "and the complete set of filters accepted by get_nodes. "
         "Fetch this before filtering nodes of an unfamiliar kind. "
-        "Arrays are encoded in TOON tabular format: header declares fields once, each row is one entry."
+        "Arrays are encoded in TOON tabular format: "
+        "header declares fields once, each row is one entry."
     ),
     mime_type="text/plain",
 )
@@ -67,7 +70,10 @@ async def schema_kind_detail(kind: str, ctx: Context) -> str:
 
     # Build filters as list-of-dicts so TOON can tabularise them
     filter_list: list[dict[str, str]] = [
-        {"filter": f"{attr.name}__value", "type": schema_attribute_type_mapping.get(attr.kind, "String")}
+        {
+            "filter": f"{attr.name}__value",
+            "type": schema_attribute_type_mapping.get(attr.kind, "String"),
+        }
         for attr in schema.attributes
     ]
 
@@ -121,5 +127,8 @@ async def schema_kind_detail(kind: str, ctx: Context) -> str:
 async def graphql_schema(ctx: Context) -> str:
     """Return the raw GraphQL SDL from Infrahub."""
     client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    # infrahub_sdk has no public API to fetch the raw GraphQL SDL;
+    # using private _get() as a workaround.
+    # TODO: open an issue with infrahub_sdk maintainers requesting a public schema-retrieval method.
     resp = await client._get(url=f"{client.address}/schema.graphql")  # noqa: SLF001
     return resp.text

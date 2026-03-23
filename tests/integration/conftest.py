@@ -38,8 +38,8 @@ def mcp_server_params() -> dict[str, str]:
             "src/infrahub_mcp/server.py:mcp",
         ],
         "env": {
-            "INFRAHUB_ADDRESS": "https://sandbox.infrahub.app",
-            "INFRAHUB_USERNAME": "otto",
-            "INFRAHUB_PASSWORD": "infrahub",
+            "INFRAHUB_ADDRESS": os.environ.get("INFRAHUB_ADDRESS", "https://sandbox.infrahub.app"),
+            "INFRAHUB_USERNAME": os.environ.get("INFRAHUB_USERNAME", "<redacted>"),
+            "INFRAHUB_PASSWORD": os.environ.get("INFRAHUB_PASSWORD", "<redacted>"),
         },
     }

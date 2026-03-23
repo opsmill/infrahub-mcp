@@ -15,7 +15,7 @@ goldens = [
         name="find_kind",
         input="what is the proper kind for a device",
         expected_output="The proper kind for a device is InfraDevice.",
-        expected_tools=[ToolCall(name="get_schema_mapping", input_parameters=None)],
+        expected_tools=[ToolCall(name="search_nodes", input_parameters=None)],
     ),
 ]
 
@@ -82,12 +82,14 @@ async def _run_agent_loop(
             if block.type == "tool_use":
                 mcp_result = await session.call_tool(block.name, arguments=block.input)  # type: ignore[attr-defined]
                 result_text = "\n".join(c.text for c in mcp_result.content if hasattr(c, "text"))
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": result_text,
-                    "is_error": mcp_result.isError or False,
-                })
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": result_text,
+                        "is_error": mcp_result.isError or False,
+                    }
+                )
 
         messages.append({"role": "user", "content": tool_results})
 

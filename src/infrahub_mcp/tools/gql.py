@@ -1,3 +1,5 @@
+"""GraphQL query tool for the Infrahub MCP server."""
+
 from typing import TYPE_CHECKING, Annotated, Any
 
 from fastmcp import Context, FastMCP
@@ -19,7 +21,10 @@ async def query_graphql(
     query: Annotated[str, Field(description="GraphQL query to execute.")],
     branch: Annotated[
         str | None,
-        Field(default=None, description="Branch to execute the query against. Defaults to None (uses default branch)."),
+        Field(
+            default=None,
+            description="Branch to execute the query against. Defaults to None (uses default branch).",
+        ),
     ] = None,
 ) -> dict[str, Any]:
     """Execute a GraphQL query against Infrahub.
