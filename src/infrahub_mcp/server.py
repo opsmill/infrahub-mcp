@@ -54,7 +54,10 @@ def infrahub_agent() -> str:
 
 ## Data formats
 
-Structured arrays (schema details, node attribute results) are encoded in **TOON** (Token-Oriented Object Notation) to reduce token usage. TOON declares field names once in a header, then lists rows of values. Treat TOON exactly like a table: the header is the column spec, each indented row is one record.
+Structured arrays (schema details, node attribute results) are encoded in
+**TOON** (Token-Oriented Object Notation) to reduce token usage.
+TOON declares field names once in a header, then lists rows of values.
+Treat TOON exactly like a table: the header is the column spec, each indented row is one record.
 
 ## Available context (resources — read before tool calls)
 
@@ -81,7 +84,9 @@ Read these resources first to avoid guessing kind names or filter keys.
 
 ## Branch-per-session workflow
 
-All writes are branch-isolated. On your first write, a session branch is automatically created (`mcp/session-YYYYMMDD-<hex>`). The default branch is never modified directly.
+All writes are branch-isolated. On your first write, a session branch is
+automatically created (`mcp/session-YYYYMMDD-<hex>`).
+The default branch is never modified directly.
 
 When changes are ready: call `propose_changes(title, description)` to open a proposed change for human review.
 
