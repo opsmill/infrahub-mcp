@@ -19,8 +19,8 @@ For container-based deployments (Docker Compose, sidecar alongside Infrahub), se
 1. **Clone the repository**
 
 ```bash
-git clone https://github.com/opsmill/infrahub-mcp-server.git
-cd infrahub-mcp-server
+git clone https://github.com/opsmill/infrahub-mcp.git
+cd infrahub-mcp
 ```
 
 2. **Install dependencies**
@@ -143,6 +143,41 @@ Then go to **Extensions**, find the **Infrahub MCP** server in the list, open th
   }
 }
 ```
+
+</TabItem>
+<TabItem value="claude-code" label="Claude Code">
+
+### Manual steps
+
+Add the MCP server configuration to your project-level or user-level `settings.json` file. For project-level, create or edit `.claude/settings.json` in your repository root. For user-level, edit `~/.claude/settings.json`.
+
+Alternatively, add an `.mcp.json` file at the root of your project.
+
+### Configuration (`.mcp.json`)
+
+```json
+{
+  "mcpServers": {
+    "infrahub": {
+      "command": "uv",
+      "args": [
+        "run",
+        "fastmcp",
+        "run",
+        "src/infrahub_mcp/server.py:mcp",
+        "--transport",
+        "stdio"
+      ],
+      "env": {
+        "INFRAHUB_ADDRESS": "http://localhost:8000",
+        "INFRAHUB_API_TOKEN": "your-api-token"
+      }
+    }
+  }
+}
+```
+
+Claude Code automatically detects `.mcp.json` in the project root and loads MCP servers on startup.
 
 </TabItem>
 </Tabs>
