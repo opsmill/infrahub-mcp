@@ -2,14 +2,39 @@
 title: Infrahub MCP Server
 ---
 
-Infrahub MCP Server lets AI assistants and IDE agents talk to your Infrahub “source-of-truth” safely and in a standardized way.
-It implements the Model Context Protocol (MCP) so any MCP-compatible client (agent mode in IDEs, chat assistants, automation runners, etc.) can discover tools, request context, and perform actions against your Infrahub instance—without custom glue code.
+Infrahub MCP Server connects AI assistants and IDE agents to [Infrahub](https://github.com/opsmill/infrahub) using the open [Model Context Protocol](https://modelcontextprotocol.io) standard — so agents can query, create, update, and propose changes to your infrastructure data through a consistent, audited interface. It works with any MCP-compatible client (Claude Desktop, VS Code, Cursor, CLI agents, and more) with no custom glue code required.
+
+All writes are branch-isolated and require human approval before merging — agents never modify your default branch directly.
+
+## What You Can Do With It
+
+- **Query your infrastructure data from natural language** — ask an AI assistant to find devices, interfaces, IP addresses, or any node kind defined in your Infrahub schema, with attribute filtering and partial-match search
+- **Explore your schema without leaving the conversation** — the server exposes your full schema catalog, per-kind attribute and filter maps, and the GraphQL SDL as MCP resources that agents read automatically
+- **Make changes on isolated branches** — all writes happen on an auto-created session branch (`mcp/session-YYYYMMDD-<hex>`), so the default branch is never modified directly
+- **Submit changes for human review** — when edits are ready, call `propose_changes` to open a Proposed Change (the Infrahub equivalent of a pull request) for approval before merging
+- **Run arbitrary GraphQL queries** — for advanced use cases, execute any GraphQL query or mutation directly against the Infrahub API
+
+## Who This Is For
+
+**An infrastructure or network team already using Infrahub** that wants their AI coding assistants to understand and interact with their source of truth. You get schema-aware querying, safe branch-isolated writes, and a human-in-the-loop review path — all from your IDE or chat assistant.
+
+**A developer building AI-powered infrastructure automation** who needs a standardized interface between agents and Infrahub. The MCP server handles authentication, schema discovery, and branch management so you can focus on the agent logic.
+
+## What's Included
+
+- **Tools (read)** — `get_nodes` retrieves objects by kind with filters, `search_nodes` finds nodes by partial name match, `query_graphql` executes arbitrary GraphQL queries
+- **Tools (write)** — `node_upsert` creates or updates nodes, `node_delete` removes nodes, `propose_changes` opens a Proposed Change for human review — all on an auto-created session branch
+- **Resources** — `infrahub://schema` lists all available kinds, `infrahub://schema/{kind}` returns full attribute/filter details, `infrahub://graphql-schema` exposes the GraphQL SDL, `infrahub://branches` lists all branches
+- **Prompts** — a built-in `infrahub_agent` system prompt that teaches agents the branch-per-session workflow and available tools
+- **Infrastructure** — Dockerfile for container deployment, Docker Compose sidecar configuration, streamable HTTP transport support
+
+See the [Methods reference](./references/methods.mdx) for full details on every tool, resource, and prompt.
 
 ## Guides
 
-- [Install and run Infrahub MCP](./guides/installation.mdx)
-- [Run with Docker / deploy alongside Infrahub](./guides/docker.mdx)
+- [Install and run Infrahub MCP](./guides/installation.mdx) — prerequisites, setup, and client configuration for Cursor, VS Code, Claude Desktop, and Claude Code
+- [Run with Docker / deploy alongside Infrahub](./guides/docker.mdx) — standalone container or sidecar deployment
 
-## Reference
+## About Infrahub
 
-- [Available methods](./references/methods.mdx)
+[Infrahub](https://github.com/opsmill/infrahub) is an open source infrastructure data management and automation platform (AGPLv3), developed by [OpsMill](https://opsmill.com). It gives infrastructure and network teams a unified, schema-driven source of truth for all infrastructure data — devices, topology, IP space, configuration — with built-in version control, a generator framework for automation, and native integrations with Git, Ansible, Terraform, and CI/CD pipelines.
