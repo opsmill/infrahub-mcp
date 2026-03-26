@@ -53,6 +53,7 @@ exceptions:
   - Jinja
   - Jinja2
   - JWT
+  - MCP
   - Namespace
   - NATS
   - Neo4j

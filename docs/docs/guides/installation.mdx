@@ -7,6 +7,8 @@ import TabItem from '@theme/TabItem';
 
 This guide provides step-by-step instructions for installing and configuring different MCP clients to connect to the Infrahub MCP server.
 
+For container-based deployments (Docker Compose, sidecar alongside Infrahub), see the [Docker deployment guide](./docker.mdx).
+
 ## Prerequisites
 
 - Ensure you have access to an Infrahub MCP server endpoint
@@ -27,6 +29,7 @@ cd infrahub-mcp-server
 - Python 3.13+
 - fastmcp
 - infrahub_sdk
+- toonify
 <!-- vale on -->
 
 ```bash
@@ -45,8 +48,8 @@ Set the following environment variables as needed:
 
 | Variable            | Description                         | Default                  |
 |---------------------|-------------------------------------|--------------------------|
-| `INFRAHUB_ADDRESS`  | URL of your Infrahub instance       | `http://localhost:8000`  |
-| `INFRAHUB_API_TOKEN`| API token for Infrahub              | `placeholder UUID`       |
+| `INFRAHUB_ADDRESS`  | URL of your Infrahub instance       | **required**             |
+| `INFRAHUB_API_TOKEN`| API token for Infrahub *(or use username + password)* | —           |
 | `MCP_HOST`          | Host for the web server             | `0.0.0.0`                |
 | `MCP_PORT`          | Port for the web server             | `8001`                   |
 
@@ -80,7 +83,7 @@ Set the following environment variables as needed:
       "env": {
         "PYENV_VERSION": "3.13.3",
         "INFRAHUB_ADDRESS": "http://localhost:8000",
-        "INFRAHUB_API_TOKEN": "06438eb2-8019-4776-878c-0941b1f1d1ec",
+        "INFRAHUB_API_TOKEN": "06438eb2-8019-4776-878c-0941b1f1d1ec"
       }
     }
   }
@@ -134,7 +137,7 @@ Then go to **Extensions**, find the **Infrahub MCP** server in the list, open th
       "env": {
         "PYENV_VERSION": "3.13.3",
         "INFRAHUB_ADDRESS": "http://localhost:8000",
-        "INFRAHUB_API_TOKEN": "06438eb2-8019-4776-878c-0941b1f1d1ec",
+        "INFRAHUB_API_TOKEN": "06438eb2-8019-4776-878c-0941b1f1d1ec"
       }
     }
   }

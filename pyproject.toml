@@ -5,8 +5,9 @@ description = "MCP server to interact with Infrahub"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "fastmcp>=2.10.5",
+    "fastmcp>=3.1.1",
     "infrahub-sdk>=1.13.5",
+    "toonify>=0.1.2",
 ]
 
 [dependency-groups]
@@ -14,10 +15,11 @@ dev = [
     "deepeval>=3.3.2",
     "invoke>=2.2.0",
     "mypy>=1.17.0",
-    "openai-agents>=0.2.3",
+    "anthropic[mcp]>=0.52.0",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
-    "ruff>=0.12.4",
+    "ruff>=0.15.5",
+    "pylint>=4.0.5",
     "yamllint>=1.37.1",
 ]
 
@@ -25,6 +27,7 @@ dev = [
 asyncio_mode = "auto"
 testpaths = ["tests"]
 filterwarnings = []
+addopts = "-p no:pytest-infrahub"
 
 [tool.mypy]
 pretty = true
@@ -63,7 +66,6 @@ ignore = [
     "ISC",    # flake8-implicit-str-concat
     "COM812", # missing-trailing-comma
     "N999",   # Invalid module name
-    "PD901",  # Avoid using the generic variable name `df` for DataFrames
     "TD",
     "FIX",    # TODO
     "TRY",

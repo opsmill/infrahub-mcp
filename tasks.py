@@ -32,7 +32,7 @@ def lint_yaml(context: Context) -> None:
 def lint_mypy(context: Context) -> None:
     """Run Linter to check all Python files."""
     print(" - Check code with mypy")
-    exec_cmd = "uv run mypy --show-error-codes src/{PYTHON_MODULE}"
+    exec_cmd = "uv run mypy --show-error-codes src/infrahub_mcp"
     with context.cd(MAIN_DIRECTORY_PATH):
         context.run(exec_cmd)
 
@@ -41,7 +41,7 @@ def lint_mypy(context: Context) -> None:
 def lint_pylint(context: Context) -> None:
     """Run pylint against Emma pages."""
     print(" - Check code with pylint")
-    exec_cmd = "uv run pylint src/*.py"
+    exec_cmd = "uv run pylint src/infrahub_mcp/**/*.py"
     with context.cd(MAIN_DIRECTORY_PATH):
         context.run(exec_cmd)
 
@@ -62,6 +62,14 @@ def lint_all(context: Context) -> None:
     lint_ruff(context)
     lint_mypy(context)
     lint_pylint(context)
+
+
+@task(name="ui")
+def ui_dev(context: Context) -> None:
+    """Launch the FastMCP inspector UI for interactive testing (HTTP transport on :6274)."""
+    exec_cmd = "uv run fastmcp dev src/infrahub_mcp/server.py:mcp"
+    with context.cd(MAIN_DIRECTORY_PATH):
+        context.run(exec_cmd)
 
 
 @task(name="docs")

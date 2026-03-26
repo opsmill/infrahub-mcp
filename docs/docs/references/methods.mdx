@@ -2,6 +2,18 @@
 title: Infrahub MCP methods
 ---
 
+## Response formats
+
+Structured array responses (schema details, node attributes) are encoded in **TOON** (Token-Oriented Object Notation) to reduce token usage by 33–45% compared to JSON. TOON declares field names once in a header and lists rows as CSV:
+
+```text
+items[N]{field1,field2,field3}:
+  value1,value2,value3
+  value1,value2,value3
+```
+
+Scalar fields use standard `key: value` notation. Flat string maps (the schema catalog, branch lists) are returned as compact JSON where TOON offers no benefit.
+
 ## Schema
 
 <!-- vale off -->
@@ -31,6 +43,8 @@ List all schema nodes and generics available in Infrahub.
 - no destroy
 
 Retrieve the full schema for a specific kind (attributes, relationships, and types).
+
+Response is encoded in **TOON** tabular format — arrays for `attributes`, `relationships`, and `filters` use the header-once layout.
 
 ### Parameters
 
@@ -79,6 +93,7 @@ Use `get_schema_mapping` to discover kinds and `get_node_filters` to discover fi
 - **branch** (string): branch name (default: server’s default branch)
 - **filters** (object): dictionary of filters to apply
 - **partial_match** (boolean, default: false): enable substring matches for string filters
+- **include_attributes** (boolean, default: false): return full attribute values in TOON tabular format instead of just display labels; use when you need structured data, not just names
 <!-- vale on -->
 
 <!-- vale off -->

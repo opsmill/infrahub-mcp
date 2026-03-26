@@ -1,9 +1,10 @@
+import os
 from pathlib import Path
 
 import pytest
-from agents.mcp import MCPServerStdio, MCPServerStdioParams
+import anthropic
 
-from infrahub_mcp.utils import get_prompt
+from infrahub_mcp.server import infrahub_agent
 
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 ROOT_DIRECTORY = CURRENT_DIRECTORY.parent.parent.resolve()
@@ -11,32 +12,34 @@ ROOT_DIRECTORY = CURRENT_DIRECTORY.parent.parent.resolve()
 
 @pytest.fixture(scope="session")
 def main_prompt() -> str:
-    return get_prompt("main")
+    return infrahub_agent()
 
 
 @pytest.fixture(scope="session")
-def local_mcp_server() -> MCPServerStdio:
-    """Fixture to provide a local MCP server for testing."""
+def anthropic_client() -> anthropic.AsyncAnthropic:
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        pytest.skip("ANTHROPIC_API_KEY not set")
+    return anthropic.AsyncAnthropic(api_key=api_key)
 
-    return MCPServerStdio(
-        name="infrahub",
-        params=MCPServerStdioParams(
-            command="uv",
-            cwd=str(ROOT_DIRECTORY.absolute()),
-            args=[
-                "--directory",
-                str(ROOT_DIRECTORY.absolute()),
-                "run",
-                "fastmcp",
-                "run",
-                "--no-banner",
-                "src/infrahub_mcp/server.py:mcp",
-            ],
-            env={
-                "INFRAHUB_ADDRESS": "https://sandbox.infrahub.app",
-                "INFRAHUB_USERNAME": "otto",
-                "INFRAHUB_PASSWORD": "infrahub",
-            },
-        ),
-        cache_tools_list=True,
-    )
+
+@pytest.fixture(scope="session")
+def mcp_server_params() -> dict[str, str]:
+    """Parameters to launch the local MCP server via stdio."""
+    return {
+        "command": "uv",
+        "args": [
+            "--directory",
+            str(ROOT_DIRECTORY.absolute()),
+            "run",
+            "fastmcp",
+            "run",
+            "--no-banner",
+            "src/infrahub_mcp/server.py:mcp",
+        ],
+        "env": {
+            "INFRAHUB_ADDRESS": os.environ.get("INFRAHUB_ADDRESS", "https://sandbox.infrahub.app"),
+            "INFRAHUB_USERNAME": os.environ.get("INFRAHUB_USERNAME", "<redacted>"),
+            "INFRAHUB_PASSWORD": os.environ.get("INFRAHUB_PASSWORD", "<redacted>"),
+        },
+    }

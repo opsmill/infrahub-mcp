@@ -1,0 +1,112 @@
+---
+title: Running with Docker
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+This guide covers deploying the Infrahub MCP server as a container, including running it alongside Infrahub in the same Docker Compose stack.
+
+## Build the image
+
+```bash
+docker build -t infrahub-mcp .
+```
+
+## Run standalone
+
+```bash
+docker run -p 8001:8001 \
+  -e INFRAHUB_ADDRESS=http://your-infrahub-host:8000 \
+  -e INFRAHUB_API_TOKEN=your-token \
+  infrahub-mcp
+```
+
+The server listens on `http://localhost:8001/mcp` using the [MCP Streamable HTTP](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http) transport.
+
+## Deploy alongside Infrahub
+
+The MCP server connects to Infrahub over HTTP, making it a natural sidecar in a Docker Compose stack. Add the `infrahub-mcp` service to your existing `docker-compose.yml`:
+
+```yaml
+services:
+  # ... your existing Infrahub services ...
+
+  infrahub-mcp:
+    build: https://github.com/opsmill/infrahub-mcp.git
+    # or use a pre-built image when published:
+    # image: registry.opsmill.io/opsmill/infrahub-mcp:latest
+    ports:
+      - "8001:8001"
+    environment:
+      INFRAHUB_ADDRESS: "http://infrahub-server:8000"
+      INFRAHUB_API_TOKEN: "${INFRAHUB_API_TOKEN}"
+      MCP_HOST: "0.0.0.0"
+      MCP_PORT: "8001"
+    depends_on:
+      - infrahub-server
+    restart: unless-stopped
+```
+
+Replace `infrahub-server` with the service name of your Infrahub instance.
+
+## Connect your MCP client
+
+Once the container is running, point your MCP client at the HTTP endpoint instead of running a local subprocess:
+
+<Tabs>
+<TabItem value="cursor" label="Cursor">
+
+```json
+{
+  "mcpServers": {
+    "infrahub_mcp": {
+      "type": "streamable-http",
+      "url": "http://localhost:8001/mcp"
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="vs-code" label="VS Code">
+
+```json
+{
+  "servers": {
+    "infrahub_mcp": {
+      "type": "http",
+      "url": "http://localhost:8001/mcp"
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="claude-desktop" label="Claude Desktop">
+
+```json
+{
+  "mcpServers": {
+    "infrahub_mcp": {
+      "transport": "streamable-http",
+      "url": "http://localhost:8001/mcp"
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+## Configuration reference
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `INFRAHUB_ADDRESS` | URL of your Infrahub instance | **required** |
+| `INFRAHUB_API_TOKEN` | API token *(or use username + password)* | — |
+| `INFRAHUB_USERNAME` | Username for basic-auth login | — |
+| `INFRAHUB_PASSWORD` | Password for basic-auth login | — |
+| `INFRAHUB_TIMEOUT` | HTTP request timeout in seconds | `30` |
+| `MCP_HOST` | Bind address for the HTTP server | `0.0.0.0` |
+| `MCP_PORT` | Port for the HTTP server | `8001` |
