@@ -6,7 +6,7 @@ Infrahub MCP Server connects AI assistants and IDE agents to [Infrahub](https://
 
 All writes are branch-isolated and require human approval before merging — agents never modify your default branch directly.
 
-## What You Can Do With It
+## What you can do with it
 
 - **Query your infrastructure data from natural language** — ask an AI assistant to find devices, interfaces, IP addresses, or any node kind defined in your Infrahub schema, with attribute filtering and partial-match search
 - **Explore your schema without leaving the conversation** — the server exposes your full schema catalog, per-kind attribute and filter maps, and the GraphQL SDL as MCP resources that agents read automatically
@@ -14,19 +14,19 @@ All writes are branch-isolated and require human approval before merging — age
 - **Submit changes for human review** — when edits are ready, call `propose_changes` to open a Proposed Change (the Infrahub equivalent of a pull request) for approval before merging
 - **Run arbitrary GraphQL queries** — for advanced use cases, execute any GraphQL query or mutation directly against the Infrahub API
 
-## Who This Is For
+## Who this is for
 
 **An infrastructure or network team already using Infrahub** that wants their AI coding assistants to understand and interact with their source of truth. You get schema-aware querying, safe branch-isolated writes, and a human-in-the-loop review path — all from your IDE or chat assistant.
 
 **A developer building AI-powered infrastructure automation** who needs a standardized interface between agents and Infrahub. The MCP server handles authentication, schema discovery, and branch management so you can focus on the agent logic.
 
-## What's Included
+## What's included
 
 - **Tools (read)** — `get_nodes` retrieves objects by kind with filters, `search_nodes` finds nodes by partial name match, `query_graphql` executes arbitrary GraphQL queries
 - **Tools (write)** — `node_upsert` creates or updates nodes, `node_delete` removes nodes, `propose_changes` opens a Proposed Change for human review — all on an auto-created session branch
 - **Resources** — `infrahub://schema` lists all available kinds, `infrahub://schema/{kind}` returns full attribute/filter details, `infrahub://graphql-schema` exposes the GraphQL SDL, `infrahub://branches` lists all branches
 - **Prompts** — a built-in `infrahub_agent` system prompt that teaches agents the branch-per-session workflow and available tools
-- **Infrastructure** — Dockerfile for container deployment, Docker Compose sidecar configuration, streamable HTTP transport support
+- **Infrastructure** — Dockerfile for container deployment, Docker Compose sidecar configuration, Streamable HTTP transport support
 
 See the [Methods reference](./references/methods.mdx) for full details on every tool, resource, and prompt.
 

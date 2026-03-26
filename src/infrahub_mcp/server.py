@@ -41,7 +41,7 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: A
         pass  # InfrahubClient manages its own connection lifecycle
 
 
-mcp: FastMCP = FastMCP(name="Infrahub MCP Server", version="0.1.2", lifespan=app_lifespan)
+mcp: FastMCP = FastMCP(name="Infrahub MCP Server", version="1.0.0", lifespan=app_lifespan)
 
 
 @mcp.prompt()

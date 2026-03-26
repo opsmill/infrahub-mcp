@@ -1,4 +1,4 @@
-## Infrahub MCP Server 0.1.2
+## Infrahub MCP Server 1.0.0
 
 | Tools (6) | Prompts (4) | Resources (4) |
 | --- | --- | --- |
