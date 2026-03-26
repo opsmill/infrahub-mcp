@@ -52,12 +52,5 @@
   },
   "engines": {
     "node": ">=18.0"
-  },
-  "overrides": {
-    "picomatch": ">=2.3.2",
-    "on-headers": ">=1.1.0",
-    "brace-expansion": ">=1.1.12",
-    "webpack-dev-server": ">=5.2.1",
-    "flatted": ">=3.4.2"
   }
 }
