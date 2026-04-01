@@ -1,0 +1,29 @@
+src/infrahub_mcp/tools/gql.py
+  56489028aaa23d98 32-35
+src/infrahub_mcp/tools/nodes.py
+  56489028aaa23d98 136-139,239-241
+src/infrahub_mcp/tools/write.py
+  56489028aaa23d98 64-66,164-166
+src/infrahub_mcp/server.py
+  56489028aaa23d98 60,62-64,66-73,78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "59958bc2107e961ed9015b6be9fe6e491e8677d7",
+  "prompts": {
+    "56489028aaa23d98": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0d425894-93ca-4ab5-8473-0df7bf3329f6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 30,
+      "total_deletions": 10,
+      "accepted_lines": 1460,
+      "overriden_lines": 0
+    }
+  }
+}
