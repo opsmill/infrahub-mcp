@@ -1,0 +1,23 @@
+src/infrahub_mcp/schema.py
+  56489028aaa23d98 1-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "148a226925cad09ca4cd4e7cc3593612e7bb9b64",
+  "prompts": {
+    "56489028aaa23d98": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0d425894-93ca-4ab5-8473-0df7bf3329f6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 1543,
+      "total_deletions": 0,
+      "accepted_lines": 1543,
+      "overriden_lines": 0
+    }
+  }
+}
