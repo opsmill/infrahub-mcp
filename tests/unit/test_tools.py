@@ -162,3 +162,19 @@ async def test_node_upsert_unknown_kind_includes_valid_kinds() -> None:
         text = result.content[0].text  # type: ignore[union-attr]
         assert "Valid kinds:" in text
         assert "get_schema()" in text
+
+
+async def test_get_nodes_invalid_filter_includes_valid_filters() -> None:
+    """get_nodes with invalid filter key returns error with valid filters for that kind."""
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "get_nodes",
+            {"kind": "LocationSite", "filters": {"interface__name": "eth0"}},
+            raise_on_error=False,
+        )
+        assert result.is_error is True
+        text = result.content[0].text  # type: ignore[union-attr]
+        assert "interface__name" in text
+        assert "Valid filters for LocationSite:" in text
+        assert "name__value" in text
+        assert "get_schema(kind='LocationSite')" in text
