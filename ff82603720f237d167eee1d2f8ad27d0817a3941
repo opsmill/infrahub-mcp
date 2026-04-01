@@ -1,0 +1,25 @@
+src/infrahub_mcp/auth/client_manager.py
+  25719a2f5ee9608b 3,31,35-36,38-43,45-46,48-50,54-55
+src/infrahub_mcp/auth/types.py
+  25719a2f5ee9608b 20-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.3",
+  "base_commit_sha": "ff82603720f237d167eee1d2f8ad27d0817a3941",
+  "prompts": {
+    "25719a2f5ee9608b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "009d6ec7-eb2b-4e92-9d72-1675a98741f9",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 25,
+      "total_deletions": 16,
+      "accepted_lines": 2111,
+      "overriden_lines": 0
+    }
+  }
+}
