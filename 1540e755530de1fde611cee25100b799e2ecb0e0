@@ -1,0 +1,29 @@
+tests/unit/test_auth/test_scopes.py
+  25719a2f5ee9608b 1-41
+tests/unit/test_auth/test_types.py
+  25719a2f5ee9608b 1-33
+src/infrahub_mcp/auth/types.py
+  25719a2f5ee9608b 1-40
+src/infrahub_mcp/auth/scopes.py
+  25719a2f5ee9608b 1-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.3",
+  "base_commit_sha": "1540e755530de1fde611cee25100b799e2ecb0e0",
+  "prompts": {
+    "25719a2f5ee9608b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "009d6ec7-eb2b-4e92-9d72-1675a98741f9",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 139,
+      "total_deletions": 5,
+      "accepted_lines": 2220,
+      "overriden_lines": 0
+    }
+  }
+}
