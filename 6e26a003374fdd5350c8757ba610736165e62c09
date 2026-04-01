@@ -1,0 +1,31 @@
+tests/e2e-auth/README.md
+  25719a2f5ee9608b 1-90
+tests/e2e-auth/test-auth.sh
+  25719a2f5ee9608b 1-234
+tests/e2e-auth/.env.auth-test
+  25719a2f5ee9608b 1-25
+tests/e2e-auth/docker-compose.auth-test.yaml
+  25719a2f5ee9608b 1-108
+tests/e2e-auth/keycloak/infrahub-realm.json
+  25719a2f5ee9608b 1-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.3",
+  "base_commit_sha": "6e26a003374fdd5350c8757ba610736165e62c09",
+  "prompts": {
+    "25719a2f5ee9608b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "009d6ec7-eb2b-4e92-9d72-1675a98741f9",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 557,
+      "total_deletions": 0,
+      "accepted_lines": 2643,
+      "overriden_lines": 0
+    }
+  }
+}
