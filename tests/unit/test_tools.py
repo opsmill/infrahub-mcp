@@ -79,3 +79,51 @@ async def test_get_nodes_unknown_kind() -> None:
         assert result.is_error is True
         text = result.content[0].text  # type: ignore[union-attr]
         assert "Remediation:" in text
+
+
+async def test_get_schema_tool_catalog() -> None:
+    """get_schema with no kind returns the same catalog as the resource."""
+    async with Client(mcp) as client:
+        result = await client.call_tool("get_schema", {})
+        assert result.is_error is False
+        data = json.loads(result.data)
+        assert isinstance(data, dict)
+        assert "LocationSite" in data
+        # Internal kinds should be filtered out
+        for key in data:
+            assert not key.startswith(("Internal", "Profile", "Template"))
+
+
+async def test_get_schema_tool_kind_detail() -> None:
+    """get_schema with a kind returns the same detail as the resource."""
+    async with Client(mcp) as client:
+        result = await client.call_tool("get_schema", {"kind": "LocationSite"})
+        assert result.is_error is False
+        data = toon.decode(result.data)
+        assert data["kind"] == "LocationSite"
+        assert "attributes" in data
+        assert "relationships" in data
+        assert "filters" in data
+        assert any(d.get("filter") == "name__value" for d in data["filters"])
+
+
+async def test_get_schema_tool_invalid_kind() -> None:
+    """get_schema with invalid kind returns error with valid kinds list."""
+    async with Client(mcp) as client:
+        result = await client.call_tool("get_schema", {"kind": "DoesNotExist"}, raise_on_error=False)
+        assert result.is_error is True
+        text = result.content[0].text  # type: ignore[union-attr]
+        assert "DoesNotExist" in text
+        assert "Valid kinds:" in text
+        assert "get_schema()" in text
+
+
+async def test_get_schema_tool_matches_resource() -> None:
+    """get_schema tool output matches infrahub://schema resource output."""
+    async with Client(mcp) as client:
+        # Compare catalog
+        resource = await client.read_resource("infrahub://schema")
+        resource_data = json.loads(resource[0].text)  # type: ignore[attr-defined]
+        tool_result = await client.call_tool("get_schema", {})
+        tool_data = json.loads(tool_result.data)
+        assert resource_data == tool_data

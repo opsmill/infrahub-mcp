@@ -10,6 +10,7 @@ from infrahub_mcp.resources.branches import mcp as branches_resources_mcp
 from infrahub_mcp.resources.schema import mcp as schema_resources_mcp
 from infrahub_mcp.tools.gql import mcp as graphql_mcp
 from infrahub_mcp.tools.nodes import mcp as nodes_mcp
+from infrahub_mcp.tools.schema import mcp as schema_tools_mcp
 from infrahub_mcp.tools.write import mcp as write_mcp
 from infrahub_mcp.utils import AppContext
 
@@ -105,3 +106,4 @@ mcp.mount(prompts_mcp)
 mcp.mount(graphql_mcp)
 mcp.mount(nodes_mcp)
 mcp.mount(write_mcp)
+mcp.mount(schema_tools_mcp)
