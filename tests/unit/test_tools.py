@@ -178,3 +178,16 @@ async def test_get_nodes_invalid_filter_includes_valid_filters() -> None:
         assert "Valid filters for LocationSite:" in text
         assert "name__value" in text
         assert "get_schema(kind='LocationSite')" in text
+
+
+async def test_query_graphql_error_includes_schema_hint() -> None:
+    """query_graphql error includes hint about get_schema tool."""
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "query_graphql",
+            {"query": "{ NonExistentKind { edges { node { name { value } } } } }"},
+            raise_on_error=False,
+        )
+        assert result.is_error is True
+        text = result.content[0].text  # type: ignore[union-attr]
+        assert "get_schema()" in text

@@ -41,6 +41,13 @@ async def query_graphql(
     try:
         data = await client.execute_graphql(query=query, branch_name=branch)
     except GraphQLError as exc:
-        await _log_and_raise_error(ctx, exc)
+        await _log_and_raise_error(
+            ctx,
+            exc,
+            remediation=(
+                "Call get_schema() to list valid kinds, or "
+                "get_schema(kind='...') to see attributes and filters."
+            ),
+        )
 
     return data
