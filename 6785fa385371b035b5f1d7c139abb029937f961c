@@ -1,0 +1,23 @@
+docs/superpowers/specs/2026-04-01-mcp-auth-layer-design.md
+  3ca062a4e7af79e2 1-336
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "6785fa385371b035b5f1d7c139abb029937f961c",
+  "prompts": {
+    "3ca062a4e7af79e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f9cae429-ef57-470d-8c8d-20fb97adc7f7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 339,
+      "total_deletions": 3,
+      "accepted_lines": 336,
+      "overriden_lines": 0
+    }
+  }
+}
