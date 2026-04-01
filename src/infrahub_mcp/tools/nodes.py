@@ -9,6 +9,7 @@ from infrahub_sdk.types import Order
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from infrahub_mcp.schema import get_valid_kinds_summary
 from infrahub_mcp.utils import _log_and_raise_error, convert_node_to_dict
 
 if TYPE_CHECKING:
@@ -108,10 +109,11 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
     try:
         schema = await client.schema.get(kind=kind, branch=branch)
     except SchemaNotFoundError:
+        valid = await get_valid_kinds_summary(client, branch=branch)
         await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",
-            remediation="Read infrahub://schema to list available kinds.",
+            remediation=f"{valid}\nCall get_schema() for details on any kind.",
         )
 
     if filters:
@@ -210,10 +212,11 @@ async def search_nodes(
     try:
         schema = await client.schema.get(kind=kind, branch=branch)
     except SchemaNotFoundError:
+        valid = await get_valid_kinds_summary(client, branch=branch)
         await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",
-            remediation="Read infrahub://schema to list available kinds.",
+            remediation=f"{valid}\nCall get_schema() for details on any kind.",
         )
 
     try:

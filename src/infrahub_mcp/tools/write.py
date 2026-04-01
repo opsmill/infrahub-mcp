@@ -8,6 +8,7 @@ from infrahub_sdk.exceptions import GraphQLError, NodeNotFoundError, SchemaNotFo
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from infrahub_mcp.schema import get_valid_kinds_summary
 from infrahub_mcp.utils import _log_and_raise_error, get_or_create_session_branch
 
 if TYPE_CHECKING:
@@ -83,10 +84,11 @@ async def node_upsert(  # pylint: disable=too-many-locals
     try:
         schema = await client.schema.get(kind=kind, branch=session_branch)
     except SchemaNotFoundError:
+        valid = await get_valid_kinds_summary(client, branch=session_branch)
         await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",
-            remediation="Read infrahub://schema to list available kinds.",
+            remediation=f"{valid}\nCall get_schema() for details on any kind.",
         )
 
     sdk_data = {key: {"value": value} for key, value in data.items()}
@@ -178,10 +180,11 @@ async def node_delete(
     try:
         schema = await client.schema.get(kind=kind, branch=session_branch)
     except SchemaNotFoundError:
+        valid = await get_valid_kinds_summary(client, branch=session_branch)
         await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",
-            remediation="Read infrahub://schema to list available kinds.",
+            remediation=f"{valid}\nCall get_schema() for details on any kind.",
         )
 
     try:

@@ -127,3 +127,38 @@ async def test_get_schema_tool_matches_resource() -> None:
         tool_result = await client.call_tool("get_schema", {})
         tool_data = json.loads(tool_result.data)
         assert resource_data == tool_data
+
+
+async def test_get_nodes_unknown_kind_includes_valid_kinds() -> None:
+    """get_nodes with invalid kind error includes the list of valid kinds."""
+    async with Client(mcp) as client:
+        result = await client.call_tool("get_nodes", {"kind": "DoesNotExist"}, raise_on_error=False)
+        assert result.is_error is True
+        text = result.content[0].text  # type: ignore[union-attr]
+        assert "Valid kinds:" in text
+        assert "LocationSite" in text
+        assert "get_schema()" in text
+
+
+async def test_search_nodes_unknown_kind_includes_valid_kinds() -> None:
+    """search_nodes with invalid kind error includes the list of valid kinds."""
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "search_nodes", {"query": "test", "kind": "DoesNotExist"}, raise_on_error=False
+        )
+        assert result.is_error is True
+        text = result.content[0].text  # type: ignore[union-attr]
+        assert "Valid kinds:" in text
+        assert "get_schema()" in text
+
+
+async def test_node_upsert_unknown_kind_includes_valid_kinds() -> None:
+    """node_upsert with invalid kind error includes the list of valid kinds."""
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "node_upsert", {"kind": "DoesNotExist", "data": {"name": "test"}}, raise_on_error=False
+        )
+        assert result.is_error is True
+        text = result.content[0].text  # type: ignore[union-attr]
+        assert "Valid kinds:" in text
+        assert "get_schema()" in text
