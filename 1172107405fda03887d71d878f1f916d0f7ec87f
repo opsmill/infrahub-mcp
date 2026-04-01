@@ -1,0 +1,25 @@
+src/infrahub_mcp/tools/gql.py
+  56489028aaa23d98 44-51
+tests/unit/test_tools.py
+  56489028aaa23d98 181-193
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "1172107405fda03887d71d878f1f916d0f7ec87f",
+  "prompts": {
+    "56489028aaa23d98": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0d425894-93ca-4ab5-8473-0df7bf3329f6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 22,
+      "total_deletions": 2,
+      "accepted_lines": 1451,
+      "overriden_lines": 0
+    }
+  }
+}
