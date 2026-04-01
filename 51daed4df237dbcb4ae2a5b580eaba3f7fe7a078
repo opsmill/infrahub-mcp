@@ -1,0 +1,23 @@
+tests/integration/test_auth_flow.py
+  25719a2f5ee9608b 1-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.3",
+  "base_commit_sha": "51daed4df237dbcb4ae2a5b580eaba3f7fe7a078",
+  "prompts": {
+    "25719a2f5ee9608b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "009d6ec7-eb2b-4e92-9d72-1675a98741f9",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 157,
+      "total_deletions": 31,
+      "accepted_lines": 2212,
+      "overriden_lines": 0
+    }
+  }
+}
