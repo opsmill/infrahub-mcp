@@ -133,8 +133,10 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
 ) -> list[str] | str:
     """Retrieve objects of a specific kind from Infrahub.
 
-    To discover available kinds read the resource ``infrahub://schema``.
-    To discover available filters for a kind read ``infrahub://schema/{kind}``.
+    To discover available kinds, read the ``infrahub://schema`` resource.
+    If your client does not support MCP resources, call the ``get_schema`` tool instead.
+    To discover available filters for a kind, read ``infrahub://schema/{kind}``
+    or call ``get_schema(kind='...')``.
 
     Args:
         kind: Kind of the objects to retrieve.
@@ -233,6 +235,9 @@ async def search_nodes(
 
     A convenience wrapper around get_nodes with ``partial_match=True`` and a ``name__value``
     filter. Use when you need to find a node without knowing its exact name.
+
+    To discover available kinds, read the ``infrahub://schema`` resource.
+    If your client does not support MCP resources, call the ``get_schema`` tool instead.
 
     Args:
         query: Partial name string to search for.

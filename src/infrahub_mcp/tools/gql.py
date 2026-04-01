@@ -29,6 +29,10 @@ async def query_graphql(
 ) -> dict[str, Any]:
     """Execute a GraphQL query against Infrahub.
 
+    To discover available kinds and their attributes, read the ``infrahub://schema``
+    resource. If your client does not support MCP resources, call the ``get_schema``
+    tool instead. For the full GraphQL SDL, read ``infrahub://graphql-schema``.
+
     Parameters:
         query: GraphQL query to execute.
         branch: Branch to execute the query against. Defaults to None (uses default branch).

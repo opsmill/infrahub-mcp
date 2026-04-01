@@ -61,6 +61,9 @@ async def node_upsert(  # pylint: disable=too-many-locals
     The session branch is auto-created on the first write of the session
     (``mcp/session-YYYYMMDD-<hex>``). Use ``propose_changes`` to open a
     review once your changes are ready.
+    To discover available kinds and attributes, read the ``infrahub://schema``
+    resource. If your client does not support MCP resources, call the
+    ``get_schema`` tool instead.
 
     - **Create**: omit both ``id`` and ``hfid``.
     - **Update**: supply either ``id`` or ``hfid`` to identify the target node.
@@ -158,6 +161,9 @@ async def node_delete(
 
     The deletion is applied to the session branch only and is not visible on the
     default branch until a proposed change is merged.
+    To discover available kinds, read the ``infrahub://schema`` resource.
+    If your client does not support MCP resources, call the ``get_schema``
+    tool instead.
 
     Parameters:
         kind: Kind of the node.
