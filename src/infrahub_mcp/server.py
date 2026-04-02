@@ -10,6 +10,7 @@ from infrahub_mcp.resources.branches import mcp as branches_resources_mcp
 from infrahub_mcp.resources.schema import mcp as schema_resources_mcp
 from infrahub_mcp.tools.gql import mcp as graphql_mcp
 from infrahub_mcp.tools.nodes import mcp as nodes_mcp
+from infrahub_mcp.tools.schema import mcp as schema_tools_mcp
 from infrahub_mcp.tools.write import mcp as write_mcp
 from infrahub_mcp.utils import AppContext
 
@@ -56,20 +57,25 @@ Structured arrays (schema details, node attribute results) are encoded in
 TOON declares field names once in a header, then lists rows of values.
 Treat TOON exactly like a table: the header is the column spec, each indented row is one record.
 
-## Available context (resources — read before tool calls)
+## Schema discovery (always do this first)
 
-| Resource | What it contains |
-|---|---|
-| `infrahub://schema` | All node kinds available in this instance |
-| `infrahub://schema/{kind}` | Full schema + filter map for a specific kind |
-| `infrahub://graphql-schema` | Complete GraphQL SDL for advanced queries |
-| `infrahub://branches` | All branches, including your active session branch |
+Read the ``infrahub://schema`` resource to discover available kinds before querying.
+If your client does not support MCP resources, call the ``get_schema`` tool instead —
+it provides the same data.
 
-Read these resources first to avoid guessing kind names or filter keys.
+| Resource | Tool equivalent | What it contains |
+|---|---|---|
+| `infrahub://schema` | `get_schema()` | All node kinds available in this instance |
+| `infrahub://schema/{kind}` | `get_schema(kind='...')` | Full schema + filter map for a specific kind |
+| `infrahub://graphql-schema` | *(none)* | Complete GraphQL SDL for advanced queries |
+| `infrahub://branches` | *(none)* | All branches, including your active session branch |
+
+Never guess kind names or filter keys — discover them first.
 
 ## Available tools
 
 ### Read
+- **`get_schema`** — discover available kinds and their attributes/filters. Use when resources are not available.
 - **`get_nodes`** — retrieve objects of a given kind, with optional filters. Pass `include_attributes=True` for full attribute data.
 - **`search_nodes`** — find nodes by partial name match.
 - **`query_graphql`** — execute any GraphQL query or mutation.
@@ -105,3 +111,4 @@ mcp.mount(prompts_mcp)
 mcp.mount(graphql_mcp)
 mcp.mount(nodes_mcp)
 mcp.mount(write_mcp)
+mcp.mount(schema_tools_mcp)

@@ -5,10 +5,12 @@ from typing import TYPE_CHECKING, Annotated, Any
 import toon
 from fastmcp import Context, FastMCP
 from infrahub_sdk.exceptions import GraphQLError, SchemaNotFoundError
+from infrahub_sdk.schema import MainSchemaTypes
 from infrahub_sdk.types import Order
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from infrahub_mcp.schema import get_valid_kinds_summary
 from infrahub_mcp.utils import _log_and_raise_error, convert_node_to_dict
 
 if TYPE_CHECKING:
@@ -37,6 +39,56 @@ _RESERVED_FILTER_KEYS: frozenset[str] = frozenset(
         "include_metadata",
     }
 )
+
+
+async def _validate_filters(  # noqa: PLR0913, PLR0917
+    ctx: Context,
+    client: "InfrahubClient",
+    schema: MainSchemaTypes,
+    kind: str,
+    branch: str | None,
+    filters: dict[str, Any],
+) -> None:
+    """Validate filter keys against the schema and raise an error for unknown keys.
+
+    Args:
+        ctx: MCP context for logging and error reporting.
+        client: Infrahub SDK client.
+        schema: Schema for the kind being queried.
+        kind: Kind name (used in error messages).
+        branch: Branch name.
+        filters: Filter dict provided by the caller.
+
+    Raises:
+        RuntimeError: Via ``_log_and_raise_error`` when unknown filter keys are found.
+    """
+    reserved = set(filters) & _RESERVED_FILTER_KEYS
+    if reserved:
+        await _log_and_raise_error(
+            ctx=ctx,
+            error=f"Filters contain reserved key(s): {sorted(reserved)}.",
+            remediation=(f"Remove reserved key(s) and check infrahub://schema/{kind} for valid filter names."),
+        )
+
+    # Build the valid filter set from the schema (same logic as schema detail)
+    valid_filters: set[str] = {f"{attr.name}__value" for attr in schema.attributes}
+    for rel in schema.relationships:
+        try:
+            rel_schema = await client.schema.get(kind=rel.peer, branch=branch)
+            valid_filters.update(f"{rel.name}__{attr.name}__value" for attr in rel_schema.attributes)
+        except SchemaNotFoundError:
+            continue
+    invalid_keys = set(filters.keys()) - valid_filters - _RESERVED_FILTER_KEYS
+    if invalid_keys:
+        sorted_valid = ", ".join(sorted(valid_filters))
+        await _log_and_raise_error(
+            ctx=ctx,
+            error=f"Invalid filter(s) for {kind}: {sorted(invalid_keys)}.",
+            remediation=(
+                f"Valid filters for {kind}: {sorted_valid}\n"
+                f"Call get_schema(kind='{kind}') for the full schema."
+            ),
+        )
 
 
 @mcp.tool(tags={"nodes", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
@@ -81,8 +133,10 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
 ) -> list[str] | str:
     """Retrieve objects of a specific kind from Infrahub.
 
-    To discover available kinds read the resource ``infrahub://schema``.
-    To discover available filters for a kind read ``infrahub://schema/{kind}``.
+    To discover available kinds, read the ``infrahub://schema`` resource.
+    If your client does not support MCP resources, call the ``get_schema`` tool instead.
+    To discover available filters for a kind, read ``infrahub://schema/{kind}``
+    or call ``get_schema(kind='...')``.
 
     Args:
         kind: Kind of the objects to retrieve.
@@ -108,20 +162,17 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
     try:
         schema = await client.schema.get(kind=kind, branch=branch)
     except SchemaNotFoundError:
+        valid = await get_valid_kinds_summary(client, branch=branch)
         await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",
-            remediation="Read infrahub://schema to list available kinds.",
+            remediation=f"{valid}\nCall get_schema() for details on any kind.",
         )
 
     if filters:
-        reserved = set(filters) & _RESERVED_FILTER_KEYS
-        if reserved:
-            await _log_and_raise_error(
-                ctx=ctx,
-                error=f"Filters contain reserved key(s): {sorted(reserved)}.",
-                remediation=(f"Remove reserved key(s) and check infrahub://schema/{kind} for valid filter names."),
-            )
+        await _validate_filters(
+            ctx=ctx, client=client, schema=schema, kind=kind, branch=branch, filters=filters
+        )
 
     try:
         kwargs: dict[str, Any] = {
@@ -185,6 +236,9 @@ async def search_nodes(
     A convenience wrapper around get_nodes with ``partial_match=True`` and a ``name__value``
     filter. Use when you need to find a node without knowing its exact name.
 
+    To discover available kinds, read the ``infrahub://schema`` resource.
+    If your client does not support MCP resources, call the ``get_schema`` tool instead.
+
     Args:
         query: Partial name string to search for.
         kind: Kind to search within.
@@ -210,10 +264,11 @@ async def search_nodes(
     try:
         schema = await client.schema.get(kind=kind, branch=branch)
     except SchemaNotFoundError:
+        valid = await get_valid_kinds_summary(client, branch=branch)
         await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",
-            remediation="Read infrahub://schema to list available kinds.",
+            remediation=f"{valid}\nCall get_schema() for details on any kind.",
         )
 
     try:

@@ -29,6 +29,10 @@ async def query_graphql(
 ) -> dict[str, Any]:
     """Execute a GraphQL query against Infrahub.
 
+    To discover available kinds and their attributes, read the ``infrahub://schema``
+    resource. If your client does not support MCP resources, call the ``get_schema``
+    tool instead. For the full GraphQL SDL, read ``infrahub://graphql-schema``.
+
     Parameters:
         query: GraphQL query to execute.
         branch: Branch to execute the query against. Defaults to None (uses default branch).
@@ -41,6 +45,13 @@ async def query_graphql(
     try:
         data = await client.execute_graphql(query=query, branch_name=branch)
     except GraphQLError as exc:
-        await _log_and_raise_error(ctx, exc)
+        await _log_and_raise_error(
+            ctx,
+            exc,
+            remediation=(
+                "Call get_schema() to list valid kinds, or "
+                "get_schema(kind='...') to see attributes and filters."
+            ),
+        )
 
     return data
