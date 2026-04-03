@@ -10,6 +10,7 @@ from infrahub_mcp.prompts.prompts import mcp as prompts_mcp
 from infrahub_mcp.resources.branches import mcp as branches_resources_mcp
 from infrahub_mcp.resources.generators import mcp as generators_resources_mcp
 from infrahub_mcp.resources.schema import mcp as schema_resources_mcp
+from infrahub_mcp.tools.branches import mcp as branches_mcp
 from infrahub_mcp.tools.generators import mcp as generators_mcp
 from infrahub_mcp.tools.gql import mcp as graphql_mcp
 from infrahub_mcp.tools.nodes import mcp as nodes_mcp
@@ -89,6 +90,10 @@ Never guess kind names or filter keys — discover them first.
 - **`run_generator`** — run a generator on the session branch. Returns a task ID.
 - **`get_task_status`** — check the status of a task (works for any task, not just generators).
 
+### Branches
+- **`create_branch`** — create a new branch and optionally set it as the session branch.
+- **`set_session_branch`** — point the session at an existing branch for subsequent writes and generators.
+
 ### Write
 - **`node_upsert`** — create or update a node. Omit `id`/`hfid` to create; supply one to update.
 - **`node_delete`** — delete a node by `id` or `hfid`.
@@ -97,7 +102,9 @@ Never guess kind names or filter keys — discover them first.
 ## Branch-per-session workflow
 
 All writes are branch-isolated. On your first write, a session branch is
-automatically created (`mcp/session-YYYYMMDD-<hex>`).
+automatically created (`mcp/session-YYYYMMDD-<hex>`). You can also explicitly
+create a branch with `create_branch` or target an existing branch with
+`set_session_branch` before making writes.
 The default branch is never modified directly.
 
 When changes are ready: call `propose_changes(title, description)` to open a proposed change for human review.
@@ -118,6 +125,7 @@ mcp.mount(generators_resources_mcp)
 mcp.mount(prompts_mcp)
 
 # Tools
+mcp.mount(branches_mcp)
 mcp.mount(generators_mcp)
 mcp.mount(graphql_mcp)
 mcp.mount(nodes_mcp)

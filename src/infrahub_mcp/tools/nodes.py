@@ -11,7 +11,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from infrahub_mcp.schema import get_valid_kinds_summary
-from infrahub_mcp.utils import _log_and_raise_error, convert_node_to_dict
+from infrahub_mcp.utils import _log_and_raise_error, convert_node_to_dict, resolve_branch
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
@@ -85,8 +85,7 @@ async def _validate_filters(  # noqa: PLR0913, PLR0917
             ctx=ctx,
             error=f"Invalid filter(s) for {kind}: {sorted(invalid_keys)}.",
             remediation=(
-                f"Valid filters for {kind}: {sorted_valid}\n"
-                f"Call get_schema(kind='{kind}') for the full schema."
+                f"Valid filters for {kind}: {sorted_valid}\nCall get_schema(kind='{kind}') for the full schema."
             ),
         )
 
@@ -100,7 +99,7 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
     ],
     branch: Annotated[
         str | None,
-        Field(default=None, description="Branch to query. Defaults to the default branch."),
+        Field(default=None, description="Branch to query. Defaults to the session branch, or the default branch."),
     ] = None,
     filters: Annotated[
         dict[str, Any] | None,
@@ -153,6 +152,7 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
         RuntimeError: Via ``_log_and_raise_error`` when the schema is not found or the query fails.
     """
     client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    branch = resolve_branch(ctx, branch)
     req_id = ctx.request_id
     await ctx.info(
         f"Fetching {kind} nodes: request_id={req_id!r}, branch={branch!r}, "
@@ -170,9 +170,7 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
         )
 
     if filters:
-        await _validate_filters(
-            ctx=ctx, client=client, schema=schema, kind=kind, branch=branch, filters=filters
-        )
+        await _validate_filters(ctx=ctx, client=client, schema=schema, kind=kind, branch=branch, filters=filters)
 
     try:
         kwargs: dict[str, Any] = {
@@ -224,7 +222,7 @@ async def search_nodes(
     ],
     branch: Annotated[
         str | None,
-        Field(default=None, description="Branch to query. Defaults to the default branch."),
+        Field(default=None, description="Branch to query. Defaults to the session branch, or the default branch."),
     ] = None,
     limit: Annotated[
         int,
@@ -252,6 +250,7 @@ async def search_nodes(
         RuntimeError: Via ``_log_and_raise_error`` when the schema is not found or the query fails.
     """
     client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    branch = resolve_branch(ctx, branch)
     req_id = ctx.request_id
     query = query.strip()
     if not query:

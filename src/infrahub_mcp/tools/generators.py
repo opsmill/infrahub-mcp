@@ -10,7 +10,7 @@ from infrahub_sdk.task.exceptions import TaskNotFoundError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from infrahub_mcp.utils import _log_and_raise_error, get_or_create_session_branch
+from infrahub_mcp.utils import _log_and_raise_error, get_or_create_session_branch, resolve_branch
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
@@ -41,7 +41,7 @@ async def get_generator_targets(
     ],
     branch: Annotated[
         str | None,
-        Field(default=None, description="Branch to query. Defaults to the default branch."),
+        Field(default=None, description="Branch to query. Defaults to the session branch, or the default branch."),
     ] = None,
 ) -> str:
     """List the valid target nodes for a generator definition.
@@ -57,6 +57,7 @@ async def get_generator_targets(
         TOON-encoded list of target nodes with id, display_label, and kind.
     """
     client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    branch = resolve_branch(ctx, branch)
     req_id = ctx.request_id
     await ctx.info(
         f"Fetching generator targets: request_id={req_id!r}, generator_id={generator_id!r}, branch={branch!r}"
@@ -64,7 +65,13 @@ async def get_generator_targets(
 
     # Fetch the generator definition
     try:
-        gen = await client.get(kind="CoreGeneratorDefinition", id=generator_id, branch=branch, include=["targets"], prefetch_relationships=True)
+        gen = await client.get(
+            kind="CoreGeneratorDefinition",
+            id=generator_id,
+            branch=branch,
+            include=["targets"],
+            prefetch_relationships=True,
+        )
     except NodeNotFoundError:
         await _log_and_raise_error(
             ctx=ctx,
@@ -72,13 +79,26 @@ async def get_generator_targets(
             remediation="Read infrahub://generators to see available generator definitions.",
         )
 
+    if not gen.targets.peer:
+        await _log_and_raise_error(
+            ctx=ctx,
+            error=f"Generator {generator_id} has no targets group assigned.",
+            remediation="Check the generator definition in Infrahub.",
+        )
+
     # Fetch the group and its members
     try:
-        group = await client.get(kind="CoreStandardGroup", id=targets_rel.id, branch=branch, include=["members"], prefetch_relationships=True)
+        group = await client.get(
+            kind="CoreStandardGroup",
+            id=gen.targets.peer.id,
+            branch=branch,
+            include=["members"],
+            prefetch_relationships=True,
+        )
     except NodeNotFoundError:
         await _log_and_raise_error(
             ctx=ctx,
-            error=f"Target group {targets_rel.id} not found.",
+            error=f"Target group {gen.targets.peer.id} not found.",
             remediation="The generator's target group may have been deleted.",
         )
 
@@ -190,6 +210,10 @@ async def get_task_status(
         bool,
         Field(default=False, description="Include task log entries in the response."),
     ] = False,
+    branch: Annotated[
+        str | None,
+        Field(default=None, description="Branch to query. Defaults to the default branch."),
+    ] = None,
 ) -> dict[str, Any]:
     """Check the status of an Infrahub task.
 
