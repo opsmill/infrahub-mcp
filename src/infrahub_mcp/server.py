@@ -8,7 +8,9 @@ from infrahub_sdk.client import InfrahubClient
 
 from infrahub_mcp.prompts.prompts import mcp as prompts_mcp
 from infrahub_mcp.resources.branches import mcp as branches_resources_mcp
+from infrahub_mcp.resources.generators import mcp as generators_resources_mcp
 from infrahub_mcp.resources.schema import mcp as schema_resources_mcp
+from infrahub_mcp.tools.generators import mcp as generators_mcp
 from infrahub_mcp.tools.gql import mcp as graphql_mcp
 from infrahub_mcp.tools.nodes import mcp as nodes_mcp
 from infrahub_mcp.tools.schema import mcp as schema_tools_mcp
@@ -70,6 +72,7 @@ it provides the same data.
 | `infrahub://schema/{kind}` | `get_schema(kind='...')` | Full schema + filter map for a specific kind |
 | `infrahub://graphql-schema` | *(none)* | Complete GraphQL SDL for advanced queries |
 | `infrahub://branches` | *(none)* | All branches, including your active session branch |
+| `infrahub://generators` | *(none)* | All generator definitions with their target groups |
 
 Never guess kind names or filter keys — discover them first.
 
@@ -80,6 +83,11 @@ Never guess kind names or filter keys — discover them first.
 - **`get_nodes`** — retrieve objects of a given kind, with optional filters. Pass `include_attributes=True` for full attribute data.
 - **`search_nodes`** — find nodes by partial name match.
 - **`query_graphql`** — execute any GraphQL query or mutation.
+
+### Generators
+- **`get_generator_targets`** — list the valid target nodes for a specific generator.
+- **`run_generator`** — run a generator on the session branch. Returns a task ID.
+- **`get_task_status`** — check the status of a task (works for any task, not just generators).
 
 ### Write
 - **`node_upsert`** — create or update a node. Omit `id`/`hfid` to create; supply one to update.
@@ -104,11 +112,13 @@ When changes are ready: call `propose_changes(title, description)` to open a pro
 # Resources — consumed as context, not as tool calls
 mcp.mount(schema_resources_mcp)
 mcp.mount(branches_resources_mcp)
+mcp.mount(generators_resources_mcp)
 
 # Prompts — parameterized workflow guides
 mcp.mount(prompts_mcp)
 
 # Tools
+mcp.mount(generators_mcp)
 mcp.mount(graphql_mcp)
 mcp.mount(nodes_mcp)
 mcp.mount(write_mcp)
