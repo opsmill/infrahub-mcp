@@ -11,7 +11,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from infrahub_mcp.schema import get_valid_kinds_summary
-from infrahub_mcp.utils import _log_and_raise_error, convert_node_to_dict
+from infrahub_mcp.utils import _log_and_raise_error, convert_node_to_dict, get_client
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
@@ -152,7 +152,7 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
     Raises:
         RuntimeError: Via ``_log_and_raise_error`` when the schema is not found or the query fails.
     """
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
     req_id = ctx.request_id
     await ctx.info(
         f"Fetching {kind} nodes: request_id={req_id!r}, branch={branch!r}, "
@@ -251,7 +251,7 @@ async def search_nodes(
     Raises:
         RuntimeError: Via ``_log_and_raise_error`` when the schema is not found or the query fails.
     """
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
     req_id = ctx.request_id
     query = query.strip()
     if not query:

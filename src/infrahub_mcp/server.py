@@ -1,10 +1,15 @@
+import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastmcp import FastMCP
 from infrahub_sdk.client import InfrahubClient
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
+from infrahub_mcp.config import ServerConfig, load_config
+from infrahub_mcp.middleware import ReadOnlyMiddleware
 from infrahub_mcp.prompts.prompts import mcp as prompts_mcp
 from infrahub_mcp.resources.branches import mcp as branches_resources_mcp
 from infrahub_mcp.resources.schema import mcp as schema_resources_mcp
@@ -13,6 +18,8 @@ from infrahub_mcp.tools.nodes import mcp as nodes_mcp
 from infrahub_mcp.tools.schema import mcp as schema_tools_mcp
 from infrahub_mcp.tools.write import mcp as write_mcp
 from infrahub_mcp.utils import AppContext
+
+_config: ServerConfig = load_config()
 
 
 def _validate_env() -> None:
@@ -37,48 +44,71 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: A
     _validate_env()
     client = InfrahubClient()
     try:
-        yield AppContext(client=client)
+        yield AppContext(client=client, config=_config)
     finally:
         pass  # InfrahubClient manages its own connection lifecycle
 
 
-mcp: FastMCP = FastMCP(name="Infrahub MCP Server", version="1.0.0", lifespan=app_lifespan)
+logger = logging.getLogger(__name__)
+
+mcp: FastMCP = FastMCP(
+    name="Infrahub MCP Server",
+    version="1.0.0",
+    lifespan=app_lifespan,
+    middleware=[ReadOnlyMiddleware(_config)],
+)
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request: Request) -> JSONResponse:  # noqa: ARG001, RUF029
+    """Health check endpoint for container orchestration probes.
+
+    Uses the SDK's ``get_version()`` to validate Infrahub connectivity.
+    Returns 200 when healthy, 503 when Infrahub is unreachable.
+    """
+    try:
+        client = InfrahubClient()
+        version = client.get_version()
+        return JSONResponse({"status": "healthy", "infrahub_version": version})
+    except Exception:
+        logger.exception("Health check failed")
+        return JSONResponse({"status": "unhealthy"}, status_code=503)
 
 
 @mcp.prompt()
 def infrahub_agent() -> str:
     """System prompt for the Infrahub infrastructure agent."""
-    return """You are an infrastructure specialist with read and write access to Infrahub — a graph-based infrastructure data management platform.
+    access_mode = "read-only" if _config.read_only else "read and write"
+    query_desc = "execute any GraphQL query" if _config.read_only else "execute any GraphQL query or mutation"
+    prompt = (
+        f"You are an infrastructure specialist with {access_mode} access to "
+        "Infrahub — a graph-based infrastructure data management platform.\n\n"
+        "## Data formats\n\n"
+        "Structured arrays (schema details, node attribute results) are encoded in\n"
+        "**TOON** (Token-Oriented Object Notation) to reduce token usage.\n"
+        "TOON declares field names once in a header, then lists rows of values.\n"
+        "Treat TOON exactly like a table: the header is the column spec, each indented row is one record.\n\n"
+        "## Schema discovery (always do this first)\n\n"
+        "Read the ``infrahub://schema`` resource to discover available kinds before querying.\n"
+        "If your client does not support MCP resources, call the ``get_schema`` tool instead —\n"
+        "it provides the same data.\n\n"
+        "| Resource | Tool equivalent | What it contains |\n"
+        "|---|---|---|\n"
+        "| `infrahub://schema` | `get_schema()` | All node kinds available in this instance |\n"
+        "| `infrahub://schema/{kind}` | `get_schema(kind='...')` | Full schema + filter map for a specific kind |\n"
+        "| `infrahub://graphql-schema` | *(none)* | Complete GraphQL SDL for advanced queries |\n"
+        "| `infrahub://branches` | *(none)* | All branches, including your active session branch |\n\n"
+        "Never guess kind names or filter keys — discover them first.\n\n"
+        "## Available tools\n\n"
+        "### Read\n"
+        "- **`get_schema`** — discover available kinds and their attributes/filters. Use when resources are not available.\n"
+        "- **`get_nodes`** — retrieve objects of a given kind, with optional filters. Pass `include_attributes=True` for full attribute data.\n"
+        "- **`search_nodes`** — find nodes by partial name match.\n"
+        f"- **`query_graphql`** — {query_desc}."
+    )
 
-## Data formats
-
-Structured arrays (schema details, node attribute results) are encoded in
-**TOON** (Token-Oriented Object Notation) to reduce token usage.
-TOON declares field names once in a header, then lists rows of values.
-Treat TOON exactly like a table: the header is the column spec, each indented row is one record.
-
-## Schema discovery (always do this first)
-
-Read the ``infrahub://schema`` resource to discover available kinds before querying.
-If your client does not support MCP resources, call the ``get_schema`` tool instead —
-it provides the same data.
-
-| Resource | Tool equivalent | What it contains |
-|---|---|---|
-| `infrahub://schema` | `get_schema()` | All node kinds available in this instance |
-| `infrahub://schema/{kind}` | `get_schema(kind='...')` | Full schema + filter map for a specific kind |
-| `infrahub://graphql-schema` | *(none)* | Complete GraphQL SDL for advanced queries |
-| `infrahub://branches` | *(none)* | All branches, including your active session branch |
-
-Never guess kind names or filter keys — discover them first.
-
-## Available tools
-
-### Read
-- **`get_schema`** — discover available kinds and their attributes/filters. Use when resources are not available.
-- **`get_nodes`** — retrieve objects of a given kind, with optional filters. Pass `include_attributes=True` for full attribute data.
-- **`search_nodes`** — find nodes by partial name match.
-- **`query_graphql`** — execute any GraphQL query or mutation.
+    if not _config.read_only:
+        prompt += """
 
 ### Write
 - **`node_upsert`** — create or update a node. Omit `id`/`hfid` to create; supply one to update.
@@ -88,8 +118,7 @@ Never guess kind names or filter keys — discover them first.
 ## Branch-per-session workflow
 
 All writes are branch-isolated. On your first write, a session branch is
-automatically created (`mcp/session-YYYYMMDD-<hex>`).
-The default branch is never modified directly.
+automatically created. The default branch is never modified directly.
 
 When changes are ready: call `propose_changes(title, description)` to open a proposed change for human review.
 
@@ -98,6 +127,16 @@ When changes are ready: call `propose_changes(title, description)` to open a pro
 - Never modify the default branch directly.
 - Prefer `node_upsert` over raw GraphQL mutations for simple attribute changes.
 - Always confirm with the user before deleting nodes."""
+    else:
+        prompt += """
+
+## Read-only mode
+
+This server is running in **read-only mode**. Write operations (node creation,
+updates, deletions, and GraphQL mutations) are disabled. Only queries and
+schema discovery are available."""
+
+    return prompt
 
 
 # Resources — consumed as context, not as tool calls
@@ -107,8 +146,11 @@ mcp.mount(branches_resources_mcp)
 # Prompts — parameterized workflow guides
 mcp.mount(prompts_mcp)
 
-# Tools
+# Tools — read tools always available
 mcp.mount(graphql_mcp)
 mcp.mount(nodes_mcp)
-mcp.mount(write_mcp)
 mcp.mount(schema_tools_mcp)
+
+# Write tools — hidden in read-only mode
+if not _config.read_only:
+    mcp.mount(write_mcp)

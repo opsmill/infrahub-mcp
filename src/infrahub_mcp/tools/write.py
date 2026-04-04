@@ -9,7 +9,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from infrahub_mcp.schema import get_valid_kinds_summary
-from infrahub_mcp.utils import _log_and_raise_error, get_or_create_session_branch
+from infrahub_mcp.utils import _log_and_raise_error, get_client, get_or_create_session_branch
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
@@ -80,7 +80,7 @@ async def node_upsert(  # pylint: disable=too-many-locals
     Returns:
         Dict with node id, display_label, and branch on success.
     """
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
     session_branch = await get_or_create_session_branch(ctx)
 
     # Validate kind exists
@@ -180,7 +180,7 @@ async def node_delete(
             remediation=_NO_IDENTIFIER_MSG,
         )
 
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
     session_branch = await get_or_create_session_branch(ctx)
 
     try:
@@ -252,7 +252,7 @@ async def propose_changes(
     Returns:
         Dict with proposed change id and branch details on success.
     """
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
     app_ctx = ctx.request_context.lifespan_context  # type: ignore[union-attr]
 
     if app_ctx.session_branch is None:  # type: ignore[union-attr]

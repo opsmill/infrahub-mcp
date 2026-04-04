@@ -7,7 +7,7 @@ from infrahub_sdk.exceptions import GraphQLError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from infrahub_mcp.utils import _log_and_raise_error
+from infrahub_mcp.utils import _log_and_raise_error, get_client
 
 if TYPE_CHECKING:
     from infrahub_sdk import InfrahubClient
@@ -41,7 +41,7 @@ async def query_graphql(
         The result of the query.
 
     """
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
     try:
         data = await client.execute_graphql(query=query, branch_name=branch)
     except GraphQLError as exc:

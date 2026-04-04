@@ -10,7 +10,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from infrahub_mcp.schema import get_schema_catalog, get_schema_detail, get_valid_kinds_summary
-from infrahub_mcp.utils import _log_and_raise_error
+from infrahub_mcp.utils import _log_and_raise_error, get_client
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
@@ -50,7 +50,7 @@ async def get_schema(
     Returns:
         JSON catalog (no kind) or TOON-encoded schema detail (with kind).
     """
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
 
     if kind is None:
         catalog = await get_schema_catalog(client, branch=branch)
