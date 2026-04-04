@@ -9,7 +9,6 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from infrahub_mcp.config import ServerConfig, load_config
-from infrahub_mcp.middleware import ReadOnlyMiddleware
 from infrahub_mcp.prompts.prompts import mcp as prompts_mcp
 from infrahub_mcp.resources.branches import mcp as branches_resources_mcp
 from infrahub_mcp.resources.schema import mcp as schema_resources_mcp
@@ -55,7 +54,6 @@ mcp: FastMCP = FastMCP(
     name="Infrahub MCP Server",
     version="1.0.0",
     lifespan=app_lifespan,
-    middleware=[ReadOnlyMiddleware(_config)],
 )
 
 
@@ -79,7 +77,6 @@ async def health_check(request: Request) -> JSONResponse:  # noqa: ARG001, RUF02
 def infrahub_agent() -> str:
     """System prompt for the Infrahub infrastructure agent."""
     access_mode = "read-only" if _config.read_only else "read and write"
-    query_desc = "execute any GraphQL query" if _config.read_only else "execute any GraphQL query or mutation"
     prompt = (
         f"You are an infrastructure specialist with {access_mode} access to "
         "Infrahub — a graph-based infrastructure data management platform.\n\n"
@@ -104,7 +101,7 @@ def infrahub_agent() -> str:
         "- **`get_schema`** — discover available kinds and their attributes/filters. Use when resources are not available.\n"
         "- **`get_nodes`** — retrieve objects of a given kind, with optional filters. Pass `include_attributes=True` for full attribute data.\n"
         "- **`search_nodes`** — find nodes by partial name match.\n"
-        f"- **`query_graphql`** — {query_desc}."
+        "- **`query_graphql`** — execute a read-only GraphQL query."
     )
 
     if not _config.read_only:
@@ -113,6 +110,7 @@ def infrahub_agent() -> str:
 ### Write
 - **`node_upsert`** — create or update a node. Omit `id`/`hfid` to create; supply one to update.
 - **`node_delete`** — delete a node by `id` or `hfid`.
+- **`mutate_graphql`** — execute a GraphQL mutation.
 - **`propose_changes`** — open a proposed change from your session branch to `main` for human review.
 
 ## Branch-per-session workflow

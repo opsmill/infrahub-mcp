@@ -289,3 +289,50 @@ async def propose_changes(
         "source_branch": session_branch,
         "destination_branch": destination_branch,
     }
+
+
+@mcp.tool(
+    tags={"graphql", "write"},
+    annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False, destructiveHint=False),
+)
+async def mutate_graphql(
+    ctx: Context,
+    query: Annotated[str, Field(description="GraphQL mutation to execute.")],
+    branch: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description="Branch to execute the mutation against. Defaults to None (uses default branch).",
+        ),
+    ] = None,
+) -> dict[str, Any]:
+    """Execute a GraphQL mutation against Infrahub.
+
+    Use this tool for GraphQL mutations (creating, updating, or deleting data).
+    For read-only queries, use ``query_graphql`` instead.
+
+    To discover available kinds and their attributes, read the ``infrahub://schema``
+    resource or call the ``get_schema`` tool.
+    For the full GraphQL SDL, read ``infrahub://graphql-schema``.
+
+    Parameters:
+        query: GraphQL mutation to execute.
+        branch: Branch to execute against. Defaults to None (uses default branch).
+
+    Returns:
+        The result of the mutation.
+    """
+    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
+    try:
+        data = await client.execute_graphql(query=query, branch_name=branch)
+    except GraphQLError as exc:
+        await _log_and_raise_error(
+            ctx,
+            exc,
+            remediation=(
+                "Call get_schema() to list valid kinds, or "
+                "get_schema(kind='...') to see attributes and filters."
+            ),
+        )
+
+    return data

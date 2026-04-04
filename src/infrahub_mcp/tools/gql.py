@@ -1,8 +1,10 @@
-"""GraphQL query tool for the Infrahub MCP server."""
+"""GraphQL query tool for the Infrahub MCP server (read-only)."""
 
+import re
 from typing import TYPE_CHECKING, Annotated, Any
 
 from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ToolError
 from infrahub_sdk.exceptions import GraphQLError
 from mcp.types import ToolAnnotations
 from pydantic import Field
@@ -14,11 +16,14 @@ if TYPE_CHECKING:
 
 mcp: FastMCP = FastMCP(name="Infrahub GraphQL")
 
+# Matches GraphQL mutation operations, allowing for leading whitespace and comments.
+_MUTATION_PATTERN = re.compile(r"^\s*(?:#[^\n]*\n\s*)*mutation\b", re.IGNORECASE)
 
-@mcp.tool(tags={"graphql", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=False))
+
+@mcp.tool(tags={"graphql", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
 async def query_graphql(
     ctx: Context,
-    query: Annotated[str, Field(description="GraphQL query to execute.")],
+    query: Annotated[str, Field(description="GraphQL query string. Only queries are allowed — use mutate_graphql for mutations.")],
     branch: Annotated[
         str | None,
         Field(
@@ -27,20 +32,26 @@ async def query_graphql(
         ),
     ] = None,
 ) -> dict[str, Any]:
-    """Execute a GraphQL query against Infrahub.
+    """Execute a read-only GraphQL query against Infrahub.
+
+    This tool only accepts GraphQL **queries**. For mutations, use the
+    ``mutate_graphql`` tool instead (available when write mode is enabled).
 
     To discover available kinds and their attributes, read the ``infrahub://schema``
     resource. If your client does not support MCP resources, call the ``get_schema``
     tool instead. For the full GraphQL SDL, read ``infrahub://graphql-schema``.
 
     Parameters:
-        query: GraphQL query to execute.
+        query: GraphQL query to execute (mutations are rejected).
         branch: Branch to execute the query against. Defaults to None (uses default branch).
 
     Returns:
         The result of the query.
-
     """
+    if _MUTATION_PATTERN.match(query):
+        msg = "Mutations are not allowed in query_graphql. Use mutate_graphql instead."
+        raise ToolError(msg)
+
     client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
     try:
         data = await client.execute_graphql(query=query, branch_name=branch)

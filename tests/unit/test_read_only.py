@@ -1,16 +1,12 @@
-"""Tests for read-only mode enforcement."""
+"""Tests for read-only mode enforcement via query_graphql mutation detection."""
 
 from __future__ import annotations
 
-import re
-
-import pytest
-
-from infrahub_mcp.middleware import _MUTATION_PATTERN
+from infrahub_mcp.tools.gql import _MUTATION_PATTERN
 
 
 class TestMutationDetection:
-    """Test the regex pattern that detects GraphQL mutations."""
+    """Test the regex pattern that detects GraphQL mutations in query_graphql."""
 
     def test_simple_mutation(self) -> None:
         assert _MUTATION_PATTERN.match("mutation { createNode { id } }")
@@ -34,7 +30,6 @@ class TestMutationDetection:
         assert _MUTATION_PATTERN.match("query { allNodes { id } }") is None
 
     def test_query_with_mutation_in_body(self) -> None:
-        # "mutation" appears in body but operation is a query
         assert _MUTATION_PATTERN.match("query { mutation_log { id } }") is None
 
     def test_empty_string(self) -> None:
