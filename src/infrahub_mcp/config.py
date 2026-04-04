@@ -22,6 +22,9 @@ class ServerConfig:
     max_branch_retries: int = 5
 
 
+_MAX_BRANCH_RETRIES_LIMIT = 20
+
+
 def load_config() -> ServerConfig:
     """Load server configuration from environment variables.
 
@@ -32,7 +35,15 @@ def load_config() -> ServerConfig:
     read_only = os.environ.get("INFRAHUB_MCP_READ_ONLY", "false").lower() in {"true", "1", "yes"}
     branch_pattern = os.environ.get("INFRAHUB_MCP_BRANCH_PATTERN", "mcp/session-{date}-{hex}")
 
-    max_branch_retries = int(os.environ.get("INFRAHUB_MCP_MAX_BRANCH_RETRIES", "5"))
+    try:
+        max_branch_retries = int(os.environ.get("INFRAHUB_MCP_MAX_BRANCH_RETRIES", "5"))
+    except ValueError as exc:
+        msg = "INFRAHUB_MCP_MAX_BRANCH_RETRIES must be an integer."
+        raise ValueError(msg) from exc
+
+    if not 1 <= max_branch_retries <= _MAX_BRANCH_RETRIES_LIMIT:
+        msg = f"INFRAHUB_MCP_MAX_BRANCH_RETRIES must be between 1 and {_MAX_BRANCH_RETRIES_LIMIT}, got {max_branch_retries}."
+        raise ValueError(msg)
 
     return ServerConfig(
         read_only=read_only,

@@ -37,3 +37,9 @@ class TestMutationDetection:
 
     def test_subscription_not_detected(self) -> None:
         assert _MUTATION_PATTERN.match("subscription { nodeUpdated { id } }") is None
+
+    def test_mutation_with_unicode_whitespace(self) -> None:
+        """Unicode non-breaking space before mutation should be caught after lstrip()."""
+        query = "\u00a0mutation { createNode { id } }"
+        # lstrip() removes Unicode whitespace, so the regex matches after stripping
+        assert _MUTATION_PATTERN.match(query.lstrip())

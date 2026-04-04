@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import toon
 from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ResourceError
 from infrahub_sdk.exceptions import BranchNotFoundError, SchemaNotFoundError
 
 from infrahub_mcp.schema import get_schema_catalog, get_schema_detail
@@ -33,7 +34,8 @@ async def schema_catalog(ctx: Context) -> str:
     try:
         result = await get_schema_catalog(client)
     except BranchNotFoundError as exc:
-        return json.dumps({"error": str(exc)}, separators=(",", ":"))
+        msg = f"Branch not found: {exc}"
+        raise ResourceError(msg) from exc
 
     return json.dumps(result, separators=(",", ":"))
 
@@ -56,14 +58,12 @@ async def schema_kind_detail(kind: str, ctx: Context) -> str:
 
     try:
         payload = await get_schema_detail(client, kind=kind)
-    except SchemaNotFoundError:
-        return json.dumps(
-            {
-                "error": f"Schema not found for kind '{kind}'.",
-                "remediation": "Read infrahub://schema to list valid kind names.",
-            },
-            separators=(",", ":"),
+    except SchemaNotFoundError as exc:
+        msg = (
+            f"Schema not found for kind '{kind}'. "
+            "Read infrahub://schema to list valid kind names."
         )
+        raise ResourceError(msg) from exc
 
     return toon.encode(payload)
 

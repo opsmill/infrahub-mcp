@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 
+import pytest
+
 from infrahub_mcp.config import ServerConfig, load_config
 
 
@@ -17,11 +19,8 @@ class TestServerConfig:
 
     def test_frozen(self) -> None:
         config = ServerConfig()
-        try:
+        with pytest.raises(AttributeError):
             config.read_only = True  # type: ignore[misc]
-            raise AssertionError("Expected FrozenInstanceError")  # noqa: TRY301
-        except AttributeError:
-            pass
 
 
 class TestLoadConfig:
@@ -66,3 +65,18 @@ class TestLoadConfig:
         with patch.dict(os.environ, {"INFRAHUB_MCP_MAX_BRANCH_RETRIES": "10"}, clear=True):
             config = load_config()
         assert config.max_branch_retries == 10
+
+    def test_max_branch_retries_invalid_string(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_MAX_BRANCH_RETRIES": "abc"}, clear=True):
+            with pytest.raises(ValueError, match="must be an integer"):
+                load_config()
+
+    def test_max_branch_retries_too_low(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_MAX_BRANCH_RETRIES": "0"}, clear=True):
+            with pytest.raises(ValueError, match="must be between 1 and 20"):
+                load_config()
+
+    def test_max_branch_retries_too_high(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_MAX_BRANCH_RETRIES": "100"}, clear=True):
+            with pytest.raises(ValueError, match="must be between 1 and 20"):
+                load_config()

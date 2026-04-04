@@ -42,10 +42,7 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: A
     """Manage the application lifecycle: validate config, create client, yield context."""
     _validate_env()
     client = InfrahubClient()
-    try:
-        yield AppContext(client=client, config=_config)
-    finally:
-        pass  # InfrahubClient manages its own connection lifecycle
+    yield AppContext(client=client, config=_config)
 
 
 logger = logging.getLogger(__name__)
@@ -66,8 +63,8 @@ async def health_check(request: Request) -> JSONResponse:  # noqa: ARG001, RUF02
     """
     try:
         client = InfrahubClient()
-        version = client.get_version()
-        return JSONResponse({"status": "healthy", "infrahub_version": version})
+        client.get_version()
+        return JSONResponse({"status": "healthy"})
     except Exception:
         logger.exception("Health check failed")
         return JSONResponse({"status": "unhealthy"}, status_code=503)

@@ -48,7 +48,7 @@ async def query_graphql(
     Returns:
         The result of the query.
     """
-    if _MUTATION_PATTERN.match(query):
+    if _MUTATION_PATTERN.match(query.lstrip()):
         msg = "Mutations are not allowed in query_graphql. Use mutate_graphql instead."
         raise ToolError(msg)
 

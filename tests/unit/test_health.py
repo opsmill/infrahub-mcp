@@ -23,7 +23,7 @@ class TestHealthEndpoint:
             assert response.status_code == 200
             data = response.json()
             assert data["status"] == "healthy"
-            assert data["infrahub_version"] == "1.2.3"
+            assert "infrahub_version" not in data
 
     def test_unhealthy(self) -> None:
         mock_client = MagicMock()
