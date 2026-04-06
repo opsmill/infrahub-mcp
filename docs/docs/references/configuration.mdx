@@ -78,7 +78,9 @@ When configured, tools tagged `write` are filtered from discovery and blocked at
 
 ## Observability
 
+<!-- vale Infrahub.sentence-case = NO -->
 ### OpenTelemetry tracing
+<!-- vale Infrahub.sentence-case = YES -->
 
 Wraps every MCP request in an OpenTelemetry span (`mcp.<method>`). Requires the `opentelemetry-api` package — degrades gracefully to a no-op if not installed.
 
@@ -106,7 +108,7 @@ The JSON format also includes `error_stats` (per-exception-type counts from erro
 
 | Variable | Description | Default |
 | --- | --- | --- |
-| `INFRAHUB_MCP_DEREFERENCE_SCHEMAS` | Inline `$ref` in JSON schemas for clients that don't handle references (e.g. VS Code Copilot) | `false` |
+| `INFRAHUB_MCP_DEREFERENCE_SCHEMAS` | Inline `$ref` in JSON schemas for clients that do not handle references (for example, VS Code Copilot) | `false` |
 | `INFRAHUB_MCP_PING_INTERVAL_MS` | Send periodic pings to keep HTTP connections alive, in milliseconds (`0` = disabled, max `300000`) | `0` |
 
 ## Middleware stack
