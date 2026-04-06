@@ -2,7 +2,7 @@
 
 Composes FastMCP built-in middleware with Infrahub-specific interceptors
 for structured logging, request auditing, error handling, response
-size control, and observability.
+size control, rate limiting, caching, retries, and observability.
 
 Usage in server.py::
 
@@ -17,13 +17,29 @@ import secrets
 import time
 from typing import TYPE_CHECKING, Any, override
 
-from fastmcp.server.middleware.error_handling import ErrorHandlingMiddleware
+from fastmcp.server.auth import restrict_tag
+from fastmcp.server.middleware.authorization import AuthMiddleware
+from fastmcp.server.middleware.caching import (
+    CallToolSettings,
+    ListPromptsSettings,
+    ListResourcesSettings,
+    ListToolsSettings,
+    ReadResourceSettings,
+    ResponseCachingMiddleware,
+)
+from fastmcp.server.middleware.dereference import DereferenceRefsMiddleware
+from fastmcp.server.middleware.error_handling import (
+    ErrorHandlingMiddleware,
+    RetryMiddleware,
+)
 from fastmcp.server.middleware.logging import StructuredLoggingMiddleware
 from fastmcp.server.middleware.middleware import (
     CallNext,
     Middleware,
     MiddlewareContext,
 )
+from fastmcp.server.middleware.ping import PingMiddleware
+from fastmcp.server.middleware.rate_limiting import RateLimitingMiddleware
 from fastmcp.server.middleware.response_limiting import (
     ResponseLimitingMiddleware,
 )
@@ -247,6 +263,90 @@ class MetricsMiddleware(Middleware):
             },
         }
 
+    def prometheus_text(self) -> str:
+        """Render metrics in Prometheus exposition text format.
+
+        Produces HELP/TYPE declarations and metric lines for:
+        - ``infrahub_mcp_requests_total`` (counter)
+        - ``infrahub_mcp_errors_total`` (counter)
+        - ``infrahub_mcp_latency_ms_total`` (counter)
+        """
+        lines: list[str] = []
+
+        lines.extend((
+            "# HELP infrahub_mcp_requests_total Total MCP requests by method.",
+            "# TYPE infrahub_mcp_requests_total counter",
+        ))
+        for method, count in sorted(self._requests.items()):
+            lines.append(f'infrahub_mcp_requests_total{{method="{method}"}} {count}')
+
+        lines.extend((
+            "# HELP infrahub_mcp_errors_total Total MCP errors by method.",
+            "# TYPE infrahub_mcp_errors_total counter",
+        ))
+        for method, count in sorted(self._errors.items()):
+            lines.append(f'infrahub_mcp_errors_total{{method="{method}"}} {count}')
+
+        lines.extend((
+            "# HELP infrahub_mcp_latency_ms_total Cumulative latency in milliseconds by method.",
+            "# TYPE infrahub_mcp_latency_ms_total counter",
+        ))
+        for method, ms in sorted(self._latency_ms.items()):
+            lines.append(f'infrahub_mcp_latency_ms_total{{method="{method}"}} {ms:.2f}')
+
+        return "\n".join(lines) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# OpenTelemetry tracing
+# ---------------------------------------------------------------------------
+
+
+class OTelTracingMiddleware(Middleware):
+    """Add OpenTelemetry spans around every MCP request.
+
+    Creates a span named ``mcp.<method>`` for each request, recording
+    the method, status, and any error details. Requires the
+    ``opentelemetry-api`` package to be installed; degrades gracefully
+    to a no-op if the package is unavailable.
+    """
+
+    def __init__(self, tracer_name: str = "infrahub_mcp") -> None:
+        self._tracer: Any = None
+        self._trace_mod: Any = None
+        self._enabled = False
+        try:
+            import opentelemetry.trace as _trace  # noqa: PLC0415
+
+            self._tracer = _trace.get_tracer(tracer_name)
+            self._trace_mod = _trace
+            self._enabled = True
+        except ImportError:
+            logger.warning("opentelemetry not installed; OTelTracingMiddleware disabled")
+
+    @override
+    async def on_message(
+        self,
+        context: MiddlewareContext[Any],
+        call_next: CallNext[Any, Any],
+    ) -> Any:
+        if not self._enabled or self._tracer is None or self._trace_mod is None:
+            return await call_next(context)
+
+        method = context.method or "unknown"
+        with self._tracer.start_as_current_span(f"mcp.{method}") as span:
+            span.set_attribute("mcp.method", method)
+            try:
+                result = await call_next(context)
+                span.set_attribute("mcp.status", "ok")
+                return result
+            except Exception as exc:
+                span.set_attribute("mcp.status", "error")
+                span.set_attribute("mcp.error.type", type(exc).__name__)
+                span.record_exception(exc)
+                span.set_status(self._trace_mod.StatusCode.ERROR, str(exc))
+                raise
+
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -254,13 +354,25 @@ class MetricsMiddleware(Middleware):
 
 _MAX_RESPONSE_BYTES = 500_000  # 500 KB — generous for TOON-encoded data
 
-# Module-level reference so server.py can access metrics from the route handler.
+# Module-level references so server.py can access middleware instances from route handlers.
 _metrics: MetricsMiddleware | None = None
+_error_handling: ErrorHandlingMiddleware | None = None
+_caching_middleware: Any | None = None  # ResponseCachingMiddleware (optional)
 
 
 def get_metrics() -> MetricsMiddleware | None:
     """Return the active MetricsMiddleware instance, if configured."""
     return _metrics
+
+
+def get_error_handling() -> ErrorHandlingMiddleware | None:
+    """Return the active ErrorHandlingMiddleware instance, if configured."""
+    return _error_handling
+
+
+def get_caching_middleware() -> Any | None:
+    """Return the active ResponseCachingMiddleware instance, if configured."""
+    return _caching_middleware
 
 
 def configure_middleware(mcp: Any, config: ServerConfig) -> None:
@@ -271,14 +383,21 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
 
     1. **RequestIdMiddleware** — correlation ID (outermost)
     2. **MetricsMiddleware** — request/error/latency counters
-    3. **ErrorHandlingMiddleware** — exception → MCP error mapping
-    4. **StructuredLoggingMiddleware** — JSON logs with token estimates
-    5. **DetailedTimingMiddleware** — per-operation timing breakdown
-    6. **ReadOnlyMiddleware** — tag-based write tool blocking (conditional)
-    7. **AuditMiddleware** — structured audit trail
-    8. **ResponseLimitingMiddleware** — truncates oversized responses
+    3. **OTelTracingMiddleware** — OpenTelemetry spans (conditional)
+    4. **ErrorHandlingMiddleware** — exception → MCP error mapping
+    5. **RetryMiddleware** — exponential backoff for transient failures (conditional)
+    6. **RateLimitingMiddleware** — token bucket rate limiting (conditional)
+    7. **StructuredLoggingMiddleware** — JSON logs with token estimates
+    8. **DetailedTimingMiddleware** — per-operation timing breakdown
+    9. **AuthMiddleware** — scope-based authorization for HTTP transport (conditional)
+    10. **ReadOnlyMiddleware** — tag-based write tool blocking (conditional)
+    11. **AuditMiddleware** — structured audit trail
+    12. **ResponseCachingMiddleware** — TTL-based response caching (conditional)
+    13. **DereferenceRefsMiddleware** — inline $ref in JSON schemas (conditional)
+    14. **PingMiddleware** — periodic keepalive pings for HTTP sessions (conditional)
+    15. **ResponseLimitingMiddleware** — truncates oversized responses (innermost)
     """
-    global _metrics  # noqa: PLW0603
+    global _metrics, _error_handling, _caching_middleware  # noqa: PLW0603
 
     # 1. Request ID correlation — outermost wrapper
     mcp.add_middleware(RequestIdMiddleware())
@@ -287,16 +406,52 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
     _metrics = MetricsMiddleware()
     mcp.add_middleware(_metrics)
 
-    # 3. Error handling — catches everything below
-    mcp.add_middleware(
-        ErrorHandlingMiddleware(
-            logger=logging.getLogger("infrahub_mcp.errors"),
-            include_traceback=config.log_level_debug,
-            transform_errors=True,
-        )
-    )
+    # 3. OpenTelemetry tracing — spans for every request (conditional)
+    if config.otel_enabled:
+        mcp.add_middleware(OTelTracingMiddleware())
+        logger.info("otel_tracing enabled=true")
 
-    # 4. Structured logging — JSON log lines with token estimates
+    # 4. Error handling — catches everything below
+    _error_handling = ErrorHandlingMiddleware(
+        logger=logging.getLogger("infrahub_mcp.errors"),
+        include_traceback=config.log_level_debug,
+        transform_errors=True,
+    )
+    mcp.add_middleware(_error_handling)
+
+    # 5. Retry — exponential backoff for transient failures (conditional)
+    if config.retry_max_attempts > 0:
+        mcp.add_middleware(
+            RetryMiddleware(
+                max_retries=config.retry_max_attempts,
+                base_delay=config.retry_base_delay,
+                retry_exceptions=(ConnectionError, TimeoutError, OSError),
+                logger=logging.getLogger("infrahub_mcp.retry"),
+            )
+        )
+        logger.info(
+            "retry_middleware enabled=true max_retries=%d base_delay=%.1f",
+            config.retry_max_attempts,
+            config.retry_base_delay,
+        )
+
+    # 6. Rate limiting — token bucket (conditional)
+    if config.rate_limit_rps > 0:
+        burst = config.rate_limit_burst if config.rate_limit_burst > 0 else int(config.rate_limit_rps * 2)
+        mcp.add_middleware(
+            RateLimitingMiddleware(
+                max_requests_per_second=config.rate_limit_rps,
+                burst_capacity=burst,
+                global_limit=True,
+            )
+        )
+        logger.info(
+            "rate_limiting enabled=true rps=%.1f burst=%d",
+            config.rate_limit_rps,
+            burst,
+        )
+
+    # 7. Structured logging — JSON log lines with token estimates
     mcp.add_middleware(
         StructuredLoggingMiddleware(
             logger=logging.getLogger("infrahub_mcp.requests"),
@@ -306,22 +461,59 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
         )
     )
 
-    # 5. Detailed timing — per-operation breakdown
+    # 8. Detailed timing — per-operation breakdown
     mcp.add_middleware(
         DetailedTimingMiddleware(
             logger=logging.getLogger("infrahub_mcp.timing"),
         )
     )
 
-    # 6. Read-only enforcement — tag-based, defense-in-depth (conditional)
+    # 9. Auth middleware — scope-based authorization for HTTP transport (conditional)
+    if config.auth_scopes_write:
+        scopes = [s.strip() for s in config.auth_scopes_write.split(",") if s.strip()]
+        mcp.add_middleware(
+            AuthMiddleware(auth=restrict_tag(WRITE_TAG, scopes=scopes))
+        )
+        logger.info("auth_middleware enabled=true write_scopes=%s", scopes)
+
+    # 10. Read-only enforcement — tag-based, defense-in-depth (conditional)
     if config.read_only:
         mcp.add_middleware(ReadOnlyMiddleware())
         logger.info("read_only_mode enabled=true")
 
-    # 7. Audit trail — structured tool/resource access log
+    # 11. Audit trail — structured tool/resource access log
     mcp.add_middleware(AuditMiddleware())
 
-    # 8. Response size limiting — innermost
+    # 12. Response caching — TTL-based for schema/list operations (conditional)
+    if config.cache_enabled:
+        _caching_middleware = ResponseCachingMiddleware(
+            list_tools_settings=ListToolsSettings(ttl=config.cache_list_ttl),
+            list_resources_settings=ListResourcesSettings(ttl=config.cache_list_ttl),
+            list_prompts_settings=ListPromptsSettings(ttl=config.cache_list_ttl),
+            read_resource_settings=ReadResourceSettings(ttl=config.cache_read_ttl),
+            call_tool_settings=CallToolSettings(
+                ttl=config.cache_read_ttl,
+                included_tools=["get_schema"],
+            ),
+        )
+        mcp.add_middleware(_caching_middleware)
+        logger.info(
+            "response_caching enabled=true list_ttl=%d read_ttl=%d",
+            config.cache_list_ttl,
+            config.cache_read_ttl,
+        )
+
+    # 13. Dereference $ref in JSON schemas for client compatibility (conditional)
+    if config.dereference_schemas:
+        mcp.add_middleware(DereferenceRefsMiddleware())
+        logger.info("dereference_schemas enabled=true")
+
+    # 14. Ping — periodic keepalive for HTTP sessions (conditional)
+    if config.ping_interval_ms > 0:
+        mcp.add_middleware(PingMiddleware(interval_ms=config.ping_interval_ms))
+        logger.info("ping_middleware enabled=true interval_ms=%d", config.ping_interval_ms)
+
+    # 15. Response size limiting — innermost
     mcp.add_middleware(
         ResponseLimitingMiddleware(
             max_size=_MAX_RESPONSE_BYTES,

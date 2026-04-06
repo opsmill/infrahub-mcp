@@ -6,10 +6,15 @@ from contextlib import asynccontextmanager
 from fastmcp import FastMCP
 from infrahub_sdk.client import InfrahubClient
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from infrahub_mcp.config import ServerConfig, load_config
-from infrahub_mcp.middleware import configure_middleware, get_metrics
+from infrahub_mcp.middleware import (
+    configure_middleware,
+    get_caching_middleware,
+    get_error_handling,
+    get_metrics,
+)
 from infrahub_mcp.prompts.prompts import mcp as prompts_mcp
 from infrahub_mcp.resources.branches import mcp as branches_resources_mcp
 from infrahub_mcp.resources.schema import mcp as schema_resources_mcp
@@ -76,15 +81,42 @@ async def health_check(request: Request) -> JSONResponse:  # noqa: ARG001, RUF02
 
 
 @mcp.custom_route("/metrics", methods=["GET"])
-async def metrics_endpoint(request: Request) -> JSONResponse:  # noqa: ARG001, RUF029
+async def metrics_endpoint(request: Request) -> Response:  # noqa: ARG001, RUF029
     """Metrics endpoint for monitoring (Prometheus, Grafana, Datadog).
 
-    Returns request counts, error counts, and cumulative latency per MCP method.
+    Returns Prometheus exposition format when ``INFRAHUB_MCP_PROMETHEUS_ENABLED=true``,
+    otherwise returns JSON with request counts, error counts, cumulative latency,
+    error stats from ErrorHandlingMiddleware, and cache statistics.
     """
     metrics = get_metrics()
     if metrics is None:
         return JSONResponse({"error": "metrics not configured"}, status_code=503)
-    return JSONResponse(metrics.snapshot())
+
+    # Prometheus text format
+    if _config.prometheus_enabled:
+        return Response(
+            content=metrics.prometheus_text(),
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+        )
+
+    # JSON format with enriched data
+    data = metrics.snapshot()
+
+    # Include error stats from ErrorHandlingMiddleware
+    error_mw = get_error_handling()
+    if error_mw is not None:
+        data["error_stats"] = error_mw.get_error_stats()
+
+    # Include cache statistics if caching is enabled
+    caching = get_caching_middleware()
+    if caching is not None:
+        try:
+            cache_stats = caching.statistics()
+            data["cache"] = cache_stats.model_dump(exclude_none=True)
+        except Exception:
+            logger.debug("Failed to retrieve cache statistics", exc_info=True)
+
+    return JSONResponse(data)
 
 
 @mcp.prompt()

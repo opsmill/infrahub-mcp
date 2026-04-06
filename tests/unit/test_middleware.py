@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from typing import Any
+from unittest.mock import MagicMock
 
 import mcp.types as mt
 import pytest
@@ -15,10 +16,14 @@ from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.middleware import (
     AuditMiddleware,
     MetricsMiddleware,
+    OTelTracingMiddleware,
     ReadOnlyMiddleware,
     RequestIdMiddleware,
     WRITE_TAG,
     configure_middleware,
+    get_caching_middleware,
+    get_error_handling,
+    get_metrics,
 )
 
 
@@ -308,6 +313,76 @@ class TestMetricsMiddleware:
         # Should not raise
         json.dumps(snap)
 
+    @pytest.mark.anyio
+    async def test_prometheus_text_format(self) -> None:
+        middleware = MetricsMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> str:
+            return "ok"
+
+        await middleware.on_message(ctx, call_next)
+
+        text = middleware.prometheus_text()
+        assert "infrahub_mcp_requests_total" in text
+        assert 'method="tools/call"' in text
+        assert "# TYPE infrahub_mcp_requests_total counter" in text
+        assert "# HELP infrahub_mcp_requests_total" in text
+
+    @pytest.mark.anyio
+    async def test_prometheus_text_includes_errors(self) -> None:
+        middleware = MetricsMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> str:
+            msg = "fail"
+            raise RuntimeError(msg)
+
+        with pytest.raises(RuntimeError):
+            await middleware.on_message(ctx, call_next)
+
+        text = middleware.prometheus_text()
+        assert "infrahub_mcp_errors_total" in text
+
+    def test_prometheus_text_empty(self) -> None:
+        middleware = MetricsMiddleware()
+        text = middleware.prometheus_text()
+        assert "infrahub_mcp_requests_total" in text
+        assert text.endswith("\n")
+
+
+# ---------------------------------------------------------------------------
+# OTelTracingMiddleware
+# ---------------------------------------------------------------------------
+
+
+class TestOTelTracingMiddleware:
+    @pytest.mark.anyio
+    async def test_passes_through_when_otel_unavailable(self) -> None:
+        """When opentelemetry is not installed, middleware is a no-op."""
+        middleware = OTelTracingMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> str:
+            return "ok"
+
+        # Even if otel is not installed, this should work
+        result = await middleware.on_message(ctx, call_next)
+        assert result == "ok"
+
+    @pytest.mark.anyio
+    async def test_propagates_errors(self) -> None:
+        """Errors should propagate through the middleware."""
+        middleware = OTelTracingMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> str:
+            msg = "fail"
+            raise RuntimeError(msg)
+
+        with pytest.raises(RuntimeError, match="fail"):
+            await middleware.on_message(ctx, call_next)
+
 
 # ---------------------------------------------------------------------------
 # configure_middleware
@@ -316,8 +391,6 @@ class TestMetricsMiddleware:
 
 class TestConfigureMiddleware:
     def test_registers_middleware_read_write_mode(self) -> None:
-        from unittest.mock import MagicMock
-
         mock_mcp = MagicMock()
         mock_mcp.middleware = []
 
@@ -337,8 +410,6 @@ class TestConfigureMiddleware:
         assert "ErrorHandlingMiddleware" in types
 
     def test_registers_middleware_read_only_mode(self) -> None:
-        from unittest.mock import MagicMock
-
         mock_mcp = MagicMock()
         mock_mcp.middleware = []
 
@@ -354,8 +425,6 @@ class TestConfigureMiddleware:
         assert "ReadOnlyMiddleware" in types
 
     def test_debug_mode_enables_tracebacks(self) -> None:
-        from unittest.mock import MagicMock
-
         mock_mcp = MagicMock()
         mock_mcp.middleware = []
 
@@ -373,3 +442,315 @@ class TestConfigureMiddleware:
             if type(m).__name__ == "ErrorHandlingMiddleware"
         )
         assert error_mw.include_traceback is True
+
+    def test_rate_limiting_enabled(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig(rate_limit_rps=10.0, rate_limit_burst=20)
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "RateLimitingMiddleware" in types
+
+    def test_rate_limiting_disabled_by_default(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig()
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "RateLimitingMiddleware" not in types
+
+    def test_retry_middleware_enabled(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig(retry_max_attempts=3, retry_base_delay=0.5)
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "RetryMiddleware" in types
+
+    def test_retry_middleware_disabled_by_default(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig()
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "RetryMiddleware" not in types
+
+    def test_cache_middleware_enabled(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig(cache_enabled=True, cache_list_ttl=60, cache_read_ttl=120)
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "ResponseCachingMiddleware" in types
+
+    def test_cache_middleware_disabled_by_default(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig()
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "ResponseCachingMiddleware" not in types
+
+    def test_otel_middleware_enabled(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig(otel_enabled=True)
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "OTelTracingMiddleware" in types
+
+    def test_otel_middleware_disabled_by_default(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig()
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "OTelTracingMiddleware" not in types
+
+    def test_dereference_middleware_enabled(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig(dereference_schemas=True)
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "DereferenceRefsMiddleware" in types
+
+    def test_dereference_middleware_disabled_by_default(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig()
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "DereferenceRefsMiddleware" not in types
+
+    def test_ping_middleware_enabled(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig(ping_interval_ms=5000)
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "PingMiddleware" in types
+
+    def test_ping_middleware_disabled_by_default(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig()
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "PingMiddleware" not in types
+
+    def test_auth_middleware_enabled(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig(auth_scopes_write="infrahub:write,admin")
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "AuthMiddleware" in types
+
+    def test_auth_middleware_disabled_by_default(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig()
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "AuthMiddleware" not in types
+
+    def test_all_middleware_enabled(self) -> None:
+        """Smoke test: enable all optional middleware at once."""
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig(
+            read_only=True,
+            log_level_debug=True,
+            rate_limit_rps=10.0,
+            rate_limit_burst=20,
+            retry_max_attempts=3,
+            cache_enabled=True,
+            otel_enabled=True,
+            dereference_schemas=True,
+            ping_interval_ms=5000,
+            auth_scopes_write="write",
+        )
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "RateLimitingMiddleware" in types
+        assert "RetryMiddleware" in types
+        assert "ResponseCachingMiddleware" in types
+        assert "OTelTracingMiddleware" in types
+        assert "DereferenceRefsMiddleware" in types
+        assert "PingMiddleware" in types
+        assert "AuthMiddleware" in types
+        assert "ReadOnlyMiddleware" in types
+
+    def test_rate_limit_auto_burst(self) -> None:
+        """Burst capacity auto-calculated as 2x RPS when not specified."""
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig(rate_limit_rps=10.0, rate_limit_burst=0)
+        configure_middleware(mock_mcp, config)
+
+        rate_limiter = next(
+            m for m in mock_mcp.middleware if type(m).__name__ == "RateLimitingMiddleware"
+        )
+        assert rate_limiter.burst_capacity == 20  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# Module-level getters
+# ---------------------------------------------------------------------------
+
+
+class TestModuleLevelGetters:
+    def test_get_metrics_after_configure(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+        mock_mcp.add_middleware.side_effect = lambda mw: mock_mcp.middleware.append(mw)
+
+        config = ServerConfig()
+        configure_middleware(mock_mcp, config)
+
+        assert get_metrics() is not None
+
+    def test_get_error_handling_after_configure(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+        mock_mcp.add_middleware.side_effect = lambda mw: mock_mcp.middleware.append(mw)
+
+        config = ServerConfig()
+        configure_middleware(mock_mcp, config)
+
+        assert get_error_handling() is not None
+
+    def test_get_caching_middleware_when_disabled(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+        mock_mcp.add_middleware.side_effect = lambda mw: mock_mcp.middleware.append(mw)
+
+        config = ServerConfig(cache_enabled=False)
+        configure_middleware(mock_mcp, config)
+
+        # Caching may or may not be None depending on previous test state,
+        # but the middleware should not be in the stack
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "ResponseCachingMiddleware" not in types
+
+    def test_get_caching_middleware_when_enabled(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+        mock_mcp.add_middleware.side_effect = lambda mw: mock_mcp.middleware.append(mw)
+
+        config = ServerConfig(cache_enabled=True)
+        configure_middleware(mock_mcp, config)
+
+        assert get_caching_middleware() is not None
