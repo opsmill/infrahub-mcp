@@ -9,7 +9,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from infrahub_mcp.schema import get_valid_kinds_summary
-from infrahub_mcp.utils import _log_and_raise_error, get_or_create_session_branch
+from infrahub_mcp.utils import _log_and_raise_error, get_client, get_or_create_session_branch
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
@@ -24,7 +24,7 @@ _BRANCH_NOTE = "All writes target the active session branch, auto-created on the
 
 @mcp.tool(
     tags={"nodes", "write"},
-    annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False, destructiveHint=False),
+    annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True, destructiveHint=False),
 )
 async def node_upsert(  # pylint: disable=too-many-locals
     ctx: Context,
@@ -80,7 +80,7 @@ async def node_upsert(  # pylint: disable=too-many-locals
     Returns:
         Dict with node id, display_label, and branch on success.
     """
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
     session_branch = await get_or_create_session_branch(ctx)
 
     # Validate kind exists
@@ -95,6 +95,7 @@ async def node_upsert(  # pylint: disable=too-many-locals
         )
 
     sdk_data = {key: {"value": value} for key, value in data.items()}
+    unknown_attrs: list[str] = []
 
     try:
         if id is not None or hfid is not None:
@@ -107,7 +108,6 @@ async def node_upsert(  # pylint: disable=too-many-locals
 
             await ctx.info(f"Updating {kind} node on branch {session_branch}")
             node = await client.get(**get_kwargs)
-            unknown_attrs: list[str] = []
             for attr_name, attr_payload in sdk_data.items():
                 attr = getattr(node, attr_name, None)
                 if attr is not None and hasattr(attr, "value"):
@@ -138,7 +138,18 @@ async def node_upsert(  # pylint: disable=too-many-locals
             remediation=f"Check attribute names against infrahub://schema/{kind}.",
         )
 
-    return {"id": node.id, "display_label": node.display_label, "branch": session_branch}
+    result: dict[str, Any] = {
+        "id": node.id,
+        "display_label": node.display_label,
+        "branch": session_branch,
+    }
+    if unknown_attrs:
+        result["skipped_attributes"] = unknown_attrs
+        result["warning"] = (
+            f"Attributes {unknown_attrs} are not defined on {kind}. "
+            f"Check infrahub://schema/{kind} for valid attribute names."
+        )
+    return result
 
 
 @mcp.tool(
@@ -180,7 +191,7 @@ async def node_delete(
             remediation=_NO_IDENTIFIER_MSG,
         )
 
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
     session_branch = await get_or_create_session_branch(ctx)
 
     try:
@@ -252,7 +263,7 @@ async def propose_changes(
     Returns:
         Dict with proposed change id and branch details on success.
     """
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
     app_ctx = ctx.request_context.lifespan_context  # type: ignore[union-attr]
 
     if app_ctx.session_branch is None:  # type: ignore[union-attr]
@@ -289,3 +300,63 @@ async def propose_changes(
         "source_branch": session_branch,
         "destination_branch": destination_branch,
     }
+
+
+@mcp.tool(
+    tags={"graphql", "write"},
+    annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False, destructiveHint=True),
+)
+async def mutate_graphql(
+    ctx: Context,
+    query: Annotated[str, Field(description="GraphQL mutation to execute.")],
+    branch: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "Branch to execute the mutation against. "
+                "Defaults to the auto-created session branch (recommended). "
+                "Override only when targeting a specific non-default branch."
+            ),
+        ),
+    ] = None,
+) -> dict[str, Any]:
+    """Execute a GraphQL mutation against Infrahub on the active session branch.
+
+    Use this tool for GraphQL mutations (creating, updating, or deleting data).
+    For read-only queries, use ``query_graphql`` instead.
+
+    The mutation targets the session branch by default, which is auto-created on
+    the first write of the session. Prefer ``node_upsert`` / ``node_delete`` for
+    simple attribute changes — use this tool for complex mutations only.
+
+    To discover available kinds and their attributes, read the ``infrahub://schema``
+    resource or call the ``get_schema`` tool.
+    For the full GraphQL SDL, read ``infrahub://graphql-schema``.
+
+    Parameters:
+        query: GraphQL mutation to execute.
+        branch: Branch to execute against. Defaults to the session branch.
+
+    Returns:
+        The result of the mutation.
+    """
+    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
+
+    if branch is None:
+        branch = await get_or_create_session_branch(ctx)
+
+    try:
+        data = await client.execute_graphql(query=query, branch_name=branch)
+    except GraphQLError as exc:
+        await _log_and_raise_error(
+            ctx,
+            exc,
+            remediation=(
+                "Call get_schema() to list valid kinds, or "
+                "get_schema(kind='...') to see attributes and filters. "
+                "Read infrahub://graphql-schema for the full GraphQL SDL."
+            ),
+        )
+
+    return data

@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Any
 
 from fastmcp import Context, FastMCP
 
+from infrahub_mcp.utils import get_client
+
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
 
@@ -31,7 +33,7 @@ async def branches(ctx: Context) -> str:
         Compact JSON object keyed by branch name, where each value contains
         ``is_default`` (bool) and ``description`` (str) fields.
     """
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
 
     raw = await client.branch.all()
 
