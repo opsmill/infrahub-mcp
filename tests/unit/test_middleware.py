@@ -12,6 +12,9 @@ import pytest
 from fastmcp.server.middleware.middleware import MiddlewareContext
 from fastmcp.tools.base import ToolResult
 
+import infrahub_mcp.middleware as middleware_module
+from mcp import McpError
+
 from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.middleware import (
     AuditMiddleware,
@@ -174,8 +177,6 @@ class TestReadOnlyMiddleware:
             msg = "should not reach here"
             raise AssertionError(msg)
 
-        from mcp import McpError
-
         with pytest.raises(McpError, match="read-only mode"):
             await middleware.on_call_tool(ctx, call_next)
 
@@ -206,8 +207,6 @@ class TestReadOnlyMiddleware:
         async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
             msg = "should not reach here"
             raise AssertionError(msg)
-
-        from mcp import McpError
 
         with pytest.raises(McpError):
             await middleware.on_call_tool(ctx, call_next)
@@ -389,6 +388,14 @@ class TestOTelTracingMiddleware:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _reset_middleware_globals() -> None:
+    """Reset module-level middleware state between tests."""
+    middleware_module._metrics = None  # noqa: SLF001
+    middleware_module._error_handling = None  # noqa: SLF001
+    middleware_module._caching_middleware = None  # noqa: SLF001
+
+
 class TestConfigureMiddleware:
     def test_registers_middleware_read_write_mode(self) -> None:
         mock_mcp = MagicMock()
@@ -486,7 +493,7 @@ class TestConfigureMiddleware:
         configure_middleware(mock_mcp, config)
 
         types = [type(m).__name__ for m in mock_mcp.middleware]
-        assert "RetryMiddleware" in types
+        assert "SafeRetryMiddleware" in types
 
     def test_retry_middleware_disabled_by_default(self) -> None:
         mock_mcp = MagicMock()
@@ -679,7 +686,7 @@ class TestConfigureMiddleware:
 
         types = [type(m).__name__ for m in mock_mcp.middleware]
         assert "RateLimitingMiddleware" in types
-        assert "RetryMiddleware" in types
+        assert "SafeRetryMiddleware" in types
         assert "ResponseCachingMiddleware" in types
         assert "OTelTracingMiddleware" in types
         assert "DereferenceRefsMiddleware" in types
@@ -740,8 +747,7 @@ class TestModuleLevelGetters:
         config = ServerConfig(cache_enabled=False)
         configure_middleware(mock_mcp, config)
 
-        # Caching may or may not be None depending on previous test state,
-        # but the middleware should not be in the stack
+        assert get_caching_middleware() is None
         types = [type(m).__name__ for m in mock_mcp.middleware]
         assert "ResponseCachingMiddleware" not in types
 

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from starlette.testclient import TestClient
+
+from infrahub_mcp.server import mcp
 
 
 class TestHealthEndpoint:
@@ -12,11 +14,9 @@ class TestHealthEndpoint:
 
     def test_healthy(self) -> None:
         mock_client = MagicMock()
-        mock_client.get_version.return_value = "1.2.3"
+        mock_client.get_version = AsyncMock(return_value="1.2.3")
 
         with patch("infrahub_mcp.server.InfrahubClient", return_value=mock_client):
-            from infrahub_mcp.server import mcp
-
             app = mcp.http_app()
             client = TestClient(app)
             response = client.get("/health")
@@ -27,11 +27,9 @@ class TestHealthEndpoint:
 
     def test_unhealthy(self) -> None:
         mock_client = MagicMock()
-        mock_client.get_version.side_effect = ConnectionError("Connection refused")
+        mock_client.get_version = AsyncMock(side_effect=ConnectionError("Connection refused"))
 
         with patch("infrahub_mcp.server.InfrahubClient", return_value=mock_client):
-            from infrahub_mcp.server import mcp
-
             app = mcp.http_app()
             client = TestClient(app)
             response = client.get("/health")

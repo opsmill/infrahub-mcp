@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, NoReturn
 
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
+from infrahub_sdk.exceptions import GraphQLError
 from infrahub_sdk.node import Attribute, InfrahubNode, RelatedNode, RelationshipManager
 
 from infrahub_mcp.config import ServerConfig
@@ -56,10 +57,63 @@ def expand_branch_pattern(pattern: str) -> str:
     return pattern.format(date=date, hex=slug, user="anonymous")
 
 
-async def _branch_exists(client: "InfrahubClient", branch_name: str) -> bool:
-    """Check if a branch already exists in Infrahub."""
-    branches = await client.branch.all()
-    return branch_name in branches
+def _is_branch_conflict(exc: GraphQLError) -> bool:
+    """Return True if the GraphQL error indicates a branch name conflict."""
+    msg = str(exc).lower()
+    return "already exists" in msg or "unique" in msg or "duplicate" in msg
+
+
+async def _create_branch_with_pattern(app_ctx: AppContext, ctx: Context) -> str:
+    """Create a session branch from a pattern with placeholders, retrying on collision."""
+    pattern = app_ctx.config.branch_pattern
+    max_retries = app_ctx.config.max_branch_retries
+    for attempt in range(max_retries):
+        branch_name = expand_branch_pattern(pattern)
+        await ctx.info(f"Auto-creating session branch: {branch_name}")
+        try:
+            await app_ctx.client.branch.create(
+                branch_name=branch_name,
+                sync_with_git=False,
+                background_execution=False,
+            )
+            return branch_name
+        except GraphQLError as exc:
+            if not _is_branch_conflict(exc) or attempt == max_retries - 1:
+                msg = (
+                    f"Failed to create branch '{branch_name}' after "
+                    f"{attempt + 1} attempt(s) using pattern '{pattern}': {exc}"
+                )
+                raise ToolError(msg) from exc
+            # Collision — retry with a new hex
+
+    msg = (
+        f"Failed to generate a unique branch name after {max_retries} attempts "
+        f"using pattern '{pattern}'. Try a pattern with {{hex}} for uniqueness."
+    )
+    raise ToolError(msg)
+
+
+async def _create_branch_fixed(app_ctx: AppContext, ctx: Context) -> str:
+    """Create a session branch with a fixed name (no placeholders)."""
+    branch_name = app_ctx.config.branch_pattern
+    await ctx.info(f"Auto-creating session branch: {branch_name}")
+    try:
+        await app_ctx.client.branch.create(
+            branch_name=branch_name,
+            sync_with_git=False,
+            background_execution=False,
+        )
+    except GraphQLError as exc:
+        if _is_branch_conflict(exc):
+            msg = (
+                f"Branch '{branch_name}' already exists. "
+                "A fixed branch pattern cannot reuse an existing branch. "
+                "Use a pattern with {hex} or {date} placeholders for unique branches, "
+                "or delete the existing branch first."
+            )
+            raise ToolError(msg) from exc
+        raise
+    return branch_name
 
 
 async def get_or_create_session_branch(ctx: Context) -> str:
@@ -67,43 +121,20 @@ async def get_or_create_session_branch(ctx: Context) -> str:
 
     Uses the branch pattern from ``ServerConfig.branch_pattern``:
     - Patterns with placeholders ({date}, {hex}, {user}) are expanded.
-      If the generated name collides, a new {hex} is generated (up to 5 retries).
-    - Fixed names (no placeholders) must not already exist — the server
-      refuses to write to a pre-existing branch to avoid conflicts.
+      If creation fails due to a name conflict, a new {hex} is generated (up to max retries).
+    - Fixed names (no placeholders) attempt a single creation — if the branch
+      already exists the server raises a clear error.
+
+    Branch creation is attempted directly to avoid TOCTOU races between
+    checking existence and creating.
     """
     app_ctx: AppContext = ctx.request_context.lifespan_context  # type: ignore[union-attr]
     async with app_ctx._session_branch_lock:  # noqa: SLF001
         if app_ctx.session_branch is None:
-            pattern = app_ctx.config.branch_pattern
-
-            if _has_placeholders(pattern):
-                # Pattern mode: expand and retry on collision
-                max_retries = app_ctx.config.max_branch_retries
-                for _ in range(max_retries):
-                    branch_name = expand_branch_pattern(pattern)
-                    if not await _branch_exists(app_ctx.client, branch_name):
-                        break
-                else:
-                    msg = (
-                        f"Failed to generate a unique branch name after {max_retries} attempts "
-                        f"using pattern '{pattern}'. Try a pattern with {{hex}} for uniqueness."
-                    )
-                    raise ToolError(msg)
+            if _has_placeholders(app_ctx.config.branch_pattern):
+                app_ctx.session_branch = await _create_branch_with_pattern(app_ctx, ctx)
             else:
-                # Fixed name mode: must not already exist
-                branch_name = pattern
-                if await _branch_exists(app_ctx.client, branch_name):
-                    msg = (
-                        f"Branch '{branch_name}' already exists. "
-                        "A fixed branch pattern cannot reuse an existing branch. "
-                        "Use a pattern with {hex} or {date} placeholders for unique branches, "
-                        "or delete the existing branch first."
-                    )
-                    raise ToolError(msg)
-
-            await ctx.info(f"Auto-creating session branch: {branch_name}")
-            await app_ctx.client.branch.create(branch_name=branch_name, sync_with_git=False, background_execution=False)
-            app_ctx.session_branch = branch_name
+                app_ctx.session_branch = await _create_branch_fixed(app_ctx, ctx)
     return app_ctx.session_branch
 
 

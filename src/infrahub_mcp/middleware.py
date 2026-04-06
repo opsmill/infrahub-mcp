@@ -12,6 +12,7 @@ Usage in server.py::
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import secrets
 import time
@@ -62,6 +63,11 @@ logger = logging.getLogger("infrahub_mcp.middleware")
 # so any new write tool automatically gets blocked if tagged "write".
 WRITE_TAG = "write"
 
+# ContextVar for propagating the request ID to downstream middleware and log filters.
+current_request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "current_request_id", default=None
+)
+
 
 # ---------------------------------------------------------------------------
 # Request correlation
@@ -71,8 +77,9 @@ WRITE_TAG = "write"
 class RequestIdMiddleware(Middleware):
     """Inject a unique request ID into every request for traceability.
 
-    The ID is logged at the start and end of processing so operators can
-    correlate log lines across the middleware stack.
+    The ID is stored in the ``current_request_id`` context variable so that
+    downstream middleware, tool handlers, and log filters can include it
+    for correlation.  It is also logged at the start and end of processing.
     """
 
     @override
@@ -82,6 +89,7 @@ class RequestIdMiddleware(Middleware):
         call_next: CallNext[Any, Any],
     ) -> Any:
         request_id = secrets.token_hex(8)
+        token = current_request_id.set(request_id)
         method = context.method or "unknown"
         logger.info(
             "request_start request_id=%s method=%s",
@@ -103,6 +111,8 @@ class RequestIdMiddleware(Middleware):
                 method,
             )
             raise
+        finally:
+            current_request_id.reset(token)
 
 
 # ---------------------------------------------------------------------------
@@ -243,15 +253,15 @@ class MetricsMiddleware(Middleware):
 
         start = time.perf_counter()
         try:
-            result = await call_next(context)
+            return await call_next(context)
+        except Exception:
+            self._errors[method] = self._errors.get(method, 0) + 1
+            raise
+        finally:
             elapsed = (time.perf_counter() - start) * 1000
             self._latency_ms[method] = (
                 self._latency_ms.get(method, 0.0) + elapsed
             )
-            return result
-        except Exception:
-            self._errors[method] = self._errors.get(method, 0) + 1
-            raise
 
     def snapshot(self) -> dict[str, Any]:
         """Return a JSON-serializable metrics snapshot."""
@@ -349,6 +359,48 @@ class OTelTracingMiddleware(Middleware):
 
 
 # ---------------------------------------------------------------------------
+# Idempotency-aware retry
+# ---------------------------------------------------------------------------
+
+
+class SafeRetryMiddleware(RetryMiddleware):
+    """Retry middleware that only retries tool calls marked as idempotent.
+
+    Extends FastMCP's ``RetryMiddleware`` with an ``on_call_tool`` override
+    that checks ``ToolAnnotations.idempotentHint`` before retrying.
+    Non-idempotent tool calls (e.g. ``node_upsert`` without an id) are
+    passed through without retries to avoid duplicate side effects.
+
+    Other MCP methods (resource reads, prompt gets, list operations) are
+    always safe to retry and use the parent class behavior.
+    """
+
+    @override
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext[mt.CallToolRequestParams],
+        call_next: CallNext[mt.CallToolRequestParams, ToolResult],
+    ) -> ToolResult:
+        # Check if the tool is marked idempotent before applying retries
+        tool = None
+        if context.fastmcp_context is not None:
+            tool = await context.fastmcp_context.fastmcp.get_tool(
+                context.message.name
+            )
+
+        is_idempotent = False
+        if tool is not None and tool.annotations is not None:
+            is_idempotent = bool(tool.annotations.idempotentHint)
+
+        if not is_idempotent:
+            # Skip retry logic — call through directly
+            return await call_next(context)
+
+        # Delegate to parent retry logic
+        return await super().on_call_tool(context, call_next)
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -399,6 +451,9 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
     """
     global _metrics, _error_handling, _caching_middleware  # noqa: PLW0603
 
+    # Reset module-level references so reconfiguration is clean
+    _caching_middleware = None
+
     # 1. Request ID correlation — outermost wrapper
     mcp.add_middleware(RequestIdMiddleware())
 
@@ -420,9 +475,10 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
     mcp.add_middleware(_error_handling)
 
     # 5. Retry — exponential backoff for transient failures (conditional)
+    #    Uses SafeRetryMiddleware to skip retries for non-idempotent tool calls.
     if config.retry_max_attempts > 0:
         mcp.add_middleware(
-            RetryMiddleware(
+            SafeRetryMiddleware(
                 max_retries=config.retry_max_attempts,
                 base_delay=config.retry_base_delay,
                 retry_exceptions=(ConnectionError, TimeoutError, OSError),
