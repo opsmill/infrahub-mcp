@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from typing import Any
-from unittest.mock import AsyncMock
 
 import mcp.types as mt
 import pytest
@@ -15,9 +14,10 @@ from fastmcp.tools.base import ToolResult
 from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.middleware import (
     AuditMiddleware,
+    MetricsMiddleware,
     ReadOnlyMiddleware,
     RequestIdMiddleware,
-    _WRITE_TOOLS,
+    WRITE_TAG,
     configure_middleware,
 )
 
@@ -58,15 +58,16 @@ def _make_resource_context(
 
 
 class _FakeTool:
-    """Lightweight stand-in for fastmcp.tools.base.Tool in middleware tests."""
+    """Lightweight stand-in for fastmcp Tool in middleware tests."""
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, *, tags: set[str] | None = None) -> None:
         self.name = name
+        self.tags = tags or set()
 
 
-def _make_tool(name: str) -> Any:
-    """Create a minimal object with a ``name`` attribute for testing."""
-    return _FakeTool(name)
+def _make_tool(name: str, *, tags: set[str] | None = None) -> Any:
+    """Create a minimal object with ``name`` and ``tags`` for testing."""
+    return _FakeTool(name, tags=tags)
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +77,9 @@ def _make_tool(name: str) -> Any:
 
 class TestRequestIdMiddleware:
     @pytest.mark.anyio
-    async def test_injects_request_id_in_logs(self, caplog: pytest.LogCaptureFixture) -> None:
+    async def test_injects_request_id_in_logs(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         middleware = RequestIdMiddleware()
         ctx = _make_tool_context("get_schema")
 
@@ -92,7 +95,9 @@ class TestRequestIdMiddleware:
         assert any("request_id=" in r.message for r in caplog.records)
 
     @pytest.mark.anyio
-    async def test_logs_error_status_on_failure(self, caplog: pytest.LogCaptureFixture) -> None:
+    async def test_logs_error_status_on_failure(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         middleware = RequestIdMiddleware()
         ctx = _make_tool_context("get_schema")
 
@@ -108,25 +113,25 @@ class TestRequestIdMiddleware:
 
 
 # ---------------------------------------------------------------------------
-# ReadOnlyMiddleware
+# ReadOnlyMiddleware — tag-based filtering
 # ---------------------------------------------------------------------------
 
 
 class TestReadOnlyMiddleware:
     @pytest.mark.anyio
-    async def test_filters_write_tools_from_listing(self) -> None:
+    async def test_filters_write_tagged_tools_from_listing(self) -> None:
         middleware = ReadOnlyMiddleware()
         all_tools = [
-            _make_tool("get_schema"),
-            _make_tool("get_nodes"),
-            _make_tool("node_upsert"),
-            _make_tool("node_delete"),
-            _make_tool("query_graphql"),
+            _make_tool("get_schema", tags={"schema", "retrieve"}),
+            _make_tool("get_nodes", tags={"nodes", "retrieve"}),
+            _make_tool("node_upsert", tags={"nodes", WRITE_TAG}),
+            _make_tool("node_delete", tags={"nodes", WRITE_TAG}),
+            _make_tool("query_graphql", tags={"graphql", "retrieve"}),
         ]
 
         async def call_next(
             c: MiddlewareContext[Any],
-        ) -> Sequence[Tool]:
+        ) -> Sequence[Any]:
             return all_tools
 
         ctx = _make_list_tools_context()
@@ -140,7 +145,23 @@ class TestReadOnlyMiddleware:
         assert "node_delete" not in names
 
     @pytest.mark.anyio
-    async def test_blocks_write_tool_call(self) -> None:
+    async def test_allows_tool_without_write_tag(self) -> None:
+        """A tool without the 'write' tag passes through even if name is suspicious."""
+        middleware = ReadOnlyMiddleware()
+        all_tools = [
+            _make_tool("write_report", tags={"reports", "generate"}),
+        ]
+
+        async def call_next(c: MiddlewareContext[Any]) -> Sequence[Any]:
+            return all_tools
+
+        ctx = _make_list_tools_context()
+        result = await middleware.on_list_tools(ctx, call_next)
+        assert len(result) == 1
+
+    @pytest.mark.anyio
+    async def test_blocks_write_tool_call_without_context(self) -> None:
+        """Without fastmcp_context, falls back to hardcoded name check."""
         middleware = ReadOnlyMiddleware()
         ctx = _make_tool_context("node_upsert")
 
@@ -166,8 +187,14 @@ class TestReadOnlyMiddleware:
         assert result is expected
 
     @pytest.mark.anyio
-    @pytest.mark.parametrize("tool_name", sorted(_WRITE_TOOLS))
-    async def test_blocks_all_write_tools(self, tool_name: str) -> None:
+    @pytest.mark.parametrize(
+        "tool_name",
+        ["node_upsert", "node_delete", "propose_changes", "mutate_graphql"],
+    )
+    async def test_blocks_known_write_tools_without_context(
+        self, tool_name: str
+    ) -> None:
+        """Fallback name-based check blocks all known write tools."""
         middleware = ReadOnlyMiddleware()
         ctx = _make_tool_context(tool_name)
 
@@ -188,7 +215,9 @@ class TestReadOnlyMiddleware:
 
 class TestAuditMiddleware:
     @pytest.mark.anyio
-    async def test_logs_tool_call(self, caplog: pytest.LogCaptureFixture) -> None:
+    async def test_logs_tool_call(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         middleware = AuditMiddleware()
         ctx = _make_tool_context("get_nodes")
         expected = ToolResult(content=[])
@@ -204,21 +233,9 @@ class TestAuditMiddleware:
         assert any("tool=get_nodes" in r.message for r in caplog.records)
 
     @pytest.mark.anyio
-    async def test_logs_write_flag(self, caplog: pytest.LogCaptureFixture) -> None:
-        middleware = AuditMiddleware()
-        ctx = _make_tool_context("node_upsert")
-        expected = ToolResult(content=[])
-
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
-            return expected
-
-        with caplog.at_level(logging.INFO, logger="infrahub_mcp.middleware"):
-            await middleware.on_call_tool(ctx, call_next)
-
-        assert any("write=True" in r.message for r in caplog.records)
-
-    @pytest.mark.anyio
-    async def test_logs_resource_read(self, caplog: pytest.LogCaptureFixture) -> None:
+    async def test_logs_resource_read(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         middleware = AuditMiddleware()
         ctx = _make_resource_context("infrahub://schema")
 
@@ -230,6 +247,66 @@ class TestAuditMiddleware:
 
         assert result == "data"
         assert any("resource_read" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# MetricsMiddleware
+# ---------------------------------------------------------------------------
+
+
+class TestMetricsMiddleware:
+    @pytest.mark.anyio
+    async def test_counts_requests(self) -> None:
+        middleware = MetricsMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> str:
+            return "ok"
+
+        await middleware.on_message(ctx, call_next)
+        await middleware.on_message(ctx, call_next)
+
+        snap = middleware.snapshot()
+        assert snap["requests"]["tools/call"] == 2
+        assert snap["errors"].get("tools/call", 0) == 0
+
+    @pytest.mark.anyio
+    async def test_counts_errors(self) -> None:
+        middleware = MetricsMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> str:
+            msg = "fail"
+            raise RuntimeError(msg)
+
+        with pytest.raises(RuntimeError):
+            await middleware.on_message(ctx, call_next)
+
+        snap = middleware.snapshot()
+        assert snap["requests"]["tools/call"] == 1
+        assert snap["errors"]["tools/call"] == 1
+
+    @pytest.mark.anyio
+    async def test_tracks_latency(self) -> None:
+        middleware = MetricsMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> str:
+            return "ok"
+
+        await middleware.on_message(ctx, call_next)
+
+        snap = middleware.snapshot()
+        assert "tools/call" in snap["latency_ms"]
+        assert snap["latency_ms"]["tools/call"] >= 0
+
+    def test_snapshot_is_serializable(self) -> None:
+        import json
+
+        middleware = MetricsMiddleware()
+        snap = middleware.snapshot()
+        # Should not raise
+        json.dumps(snap)
 
 
 # ---------------------------------------------------------------------------
@@ -252,10 +329,10 @@ class TestConfigureMiddleware:
         config = ServerConfig(read_only=False)
         configure_middleware(mock_mcp, config)
 
-        # Should not include ReadOnlyMiddleware
         types = [type(m).__name__ for m in mock_mcp.middleware]
         assert "ReadOnlyMiddleware" not in types
         assert "RequestIdMiddleware" in types
+        assert "MetricsMiddleware" in types
         assert "AuditMiddleware" in types
         assert "ErrorHandlingMiddleware" in types
 
@@ -290,5 +367,9 @@ class TestConfigureMiddleware:
         config = ServerConfig(log_level_debug=True)
         configure_middleware(mock_mcp, config)
 
-        error_mw = next(m for m in mock_mcp.middleware if type(m).__name__ == "ErrorHandlingMiddleware")
+        error_mw = next(
+            m
+            for m in mock_mcp.middleware
+            if type(m).__name__ == "ErrorHandlingMiddleware"
+        )
         assert error_mw.include_traceback is True

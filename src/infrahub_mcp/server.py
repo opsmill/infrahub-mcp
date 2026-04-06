@@ -9,7 +9,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from infrahub_mcp.config import ServerConfig, load_config
-from infrahub_mcp.middleware import configure_middleware
+from infrahub_mcp.middleware import configure_middleware, get_metrics
 from infrahub_mcp.prompts.prompts import mcp as prompts_mcp
 from infrahub_mcp.resources.branches import mcp as branches_resources_mcp
 from infrahub_mcp.resources.schema import mcp as schema_resources_mcp
@@ -73,6 +73,18 @@ async def health_check(request: Request) -> JSONResponse:  # noqa: ARG001, RUF02
     except Exception:
         logger.exception("Health check failed")
         return JSONResponse({"status": "unhealthy"}, status_code=503)
+
+
+@mcp.custom_route("/metrics", methods=["GET"])
+async def metrics_endpoint(request: Request) -> JSONResponse:  # noqa: ARG001, RUF029
+    """Metrics endpoint for monitoring (Prometheus, Grafana, Datadog).
+
+    Returns request counts, error counts, and cumulative latency per MCP method.
+    """
+    metrics = get_metrics()
+    if metrics is None:
+        return JSONResponse({"error": "metrics not configured"}, status_code=503)
+    return JSONResponse(metrics.snapshot())
 
 
 @mcp.prompt()

@@ -1,8 +1,8 @@
 """Middleware stack for the Infrahub MCP server.
 
 Composes FastMCP built-in middleware with Infrahub-specific interceptors
-for structured logging, request auditing, error handling, and response
-size control.
+for structured logging, request auditing, error handling, response
+size control, and observability.
 
 Usage in server.py::
 
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import time
 from typing import TYPE_CHECKING, Any, override
 
 from fastmcp.server.middleware.error_handling import ErrorHandlingMiddleware
@@ -40,11 +41,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("infrahub_mcp.middleware")
 
-# ---------------------------------------------------------------------------
-# Infrahub-specific middleware
-# ---------------------------------------------------------------------------
+# Tag used on all write tools (node_upsert, node_delete, propose_changes, mutate_graphql).
+# The ReadOnlyMiddleware filters by this tag rather than hardcoding tool names,
+# so any new write tool automatically gets blocked if tagged "write".
+WRITE_TAG = "write"
 
-_WRITE_TOOLS: frozenset[str] = frozenset({"node_upsert", "node_delete", "propose_changes", "mutate_graphql"})
+
+# ---------------------------------------------------------------------------
+# Request correlation
+# ---------------------------------------------------------------------------
 
 
 class RequestIdMiddleware(Middleware):
@@ -84,15 +89,24 @@ class RequestIdMiddleware(Middleware):
             raise
 
 
+# ---------------------------------------------------------------------------
+# Read-only enforcement
+# ---------------------------------------------------------------------------
+
+
 class ReadOnlyMiddleware(Middleware):
     """Enforce read-only mode at the middleware layer.
 
+    Uses the ``"write"`` tag on tools to identify write operations.
+    Any new tool tagged ``"write"`` is automatically blocked — no hardcoded
+    tool name list required.
+
     Provides two layers of protection:
 
-    1. **Tool hiding** — ``on_list_tools`` filters write tools from
-       discovery responses so LLMs never see them.
-    2. **Call rejection** — ``on_call_tool`` blocks any call to a write
-       tool that bypasses discovery (e.g. a hardcoded tool name).
+    1. **Tool hiding** — ``on_list_tools`` filters tools tagged ``"write"``
+       from discovery so LLMs never see them.
+    2. **Call rejection** — ``on_call_tool`` resolves the tool and blocks it
+       if tagged ``"write"``, catching hardcoded tool names that bypass discovery.
 
     This is defense-in-depth on top of the ``mcp.mount()`` gating in
     ``server.py``, which hides write tools at registration time.
@@ -105,13 +119,10 @@ class ReadOnlyMiddleware(Middleware):
         call_next: CallNext[mt.ListToolsRequest, Sequence[Tool]],
     ) -> Sequence[Tool]:
         tools = await call_next(context)
-        filtered = [t for t in tools if t.name not in _WRITE_TOOLS]
+        filtered = [t for t in tools if WRITE_TAG not in (t.tags or set())]
         hidden = len(tools) - len(filtered)
         if hidden:
-            logger.debug(
-                "read_only_filter hidden_tools=%d",
-                hidden,
-            )
+            logger.debug("read_only_filter hidden_tools=%d", hidden)
         return filtered
 
     @override
@@ -121,11 +132,27 @@ class ReadOnlyMiddleware(Middleware):
         call_next: CallNext[mt.CallToolRequestParams, ToolResult],
     ) -> ToolResult:
         tool_name = context.message.name
-        if tool_name in _WRITE_TOOLS:
-            logger.warning(
-                "read_only_blocked tool=%s",
-                tool_name,
+
+        # Resolve the tool to check its tags dynamically.
+        # Fall back to name-based check if resolution is unavailable.
+        is_write = False
+        if context.fastmcp_context is not None:
+            tool = await context.fastmcp_context.fastmcp.get_tool(
+                tool_name
             )
+            if tool is not None:
+                is_write = WRITE_TAG in (tool.tags or set())
+        else:
+            # Defensive: without context, deny known write tools by name
+            is_write = tool_name in {
+                "node_upsert",
+                "node_delete",
+                "propose_changes",
+                "mutate_graphql",
+            }
+
+        if is_write:
+            logger.warning("read_only_blocked tool=%s", tool_name)
             raise McpError(
                 ErrorData(
                     code=-32601,
@@ -139,11 +166,16 @@ class ReadOnlyMiddleware(Middleware):
         return await call_next(context)
 
 
+# ---------------------------------------------------------------------------
+# Audit trail
+# ---------------------------------------------------------------------------
+
+
 class AuditMiddleware(Middleware):
     """Log every tool call and resource read with structured audit fields.
 
-    Produces log lines that are easy to parse with log aggregation tools
-    (ELK, Loki, Datadog) for usage analytics and incident investigation.
+    Produces log lines parseable by log aggregation tools (ELK, Loki,
+    Datadog) for usage analytics and incident investigation.
     """
 
     @override
@@ -153,12 +185,7 @@ class AuditMiddleware(Middleware):
         call_next: CallNext[mt.CallToolRequestParams, ToolResult],
     ) -> ToolResult:
         tool_name = context.message.name
-        is_write = tool_name in _WRITE_TOOLS
-        logger.info(
-            "tool_call tool=%s write=%s",
-            tool_name,
-            is_write,
-        )
+        logger.info("tool_call tool=%s", tool_name)
         return await call_next(context)
 
     @override
@@ -173,10 +200,67 @@ class AuditMiddleware(Middleware):
 
 
 # ---------------------------------------------------------------------------
+# Metrics collection
+# ---------------------------------------------------------------------------
+
+
+class MetricsMiddleware(Middleware):
+    """Collect request counts and latency for the ``/metrics`` endpoint.
+
+    Tracks per-method request counts, error counts, and cumulative
+    latency. Designed for scraping by Prometheus or similar.
+    """
+
+    def __init__(self) -> None:
+        self._requests: dict[str, int] = {}
+        self._errors: dict[str, int] = {}
+        self._latency_ms: dict[str, float] = {}
+
+    @override
+    async def on_message(
+        self,
+        context: MiddlewareContext[Any],
+        call_next: CallNext[Any, Any],
+    ) -> Any:
+        method = context.method or "unknown"
+        self._requests[method] = self._requests.get(method, 0) + 1
+
+        start = time.perf_counter()
+        try:
+            result = await call_next(context)
+            elapsed = (time.perf_counter() - start) * 1000
+            self._latency_ms[method] = (
+                self._latency_ms.get(method, 0.0) + elapsed
+            )
+            return result
+        except Exception:
+            self._errors[method] = self._errors.get(method, 0) + 1
+            raise
+
+    def snapshot(self) -> dict[str, Any]:
+        """Return a JSON-serializable metrics snapshot."""
+        return {
+            "requests": dict(self._requests),
+            "errors": dict(self._errors),
+            "latency_ms": {
+                k: round(v, 2) for k, v in self._latency_ms.items()
+            },
+        }
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 _MAX_RESPONSE_BYTES = 500_000  # 500 KB — generous for TOON-encoded data
+
+# Module-level reference so server.py can access metrics from the route handler.
+_metrics: MetricsMiddleware | None = None
+
+
+def get_metrics() -> MetricsMiddleware | None:
+    """Return the active MetricsMiddleware instance, if configured."""
+    return _metrics
 
 
 def configure_middleware(mcp: Any, config: ServerConfig) -> None:
@@ -185,18 +269,25 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
     Middleware executes in registration order (first registered = outermost).
     The stack is ordered for optimal observability and safety:
 
-    1. **RequestIdMiddleware** — assigns a correlation ID (outermost)
-    2. **ErrorHandlingMiddleware** — catches unhandled exceptions
-    3. **StructuredLoggingMiddleware** — JSON logs with token estimates
-    4. **DetailedTimingMiddleware** — per-operation timing breakdown
-    5. **ReadOnlyMiddleware** — blocks write tools (conditional)
-    6. **AuditMiddleware** — structured audit trail
-    7. **ResponseLimitingMiddleware** — truncates oversized responses
+    1. **RequestIdMiddleware** — correlation ID (outermost)
+    2. **MetricsMiddleware** — request/error/latency counters
+    3. **ErrorHandlingMiddleware** — exception → MCP error mapping
+    4. **StructuredLoggingMiddleware** — JSON logs with token estimates
+    5. **DetailedTimingMiddleware** — per-operation timing breakdown
+    6. **ReadOnlyMiddleware** — tag-based write tool blocking (conditional)
+    7. **AuditMiddleware** — structured audit trail
+    8. **ResponseLimitingMiddleware** — truncates oversized responses
     """
+    global _metrics  # noqa: PLW0603
+
     # 1. Request ID correlation — outermost wrapper
     mcp.add_middleware(RequestIdMiddleware())
 
-    # 2. Error handling — catches everything below
+    # 2. Metrics — counts and latency for /metrics endpoint
+    _metrics = MetricsMiddleware()
+    mcp.add_middleware(_metrics)
+
+    # 3. Error handling — catches everything below
     mcp.add_middleware(
         ErrorHandlingMiddleware(
             logger=logging.getLogger("infrahub_mcp.errors"),
@@ -205,7 +296,7 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
         )
     )
 
-    # 3. Structured logging — JSON log lines with token estimates
+    # 4. Structured logging — JSON log lines with token estimates
     mcp.add_middleware(
         StructuredLoggingMiddleware(
             logger=logging.getLogger("infrahub_mcp.requests"),
@@ -215,22 +306,22 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
         )
     )
 
-    # 4. Detailed timing — per-operation breakdown
+    # 5. Detailed timing — per-operation breakdown
     mcp.add_middleware(
         DetailedTimingMiddleware(
             logger=logging.getLogger("infrahub_mcp.timing"),
         )
     )
 
-    # 5. Read-only enforcement — defense-in-depth (conditional)
+    # 6. Read-only enforcement — tag-based, defense-in-depth (conditional)
     if config.read_only:
         mcp.add_middleware(ReadOnlyMiddleware())
         logger.info("read_only_mode enabled=true")
 
-    # 6. Audit trail — structured tool/resource access log
+    # 7. Audit trail — structured tool/resource access log
     mcp.add_middleware(AuditMiddleware())
 
-    # 7. Response size limiting — innermost
+    # 8. Response size limiting — innermost
     mcp.add_middleware(
         ResponseLimitingMiddleware(
             max_size=_MAX_RESPONSE_BYTES,
