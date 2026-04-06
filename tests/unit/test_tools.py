@@ -41,28 +41,53 @@ async def test_get_nodes() -> None:
     async with Client(mcp) as client:
         result = await client.call_tool("get_nodes", {"kind": "LocationSite"})
         assert result.is_error is False
-        assert isinstance(result.data, list)
-        assert sorted(result.data) == [
+        data = result.data  # type: ignore[attr-defined]
+        assert isinstance(data, dict)
+        assert sorted(data["nodes"]) == [
             "atl1",
             "den1",
             "dfw1",
             "jfk1",
             "ord1",
         ]
+        assert data["count"] == 5
+        assert "total_count" in data
+        assert "has_more" in data
+        assert "offset" in data
+        assert "limit" in data
 
 
 async def test_get_nodes_with_attributes() -> None:
     async with Client(mcp) as client:
         result = await client.call_tool("get_nodes", {"kind": "LocationSite", "include_attributes": True})
         assert result.is_error is False
-        # Data is TOON-encoded when include_attributes is True
-        assert isinstance(result.data, str)
-        decoded = toon.decode(result.data)
+        data = result.data  # type: ignore[attr-defined]
+        assert isinstance(data, dict)
+        decoded = toon.decode(data["nodes"])
         assert isinstance(decoded, list)
         assert len(decoded) > 0
         first = decoded[0]
         assert isinstance(first, dict)
         assert "name" in first
+
+
+async def test_get_nodes_pagination() -> None:
+    async with Client(mcp) as client:
+        # First page
+        result = await client.call_tool("get_nodes", {"kind": "LocationSite", "limit": 2, "offset": 0})
+        assert result.is_error is False
+        data = result.data  # type: ignore[attr-defined]
+        assert data["count"] == 2
+        assert data["offset"] == 0
+        assert data["limit"] == 2
+        assert len(data["nodes"]) == 2
+
+        # Second page
+        result2 = await client.call_tool("get_nodes", {"kind": "LocationSite", "limit": 2, "offset": 2})
+        assert result2.is_error is False
+        data2 = result2.data  # type: ignore[attr-defined]
+        assert data2["count"] == 2
+        assert data2["offset"] == 2
 
 
 async def test_search_nodes() -> None:
@@ -178,6 +203,18 @@ async def test_get_nodes_invalid_filter_includes_valid_filters() -> None:
         assert "Valid filters for LocationSite:" in text
         assert "name__value" in text
         assert "get_schema(kind='LocationSite')" in text
+
+
+async def test_get_session_info() -> None:
+    """get_session_info returns session state without errors."""
+    async with Client(mcp) as client:
+        result = await client.call_tool("get_session_info", {})
+        assert result.is_error is False
+        data = result.data  # type: ignore[attr-defined]
+        assert "session_branch" in data
+        assert "has_session_branch" in data
+        assert "infrahub_address" in data
+        assert data["has_session_branch"] is False  # No writes yet, no session branch
 
 
 async def test_query_graphql_error_includes_schema_hint() -> None:
