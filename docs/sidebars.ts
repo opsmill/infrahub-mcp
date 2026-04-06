@@ -15,6 +15,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Reference',
       items: [
+        'references/configuration',
         'references/methods',
       ],
     },

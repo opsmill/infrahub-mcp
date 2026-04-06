@@ -110,3 +110,17 @@ Once the container is running, point your MCP client at the HTTP endpoint instea
 | `INFRAHUB_TIMEOUT` | HTTP request timeout in seconds | `30` |
 | `MCP_HOST` | Bind address for the HTTP server | `0.0.0.0` |
 | `MCP_PORT` | Port for the HTTP server | `8001` |
+| `INFRAHUB_MCP_READ_ONLY` | Disable write operations | `false` |
+| `INFRAHUB_MCP_RATE_LIMIT_RPS` | Rate limit (requests/sec, `0` = off) | `0` |
+| `INFRAHUB_MCP_CACHE_ENABLED` | Enable response caching | `false` |
+| `INFRAHUB_MCP_PROMETHEUS_ENABLED` | Prometheus format for `/metrics` | `false` |
+
+For the full list including retry, auth, OpenTelemetry, and more, see the [Configuration reference](../references/configuration.mdx).
+
+## Endpoints
+
+| Path | Method | Description |
+| --- | --- | --- |
+| `/mcp` | POST | MCP Streamable HTTP transport |
+| `/health` | GET | Health check for container orchestration probes |
+| `/metrics` | GET | Request counts, errors, and latency (JSON or Prometheus) |
