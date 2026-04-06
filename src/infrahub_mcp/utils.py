@@ -102,9 +102,7 @@ async def get_or_create_session_branch(ctx: Context) -> str:
                     raise ToolError(msg)
 
             await ctx.info(f"Auto-creating session branch: {branch_name}")
-            await app_ctx.client.branch.create(
-                branch_name=branch_name, sync_with_git=False, background_execution=False
-            )
+            await app_ctx.client.branch.create(branch_name=branch_name, sync_with_git=False, background_execution=False)
             app_ctx.session_branch = branch_name
     return app_ctx.session_branch
 

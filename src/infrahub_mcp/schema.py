@@ -26,11 +26,7 @@ async def get_schema_catalog(client: "InfrahubClient", branch: str | None = None
         Dict mapping kind names to human-readable labels.
     """
     all_schemas = await client.schema.all(branch=branch)
-    return {
-        kind: node.label or kind
-        for kind, node in all_schemas.items()
-        if node.namespace not in NAMESPACES_INTERNAL
-    }
+    return {kind: node.label or kind for kind, node in all_schemas.items() if node.namespace not in NAMESPACES_INTERNAL}
 
 
 async def get_schema_detail(client: "InfrahubClient", kind: str, branch: str | None = None) -> dict[str, Any]:

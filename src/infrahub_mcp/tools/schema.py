@@ -25,9 +25,7 @@ async def get_schema(
         str | None,
         Field(
             default=None,
-            description=(
-                "Kind to get detail for. Omit to list all available kinds."
-            ),
+            description=("Kind to get detail for. Omit to list all available kinds."),
         ),
     ] = None,
     branch: Annotated[

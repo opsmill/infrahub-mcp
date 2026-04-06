@@ -143,9 +143,7 @@ async def test_get_nodes_unknown_kind_includes_valid_kinds() -> None:
 async def test_search_nodes_unknown_kind_includes_valid_kinds() -> None:
     """search_nodes with invalid kind error includes the list of valid kinds."""
     async with Client(mcp) as client:
-        result = await client.call_tool(
-            "search_nodes", {"query": "test", "kind": "DoesNotExist"}, raise_on_error=False
-        )
+        result = await client.call_tool("search_nodes", {"query": "test", "kind": "DoesNotExist"}, raise_on_error=False)
         assert result.is_error is True
         text = result.content[0].text  # type: ignore[union-attr]
         assert "Valid kinds:" in text

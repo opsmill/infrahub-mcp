@@ -85,8 +85,7 @@ async def _validate_filters(  # noqa: PLR0913, PLR0917
             ctx=ctx,
             error=f"Invalid filter(s) for {kind}: {sorted(invalid_keys)}.",
             remediation=(
-                f"Valid filters for {kind}: {sorted_valid}\n"
-                f"Call get_schema(kind='{kind}') for the full schema."
+                f"Valid filters for {kind}: {sorted_valid}\nCall get_schema(kind='{kind}') for the full schema."
             ),
         )
 
@@ -170,9 +169,7 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
         )
 
     if filters:
-        await _validate_filters(
-            ctx=ctx, client=client, schema=schema, kind=kind, branch=branch, filters=filters
-        )
+        await _validate_filters(ctx=ctx, client=client, schema=schema, kind=kind, branch=branch, filters=filters)
 
     try:
         kwargs: dict[str, Any] = {
