@@ -24,7 +24,7 @@ _BRANCH_NOTE = "All writes target the active session branch, auto-created on the
 
 @mcp.tool(
     tags={"nodes", "write"},
-    annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True, destructiveHint=False),
+    annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False, destructiveHint=False),
 )
 async def node_upsert(  # pylint: disable=too-many-locals
     ctx: Context,

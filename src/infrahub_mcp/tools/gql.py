@@ -1,10 +1,12 @@
 """GraphQL query tool for the Infrahub MCP server (read-only)."""
 
-import re
 from typing import TYPE_CHECKING, Annotated, Any
 
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
+from graphql import OperationType
+from graphql import parse as gql_parse
+from graphql.error import GraphQLSyntaxError
 from infrahub_sdk.exceptions import GraphQLError
 from mcp.types import ToolAnnotations
 from pydantic import Field
@@ -15,9 +17,6 @@ if TYPE_CHECKING:
     from infrahub_sdk import InfrahubClient
 
 mcp: FastMCP = FastMCP(name="Infrahub GraphQL")
-
-# Matches GraphQL mutation operations, allowing for leading whitespace and comments.
-_MUTATION_PATTERN = re.compile(r"^\s*(?:#[^\n]*\n\s*)*mutation\b", re.IGNORECASE)
 
 
 @mcp.tool(tags={"graphql", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
@@ -50,9 +49,16 @@ async def query_graphql(
     Returns:
         The result of the query.
     """
-    if _MUTATION_PATTERN.match(query.lstrip()):
-        msg = "Mutations are not allowed in query_graphql. Use mutate_graphql instead."
-        raise ToolError(msg)
+    try:
+        document = gql_parse(query)
+    except GraphQLSyntaxError as exc:
+        msg = f"Invalid GraphQL syntax: {exc}"
+        raise ToolError(msg) from exc
+
+    for definition in document.definitions:
+        if hasattr(definition, "operation") and definition.operation == OperationType.MUTATION:
+            msg = "Mutations are not allowed in query_graphql. Use mutate_graphql instead."
+            raise ToolError(msg)
 
     client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
     try:

@@ -76,6 +76,7 @@ def load_config() -> ServerConfig:
         INFRAHUB_MCP_AUTH_SCOPES_WRITE: OAuth scopes for write ops (comma-separated).
     """
     _validate_branch_retries()
+    _validate_branch_pattern()
     _validate_rate_limit()
     _validate_retry()
     _validate_ping_interval()
@@ -105,6 +106,35 @@ def _validate_branch_retries() -> None:
     val = _parse_int("INFRAHUB_MCP_MAX_BRANCH_RETRIES", default=5)
     if not 1 <= val <= _MAX_BRANCH_RETRIES_LIMIT:
         msg = f"INFRAHUB_MCP_MAX_BRANCH_RETRIES must be between 1 and {_MAX_BRANCH_RETRIES_LIMIT}, got {val}."
+        raise ValueError(msg)
+
+
+_ALLOWED_PLACEHOLDERS = {"date", "hex", "user"}
+
+
+def _validate_branch_pattern() -> None:
+    """Validate INFRAHUB_MCP_BRANCH_PATTERN at startup.
+
+    Rejects patterns with invalid brace syntax or unsupported placeholders
+    by performing a trial expansion with sample values.
+    """
+    pattern = os.environ.get("INFRAHUB_MCP_BRANCH_PATTERN", "mcp/session-{date}-{hex}")
+    sample = dict.fromkeys(_ALLOWED_PLACEHOLDERS, "sample")
+    try:
+        expanded = pattern.format(**sample)
+    except (KeyError, ValueError, IndexError) as exc:
+        msg = (
+            f"INFRAHUB_MCP_BRANCH_PATTERN has invalid syntax: {pattern!r}. "
+            f"Allowed placeholders are {{date}}, {{hex}}, {{user}}. Error: {exc}"
+        )
+        raise ValueError(msg) from exc
+
+    # Check for leftover braces that indicate unknown placeholders
+    if "{" in expanded or "}" in expanded:
+        msg = (
+            f"INFRAHUB_MCP_BRANCH_PATTERN contains unsupported placeholders: {pattern!r}. "
+            f"Allowed placeholders are {{date}}, {{hex}}, {{user}}."
+        )
         raise ValueError(msg)
 
 
@@ -147,9 +177,26 @@ def _validate_ping_interval() -> None:
 # ---------------------------------------------------------------------------
 
 
+_BOOL_TRUE = {"true", "1", "yes"}
+_BOOL_FALSE = {"false", "0", "no"}
+
+
 def _parse_bool(env_var: str) -> bool:
-    """Parse a boolean environment variable."""
-    return os.environ.get(env_var, "false").lower() in {"true", "1", "yes"}
+    """Parse a boolean environment variable.
+
+    Accepts ``true``, ``1``, ``yes`` (case-insensitive) as truthy and
+    ``false``, ``0``, ``no`` as falsy.  Raises ``ValueError`` for any
+    other value so typos are caught at startup.
+    """
+    raw = os.environ.get(env_var, "false").strip().lower()
+    if raw in _BOOL_TRUE:
+        return True
+    if raw in _BOOL_FALSE:
+        return False
+    msg = (
+        f"{env_var} must be a boolean (true/false/1/0/yes/no), got {raw!r}."
+    )
+    raise ValueError(msg)
 
 
 def _parse_int(env_var: str, *, default: int) -> int:

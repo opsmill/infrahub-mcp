@@ -65,7 +65,7 @@ configure_middleware(mcp, _config)
 
 
 @mcp.custom_route("/health", methods=["GET"])
-async def health_check(request: Request) -> JSONResponse:  # noqa: ARG001, RUF029
+async def health_check(request: Request) -> JSONResponse:  # noqa: ARG001
     """Health check endpoint for container orchestration probes.
 
     Uses the SDK's ``get_version()`` to validate Infrahub connectivity.
@@ -73,7 +73,7 @@ async def health_check(request: Request) -> JSONResponse:  # noqa: ARG001, RUF02
     """
     try:
         client = InfrahubClient()
-        client.get_version()
+        await client.get_version()
         return JSONResponse({"status": "healthy"})
     except Exception:
         logger.exception("Health check failed")
