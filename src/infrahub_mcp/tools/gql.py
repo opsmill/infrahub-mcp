@@ -23,7 +23,9 @@ _MUTATION_PATTERN = re.compile(r"^\s*(?:#[^\n]*\n\s*)*mutation\b", re.IGNORECASE
 @mcp.tool(tags={"graphql", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
 async def query_graphql(
     ctx: Context,
-    query: Annotated[str, Field(description="GraphQL query string. Only queries are allowed — use mutate_graphql for mutations.")],
+    query: Annotated[
+        str, Field(description="GraphQL query string. Only queries are allowed — use mutate_graphql for mutations.")
+    ],
     branch: Annotated[
         str | None,
         Field(
@@ -60,8 +62,7 @@ async def query_graphql(
             ctx,
             exc,
             remediation=(
-                "Call get_schema() to list valid kinds, or "
-                "get_schema(kind='...') to see attributes and filters."
+                "Call get_schema() to list valid kinds, or get_schema(kind='...') to see attributes and filters."
             ),
         )
 

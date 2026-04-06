@@ -9,6 +9,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from infrahub_mcp.config import ServerConfig, load_config
+from infrahub_mcp.middleware import configure_middleware
 from infrahub_mcp.prompts.prompts import mcp as prompts_mcp
 from infrahub_mcp.resources.branches import mcp as branches_resources_mcp
 from infrahub_mcp.resources.schema import mcp as schema_resources_mcp
@@ -52,6 +53,10 @@ mcp: FastMCP = FastMCP(
     version="1.0.0",
     lifespan=app_lifespan,
 )
+
+
+# Middleware stack — structured logging, timing, error handling, audit, read-only enforcement
+configure_middleware(mcp, _config)
 
 
 @mcp.custom_route("/health", methods=["GET"])

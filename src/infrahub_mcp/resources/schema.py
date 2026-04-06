@@ -59,10 +59,7 @@ async def schema_kind_detail(kind: str, ctx: Context) -> str:
     try:
         payload = await get_schema_detail(client, kind=kind)
     except SchemaNotFoundError as exc:
-        msg = (
-            f"Schema not found for kind '{kind}'. "
-            "Read infrahub://schema to list valid kind names."
-        )
+        msg = f"Schema not found for kind '{kind}'. Read infrahub://schema to list valid kind names."
         raise ResourceError(msg) from exc
 
     return toon.encode(payload)

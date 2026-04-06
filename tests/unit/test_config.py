@@ -16,6 +16,7 @@ class TestServerConfig:
         assert config.read_only is False
         assert config.branch_pattern == "mcp/session-{date}-{hex}"
         assert config.max_branch_retries == 5
+        assert config.log_level_debug is False
 
     def test_frozen(self) -> None:
         config = ServerConfig()
@@ -30,6 +31,7 @@ class TestLoadConfig:
         assert config.read_only is False
         assert config.branch_pattern == "mcp/session-{date}-{hex}"
         assert config.max_branch_retries == 5
+        assert config.log_level_debug is False
 
     def test_read_only_true(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_READ_ONLY": "true"}, clear=True):
@@ -80,3 +82,13 @@ class TestLoadConfig:
         with patch.dict(os.environ, {"INFRAHUB_MCP_MAX_BRANCH_RETRIES": "100"}, clear=True):
             with pytest.raises(ValueError, match="must be between 1 and 20"):
                 load_config()
+
+    def test_log_level_debug(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_LOG_LEVEL": "debug"}, clear=True):
+            config = load_config()
+        assert config.log_level_debug is True
+
+    def test_log_level_default(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_LOG_LEVEL": "info"}, clear=True):
+            config = load_config()
+        assert config.log_level_debug is False

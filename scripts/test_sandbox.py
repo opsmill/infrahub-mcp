@@ -111,9 +111,7 @@ async def run_tests() -> None:
 
         # 8. query_graphql
         t0 = time.monotonic()
-        gql_result = await client.call_tool(
-            "query_graphql", {"query": "query { InfrahubInfo { version } }"}
-        )
+        gql_result = await client.call_tool("query_graphql", {"query": "query { InfrahubInfo { version } }"})
         elapsed = time.monotonic() - t0
         records.append(print_result("tool:query_graphql(version)", elapsed, gql_result))
 

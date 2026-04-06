@@ -20,6 +20,7 @@ class ServerConfig:
     read_only: bool = False
     branch_pattern: str = "mcp/session-{date}-{hex}"
     max_branch_retries: int = 5
+    log_level_debug: bool = False
 
 
 _MAX_BRANCH_RETRIES_LIMIT = 20
@@ -34,6 +35,7 @@ def load_config() -> ServerConfig:
     """
     read_only = os.environ.get("INFRAHUB_MCP_READ_ONLY", "false").lower() in {"true", "1", "yes"}
     branch_pattern = os.environ.get("INFRAHUB_MCP_BRANCH_PATTERN", "mcp/session-{date}-{hex}")
+    log_level_debug = os.environ.get("INFRAHUB_MCP_LOG_LEVEL", "info").lower() == "debug"
 
     try:
         max_branch_retries = int(os.environ.get("INFRAHUB_MCP_MAX_BRANCH_RETRIES", "5"))
@@ -49,4 +51,5 @@ def load_config() -> ServerConfig:
         read_only=read_only,
         branch_pattern=branch_pattern,
         max_branch_retries=max_branch_retries,
+        log_level_debug=log_level_debug,
     )
