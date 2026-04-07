@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from infrahub_mcp.auth import create_auth_provider, get_user_from_token, sanitize_user_for_branch
 from infrahub_mcp.config import ServerConfig
 
