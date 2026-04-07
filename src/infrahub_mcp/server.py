@@ -8,6 +8,7 @@ from infrahub_sdk.client import InfrahubClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from infrahub_mcp.auth import create_auth_provider
 from infrahub_mcp.config import ServerConfig, load_config
 from infrahub_mcp.middleware import (
     configure_middleware,
@@ -53,10 +54,13 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: A
 
 logger = logging.getLogger(__name__)
 
+_auth_provider = create_auth_provider(_config)
+
 mcp: FastMCP = FastMCP(
     name="Infrahub MCP Server",
     version="1.0.0",
     lifespan=app_lifespan,
+    auth=_auth_provider,
 )
 
 
