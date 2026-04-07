@@ -1,4 +1,4 @@
-**/__pycache__/
+git**/__pycache__/
 **/.git
 **/.github
 **/.mypy_cache
@@ -17,3 +17,4 @@ docs/
 install/
 venv
 .venv
+.claude
