@@ -10,6 +10,7 @@ from fastmcp.exceptions import ToolError
 from infrahub_sdk.exceptions import GraphQLError
 from infrahub_sdk.node import Attribute, InfrahubNode, RelatedNode, RelationshipManager
 
+from infrahub_mcp.auth import get_user_from_token
 from infrahub_mcp.config import ServerConfig
 
 if TYPE_CHECKING:
@@ -44,17 +45,23 @@ def _has_placeholders(pattern: str) -> bool:
     return any(ph in pattern for ph in ("{date}", "{hex}", "{user}"))
 
 
-def expand_branch_pattern(pattern: str) -> str:
+def expand_branch_pattern(pattern: str, *, user_claim: str | None = None) -> str:
     """Expand placeholders in a branch naming pattern.
 
     Supported placeholders:
         {date} — current date as YYYYMMDD
         {hex}  — 8 random hex characters
-        {user} — currently unused, reserved for future OAuth integration
+        {user} — authenticated user from OIDC token, or 'anonymous'
+
+    Args:
+        pattern: Branch naming pattern with placeholders.
+        user_claim: JWT claim to use for {user} resolution. When provided,
+            attempts to read the OIDC token. When None, always uses 'anonymous'.
     """
     date = datetime.now(UTC).strftime("%Y%m%d")
     slug = secrets.token_hex(4)
-    return pattern.format(date=date, hex=slug, user="anonymous")
+    user = get_user_from_token(claim=user_claim) if user_claim is not None else "anonymous"
+    return pattern.format(date=date, hex=slug, user=user)
 
 
 def _is_branch_conflict(exc: GraphQLError) -> bool:
@@ -67,8 +74,9 @@ async def _create_branch_with_pattern(app_ctx: AppContext, ctx: Context) -> str:
     """Create a session branch from a pattern with placeholders, retrying on collision."""
     pattern = app_ctx.config.branch_pattern
     max_retries = app_ctx.config.max_branch_retries
+    user_claim = app_ctx.config.oidc_user_claim if app_ctx.config.auth_mode == "oidc" else None
     for attempt in range(max_retries):
-        branch_name = expand_branch_pattern(pattern)
+        branch_name = expand_branch_pattern(pattern, user_claim=user_claim)
         await ctx.info(f"Auto-creating session branch: {branch_name}")
         try:
             await app_ctx.client.branch.create(

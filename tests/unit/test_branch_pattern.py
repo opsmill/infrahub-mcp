@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from unittest.mock import patch
 
 import pytest
 
@@ -59,3 +60,20 @@ class TestExpandBranchPattern:
         b = expand_branch_pattern("{hex}")
         # Theoretically could collide but probability is 1/2^32
         assert a != b
+
+
+class TestExpandBranchPatternUser:
+    def test_user_placeholder_with_oidc_identity(self) -> None:
+        with patch("infrahub_mcp.utils.get_user_from_token", return_value="alice-example.com"):
+            result = expand_branch_pattern("mcp/{user}-{date}", user_claim="email")
+        assert "alice-example.com" in result
+
+    def test_user_placeholder_anonymous_when_no_token(self) -> None:
+        with patch("infrahub_mcp.utils.get_user_from_token", return_value="anonymous"):
+            result = expand_branch_pattern("mcp/{user}-{date}", user_claim="email")
+        assert "anonymous" in result
+
+    def test_user_placeholder_default_anonymous_no_claim(self) -> None:
+        """Without user_claim, {user} resolves to 'anonymous' (mode=none)."""
+        result = expand_branch_pattern("mcp/{user}-{date}")
+        assert "anonymous" in result
