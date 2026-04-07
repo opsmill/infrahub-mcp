@@ -48,6 +48,9 @@ from fastmcp.server.middleware.timing import DetailedTimingMiddleware
 from mcp import McpError
 from mcp.types import ErrorData
 
+from infrahub_mcp.auth import get_user_from_token
+from infrahub_mcp.constants import AUTH_MODE_OIDC
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -202,6 +205,7 @@ class AuditMiddleware(Middleware):
 
     Produces log lines parseable by log aggregation tools (ELK, Loki,
     Datadog) for usage analytics and incident investigation.
+    Includes authenticated user identity when available (OIDC mode).
     """
 
     @override
@@ -211,7 +215,8 @@ class AuditMiddleware(Middleware):
         call_next: CallNext[mt.CallToolRequestParams, ToolResult],
     ) -> ToolResult:
         tool_name = context.message.name
-        logger.info("tool_call tool=%s", tool_name)
+        user = get_user_from_token()
+        logger.info("tool_call tool=%s user=%s", tool_name, user)
         return await call_next(context)
 
     @override
@@ -221,7 +226,8 @@ class AuditMiddleware(Middleware):
         call_next: CallNext[Any, Any],
     ) -> Any:
         uri = getattr(context.message, "uri", "unknown")
-        logger.info("resource_read uri=%s", uri)
+        user = get_user_from_token()
+        logger.info("resource_read uri=%s user=%s", uri, user)
         return await call_next(context)
 
 
@@ -525,12 +531,19 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
     )
 
     # 9. Auth middleware — scope-based authorization for HTTP transport (conditional)
-    if config.auth_scopes_write:
-        scopes = [s.strip() for s in config.auth_scopes_write.split(",") if s.strip()]
+    #    In OIDC mode: always enable with write scope gating (default scope: "write")
+    #    In none mode: enable only when auth_scopes_write is explicitly configured
+    if config.auth_mode == AUTH_MODE_OIDC or config.auth_scopes_write:
+        scopes_raw = config.auth_scopes_write or "write"
+        scopes = [s.strip() for s in scopes_raw.split(",") if s.strip()]
         mcp.add_middleware(
             AuthMiddleware(auth=restrict_tag(WRITE_TAG, scopes=scopes))
         )
-        logger.info("auth_middleware enabled=true write_scopes=%s", scopes)
+        logger.info(
+            "auth_middleware enabled=true auth_mode=%s write_scopes=%s",
+            config.auth_mode,
+            scopes,
+        )
 
     # 10. Read-only enforcement — tag-based, defense-in-depth (conditional)
     if config.read_only:

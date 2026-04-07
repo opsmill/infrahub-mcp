@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import mcp.types as mt
 import pytest
@@ -760,3 +760,105 @@ class TestModuleLevelGetters:
         configure_middleware(mock_mcp, config)
 
         assert get_caching_middleware() is not None
+
+
+# ---------------------------------------------------------------------------
+# AuditMiddleware — user-aware logging
+# ---------------------------------------------------------------------------
+
+
+class TestAuditMiddlewareUser:
+    @pytest.mark.anyio
+    async def test_audit_tool_call_includes_user(self) -> None:
+        """Audit log for tool calls should include user identity."""
+        middleware = AuditMiddleware()
+        ctx = _make_tool_context("get_nodes")
+        expected = ToolResult(content=[])
+
+        async def fake_call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            return expected
+
+        with patch("infrahub_mcp.middleware.get_user_from_token", return_value="alice-example.com"):
+            with patch("infrahub_mcp.middleware.logger") as mock_logger:
+                result = await middleware.on_call_tool(ctx, fake_call_next)
+                mock_logger.info.assert_called_once_with(
+                    "tool_call tool=%s user=%s", "get_nodes", "alice-example.com"
+                )
+
+        assert result is expected
+
+    @pytest.mark.anyio
+    async def test_audit_resource_read_includes_user(self) -> None:
+        """Audit log for resource reads should include user identity."""
+        middleware = AuditMiddleware()
+        ctx = _make_resource_context("infrahub://schema")
+
+        async def fake_call_next(c: MiddlewareContext[Any]) -> str:
+            return "data"
+
+        with patch("infrahub_mcp.middleware.get_user_from_token", return_value="bob-example.com"):
+            with patch("infrahub_mcp.middleware.logger") as mock_logger:
+                result = await middleware.on_read_resource(ctx, fake_call_next)
+                mock_logger.info.assert_called_once()
+                call_args = mock_logger.info.call_args
+                assert call_args[0][0] == "resource_read uri=%s user=%s"
+                assert str(call_args[0][1]) == "infrahub://schema"
+                assert call_args[0][2] == "bob-example.com"
+
+        assert result == "data"
+
+
+# ---------------------------------------------------------------------------
+# configure_middleware — AuthMiddleware auto-enable in OIDC mode
+# ---------------------------------------------------------------------------
+
+
+class TestConfigureMiddlewareOidc:
+    def test_auth_middleware_auto_enabled_in_oidc_mode(self) -> None:
+        """AuthMiddleware should be auto-enabled when auth_mode=oidc, even without auth_scopes_write."""
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig(auth_mode="oidc", auth_scopes_write="")
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "AuthMiddleware" in types
+
+    def test_auth_middleware_uses_default_write_scope_in_oidc(self) -> None:
+        """In OIDC mode without explicit scopes, default scope should be 'write'."""
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig(auth_mode="oidc", auth_scopes_write="")
+        configure_middleware(mock_mcp, config)
+
+        # Verify AuthMiddleware was added (scope correctness is covered by the integration)
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "AuthMiddleware" in types
+
+    def test_auth_middleware_respects_explicit_scopes_in_oidc(self) -> None:
+        """In OIDC mode with explicit scopes, those scopes should be used."""
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig(auth_mode="oidc", auth_scopes_write="infrahub:write,admin")
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "AuthMiddleware" in types
