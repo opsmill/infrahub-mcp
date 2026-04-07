@@ -63,18 +63,47 @@ Only the `get_schema` tool is cached for tool calls — node queries and writes 
 
 ## Authentication and authorization
 
-Scope-based authorization for write operations over HTTP transport. STDIO connections skip auth checks (no OAuth concept). Disabled by default.
+The MCP server supports two authentication modes controlled by `INFRAHUB_MCP_AUTH_MODE`:
 
-| Variable | Description | Default |
-| --- | --- | --- |
-| `INFRAHUB_MCP_AUTH_SCOPES_WRITE` | Comma-separated OAuth scopes required for write tools | — |
+### `none` (default)
+
+No identity gate. Any client that reaches the MCP server gets access based on the
+shared Infrahub credentials (`INFRAHUB_API_TOKEN` or `INFRAHUB_USERNAME`/`INFRAHUB_PASSWORD`).
+Works with both stdio and HTTP transports.
+
+### `oidc`
+
+External Identity Provider authentication via OpenID Connect. When enabled, the MCP server
+uses FastMCP's OIDCProxy to authenticate users against providers like Google, Okta, or
+Microsoft Entra. This provides:
+
+- **Identity** — who is calling (for audit logs and `{user}` branch placeholder)
+- **Role gating** — two roles: read-only (read tools only) and read-write (all tools)
+
+Infrahub API calls still use the shared env var credentials. The OIDC token is for
+MCP-level access control only. HTTP transport is required (OIDC is not supported over stdio).
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `INFRAHUB_MCP_AUTH_MODE` | No | `none` | Authentication mode (`none` or `oidc`) |
+| `INFRAHUB_MCP_OIDC_CONFIG_URL` | Yes (oidc) | | OIDC discovery endpoint URL |
+| `INFRAHUB_MCP_OIDC_CLIENT_ID` | Yes (oidc) | | OAuth client ID registered with the IdP |
+| `INFRAHUB_MCP_OIDC_CLIENT_SECRET` | No | | OAuth client secret (omit for PKCE flow) |
+| `INFRAHUB_MCP_OIDC_BASE_URL` | Yes (oidc) | | Public URL where the MCP server is accessible |
+| `INFRAHUB_MCP_OIDC_AUDIENCE` | No | | Token audience claim |
+| `INFRAHUB_MCP_OIDC_USER_CLAIM` | No | `email` | JWT claim used for user identity |
+| `INFRAHUB_MCP_AUTH_SCOPES_WRITE` | No | `write` | Scopes required for write operations (comma-separated) |
+
+### Scope-based write authorization
+
+When `INFRAHUB_MCP_AUTH_SCOPES_WRITE` is configured (in either auth mode over HTTP transport),
+tools tagged `write` are filtered from discovery and blocked at call time unless the
+access token contains all required scopes. STDIO connections skip auth checks.
 
 ```bash
 # Require "infrahub:write" scope for node_upsert, node_delete, etc.
 INFRAHUB_MCP_AUTH_SCOPES_WRITE=infrahub:write
 ```
-
-When configured, tools tagged `write` are filtered from discovery and blocked at call time unless the access token contains all required scopes.
 
 ## Observability
 
