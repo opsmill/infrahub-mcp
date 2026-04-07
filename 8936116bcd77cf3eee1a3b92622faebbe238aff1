@@ -1,0 +1,27 @@
+src/infrahub_mcp/constants.py
+  2e7cdb58e2e7874f 12-15
+tests/unit/test_config.py
+  2e7cdb58e2e7874f 32-38,264-361
+src/infrahub_mcp/config.py
+  2e7cdb58e2e7874f 8,34-41,60-66,94-100,102,126-132,136-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "8936116bcd77cf3eee1a3b92622faebbe238aff1",
+  "prompts": {
+    "2e7cdb58e2e7874f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "55435586-4b8a-4b3f-b3b6-39da0a4c349a",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 1232,
+      "total_deletions": 6,
+      "accepted_lines": 1227,
+      "overriden_lines": 0
+    }
+  }
+}
