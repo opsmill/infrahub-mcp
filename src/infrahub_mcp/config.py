@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from infrahub_mcp.constants import _ALLOWED_PLACEHOLDERS, _VALID_AUTH_MODES
+
 
 @dataclass(frozen=True)
 class ServerConfig:
@@ -29,6 +31,14 @@ class ServerConfig:
         dereference_schemas: Dereference $ref in JSON schemas for client compatibility.
         ping_interval_ms: Ping interval in milliseconds for HTTP sessions (0 = disabled).
         auth_scopes_write: OAuth scopes required for write operations (comma-separated).
+        auth_mode: Authentication mode. ``none`` = env var credentials only,
+            ``oidc`` = external IdP via OIDCProxy for identity + role gating.
+        oidc_config_url: OIDC discovery URL (required when auth_mode=oidc).
+        oidc_client_id: OAuth client ID registered with the IdP (required when auth_mode=oidc).
+        oidc_client_secret: OAuth client secret (optional, omit for PKCE flow).
+        oidc_base_url: Public URL where MCP server is accessible (required when auth_mode=oidc).
+        oidc_audience: Token audience claim (optional).
+        oidc_user_claim: JWT claim to use for user identity. Defaults to ``email``.
     """
 
     read_only: bool = False
@@ -47,6 +57,13 @@ class ServerConfig:
     dereference_schemas: bool = False
     ping_interval_ms: int = 0
     auth_scopes_write: str = ""
+    auth_mode: str = "none"
+    oidc_config_url: str = ""
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""
+    oidc_base_url: str = ""
+    oidc_audience: str = ""
+    oidc_user_claim: str = "email"
 
 
 _MAX_BRANCH_RETRIES_LIMIT = 20
@@ -74,7 +91,15 @@ def load_config() -> ServerConfig:
         INFRAHUB_MCP_DEREFERENCE_SCHEMAS: Dereference $ref in schemas (true/false).
         INFRAHUB_MCP_PING_INTERVAL_MS: Ping interval in ms (0 = disabled).
         INFRAHUB_MCP_AUTH_SCOPES_WRITE: OAuth scopes for write ops (comma-separated).
+        INFRAHUB_MCP_AUTH_MODE: Authentication mode (``none`` or ``oidc``).
+        INFRAHUB_MCP_OIDC_CONFIG_URL: OIDC discovery URL (required when auth_mode=oidc).
+        INFRAHUB_MCP_OIDC_CLIENT_ID: OAuth client ID (required when auth_mode=oidc).
+        INFRAHUB_MCP_OIDC_CLIENT_SECRET: OAuth client secret (optional, omit for PKCE).
+        INFRAHUB_MCP_OIDC_BASE_URL: Public MCP server URL (required when auth_mode=oidc).
+        INFRAHUB_MCP_OIDC_AUDIENCE: Token audience claim (optional).
+        INFRAHUB_MCP_OIDC_USER_CLAIM: JWT claim for user identity (default: ``email``).
     """
+    _validate_auth_mode()
     _validate_branch_retries()
     _validate_branch_pattern()
     _validate_rate_limit()
@@ -98,7 +123,37 @@ def load_config() -> ServerConfig:
         dereference_schemas=_parse_bool("INFRAHUB_MCP_DEREFERENCE_SCHEMAS"),
         ping_interval_ms=_parse_int("INFRAHUB_MCP_PING_INTERVAL_MS", default=0),
         auth_scopes_write=os.environ.get("INFRAHUB_MCP_AUTH_SCOPES_WRITE", ""),
+        auth_mode=os.environ.get("INFRAHUB_MCP_AUTH_MODE", "none").strip().lower(),
+        oidc_config_url=os.environ.get("INFRAHUB_MCP_OIDC_CONFIG_URL", ""),
+        oidc_client_id=os.environ.get("INFRAHUB_MCP_OIDC_CLIENT_ID", ""),
+        oidc_client_secret=os.environ.get("INFRAHUB_MCP_OIDC_CLIENT_SECRET", ""),
+        oidc_base_url=os.environ.get("INFRAHUB_MCP_OIDC_BASE_URL", ""),
+        oidc_audience=os.environ.get("INFRAHUB_MCP_OIDC_AUDIENCE", ""),
+        oidc_user_claim=os.environ.get("INFRAHUB_MCP_OIDC_USER_CLAIM", "email"),
     )
+
+
+def _validate_auth_mode() -> None:
+    """Validate INFRAHUB_MCP_AUTH_MODE and OIDC-required fields."""
+    mode = os.environ.get("INFRAHUB_MCP_AUTH_MODE", "none").strip().lower()
+    if mode not in _VALID_AUTH_MODES:
+        msg = (
+            f"INFRAHUB_MCP_AUTH_MODE must be one of {sorted(_VALID_AUTH_MODES)}, got {mode!r}."
+        )
+        raise ValueError(msg)
+
+    if mode == "oidc":
+        missing = [
+            var
+            for var in ("INFRAHUB_MCP_OIDC_CONFIG_URL", "INFRAHUB_MCP_OIDC_CLIENT_ID", "INFRAHUB_MCP_OIDC_BASE_URL")
+            if not os.environ.get(var, "").strip()
+        ]
+        if missing:
+            msg = (
+                f"OIDC auth mode requires these environment variables: {', '.join(missing)}. "
+                "See https://docs.opsmill.com for configuration details."
+            )
+            raise ValueError(msg)
 
 
 def _validate_branch_retries() -> None:
@@ -107,9 +162,6 @@ def _validate_branch_retries() -> None:
     if not 1 <= val <= _MAX_BRANCH_RETRIES_LIMIT:
         msg = f"INFRAHUB_MCP_MAX_BRANCH_RETRIES must be between 1 and {_MAX_BRANCH_RETRIES_LIMIT}, got {val}."
         raise ValueError(msg)
-
-
-_ALLOWED_PLACEHOLDERS = {"date", "hex", "user"}
 
 
 def _validate_branch_pattern() -> None:

@@ -29,6 +29,13 @@ class TestServerConfig:
         assert config.dereference_schemas is False
         assert config.ping_interval_ms == 0
         assert config.auth_scopes_write == ""
+        assert config.auth_mode == "none"
+        assert config.oidc_config_url == ""
+        assert config.oidc_client_id == ""
+        assert config.oidc_client_secret == ""
+        assert config.oidc_base_url == ""
+        assert config.oidc_audience == ""
+        assert config.oidc_user_claim == "email"
 
     def test_frozen(self) -> None:
         config = ServerConfig()
@@ -254,3 +261,101 @@ class TestLoadConfig:
         assert config.dereference_schemas is True
         assert config.ping_interval_ms == 5000
         assert config.auth_scopes_write == "write"
+
+
+class TestAuthModeConfig:
+    def test_auth_mode_default_none(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            config = load_config()
+        assert config.auth_mode == "none"
+
+    def test_auth_mode_none_explicit(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_AUTH_MODE": "none"}, clear=True):
+            config = load_config()
+        assert config.auth_mode == "none"
+
+    def test_auth_mode_oidc_valid(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "oidc",
+            "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://accounts.google.com/.well-known/openid-configuration",
+            "INFRAHUB_MCP_OIDC_CLIENT_ID": "my-client-id",
+            "INFRAHUB_MCP_OIDC_BASE_URL": "https://mcp.example.com",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = load_config()
+        assert config.auth_mode == "oidc"
+        assert config.oidc_config_url == "https://accounts.google.com/.well-known/openid-configuration"
+        assert config.oidc_client_id == "my-client-id"
+        assert config.oidc_base_url == "https://mcp.example.com"
+
+    def test_auth_mode_oidc_case_insensitive(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "OIDC",
+            "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://example.com/.well-known/openid-configuration",
+            "INFRAHUB_MCP_OIDC_CLIENT_ID": "id",
+            "INFRAHUB_MCP_OIDC_BASE_URL": "https://mcp.example.com",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = load_config()
+        assert config.auth_mode == "oidc"
+
+    def test_auth_mode_invalid_value(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_AUTH_MODE": "saml"}, clear=True):
+            with pytest.raises(ValueError, match="INFRAHUB_MCP_AUTH_MODE must be one of"):
+                load_config()
+
+    def test_auth_mode_oidc_missing_config_url(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "oidc",
+            "INFRAHUB_MCP_OIDC_CLIENT_ID": "id",
+            "INFRAHUB_MCP_OIDC_BASE_URL": "https://mcp.example.com",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            with pytest.raises(ValueError, match="INFRAHUB_MCP_OIDC_CONFIG_URL"):
+                load_config()
+
+    def test_auth_mode_oidc_missing_client_id(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "oidc",
+            "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://example.com/.well-known/openid-configuration",
+            "INFRAHUB_MCP_OIDC_BASE_URL": "https://mcp.example.com",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            with pytest.raises(ValueError, match="INFRAHUB_MCP_OIDC_CLIENT_ID"):
+                load_config()
+
+    def test_auth_mode_oidc_missing_base_url(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "oidc",
+            "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://example.com/.well-known/openid-configuration",
+            "INFRAHUB_MCP_OIDC_CLIENT_ID": "id",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            with pytest.raises(ValueError, match="INFRAHUB_MCP_OIDC_BASE_URL"):
+                load_config()
+
+    def test_auth_mode_oidc_optional_fields(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "oidc",
+            "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://example.com/.well-known/openid-configuration",
+            "INFRAHUB_MCP_OIDC_CLIENT_ID": "id",
+            "INFRAHUB_MCP_OIDC_BASE_URL": "https://mcp.example.com",
+            "INFRAHUB_MCP_OIDC_CLIENT_SECRET": "secret",
+            "INFRAHUB_MCP_OIDC_AUDIENCE": "my-audience",
+            "INFRAHUB_MCP_OIDC_USER_CLAIM": "preferred_username",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = load_config()
+        assert config.oidc_client_secret == "secret"
+        assert config.oidc_audience == "my-audience"
+        assert config.oidc_user_claim == "preferred_username"
+
+    def test_auth_mode_none_ignores_oidc_fields(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "none",
+            "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://example.com/.well-known/openid-configuration",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = load_config()
+        assert config.auth_mode == "none"
+        assert config.oidc_config_url == "https://example.com/.well-known/openid-configuration"
