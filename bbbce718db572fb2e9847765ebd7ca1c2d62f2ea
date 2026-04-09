@@ -1,0 +1,71 @@
+docs/docs/guides/authentication.mdx
+  0f6b07e55a492854 1-222,224-231
+docs/sidebars.ts
+  0f6b07e55a492854 12
+.pre-commit-config.yaml
+  9a86c200597f66e3 15,17-21
+pyproject.toml
+  9a86c200597f66e3 114,120
+.vale/styles/spelling-exceptions.txt
+  0f6b07e55a492854 117,169-171,177-179
+  9a86c200597f66e3 88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.6",
+  "base_commit_sha": "bbbce718db572fb2e9847765ebd7ca1c2d62f2ea",
+  "prompts": {
+    "0f6b07e55a492854": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bedbd9c3-1015-4183-b4e1-988c59c09867",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 241,
+      "total_deletions": 2,
+      "accepted_lines": 238,
+      "overriden_lines": 1
+    },
+    "246d5c10b54657f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48167231-4c98-47ae-b30f-8a2f05afdfee",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "8160925447b111fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2650cf1c-e40e-4828-b026-48922470984b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 19,
+      "overriden_lines": 0
+    },
+    "9a86c200597f66e3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "33fd62a8-9b2f-4e38-92e6-9d52a464d054",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 9,
+      "total_deletions": 8,
+      "accepted_lines": 9,
+      "overriden_lines": 0
+    }
+  }
+}
