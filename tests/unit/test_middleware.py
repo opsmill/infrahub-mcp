@@ -630,7 +630,7 @@ class TestConfigureMiddleware:
         types = [type(m).__name__ for m in mock_mcp.middleware]
         assert "PingMiddleware" not in types
 
-    def test_auth_middleware_enabled(self) -> None:
+    def test_auth_middleware_enabled_in_oidc_mode(self) -> None:
         mock_mcp = MagicMock()
         mock_mcp.middleware = []
 
@@ -639,7 +639,7 @@ class TestConfigureMiddleware:
 
         mock_mcp.add_middleware.side_effect = side_effect
 
-        config = ServerConfig(auth_scopes_write="infrahub:write,admin")
+        config = ServerConfig(auth_mode="oidc", auth_scopes_write="infrahub:write,admin")
         configure_middleware(mock_mcp, config)
 
         types = [type(m).__name__ for m in mock_mcp.middleware]
@@ -655,6 +655,22 @@ class TestConfigureMiddleware:
         mock_mcp.add_middleware.side_effect = side_effect
 
         config = ServerConfig()
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "AuthMiddleware" not in types
+
+    def test_auth_middleware_disabled_without_oidc_even_with_scopes(self) -> None:
+        """auth_scopes_write alone (without OIDC) should not enable AuthMiddleware."""
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig(auth_mode="none", auth_scopes_write="write,admin")
         configure_middleware(mock_mcp, config)
 
         types = [type(m).__name__ for m in mock_mcp.middleware]
@@ -680,6 +696,7 @@ class TestConfigureMiddleware:
             otel_enabled=True,
             dereference_schemas=True,
             ping_interval_ms=5000,
+            auth_mode="oidc",
             auth_scopes_write="write",
         )
         configure_middleware(mock_mcp, config)
@@ -771,7 +788,7 @@ class TestAuditMiddlewareUser:
     @pytest.mark.anyio
     async def test_audit_tool_call_includes_user(self) -> None:
         """Audit log for tool calls should include user identity."""
-        middleware = AuditMiddleware()
+        middleware = AuditMiddleware(user_claim="email")
         ctx = _make_tool_context("get_nodes")
         expected = ToolResult(content=[])
 
@@ -790,7 +807,7 @@ class TestAuditMiddlewareUser:
     @pytest.mark.anyio
     async def test_audit_resource_read_includes_user(self) -> None:
         """Audit log for resource reads should include user identity."""
-        middleware = AuditMiddleware()
+        middleware = AuditMiddleware(user_claim="email")
         ctx = _make_resource_context("infrahub://schema")
 
         async def fake_call_next(c: MiddlewareContext[Any]) -> str:
@@ -806,6 +823,38 @@ class TestAuditMiddlewareUser:
                 assert call_args[0][2] == "bob-example.com"
 
         assert result == "data"
+
+    @pytest.mark.anyio
+    async def test_audit_forwards_custom_user_claim(self) -> None:
+        """AuditMiddleware should forward the configured claim to get_user_from_token."""
+        middleware = AuditMiddleware(user_claim="preferred_username")
+        ctx = _make_tool_context("get_nodes")
+        expected = ToolResult(content=[])
+
+        async def fake_call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            return expected
+
+        with patch("infrahub_mcp.middleware.get_user_from_token", return_value="jdoe") as mock_get_user:
+            await middleware.on_call_tool(ctx, fake_call_next)
+            mock_get_user.assert_called_once_with(claim="preferred_username")
+
+    @pytest.mark.anyio
+    async def test_audit_no_claim_returns_anonymous(self) -> None:
+        """AuditMiddleware without user_claim should log anonymous without calling get_user_from_token."""
+        middleware = AuditMiddleware()
+        ctx = _make_tool_context("get_nodes")
+        expected = ToolResult(content=[])
+
+        async def fake_call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            return expected
+
+        with patch("infrahub_mcp.middleware.get_user_from_token") as mock_get_user:
+            with patch("infrahub_mcp.middleware.logger") as mock_logger:
+                await middleware.on_call_tool(ctx, fake_call_next)
+                mock_get_user.assert_not_called()
+                mock_logger.info.assert_called_once_with(
+                    "tool_call tool=%s user=%s", "get_nodes", "anonymous"
+                )
 
 
 # ---------------------------------------------------------------------------

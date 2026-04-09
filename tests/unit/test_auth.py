@@ -75,6 +75,30 @@ class TestSanitizeUserForBranch:
     def test_consecutive_hyphens_collapsed(self) -> None:
         assert sanitize_user_for_branch("a@@b") == "a-b"
 
+    def test_double_dot_collapsed(self) -> None:
+        assert sanitize_user_for_branch("a..b") == "a.b"
+
+    def test_path_traversal(self) -> None:
+        assert sanitize_user_for_branch("../alice") == "alice"
+
+    def test_double_slash_collapsed(self) -> None:
+        assert sanitize_user_for_branch("team//alice") == "team/alice"
+
+    def test_slash_dot_cleaned(self) -> None:
+        assert sanitize_user_for_branch("team/.alice") == "team/alice"
+
+    def test_dot_lock_suffix_stripped(self) -> None:
+        assert sanitize_user_for_branch("alice.lock") == "alice"
+
+    def test_leading_dot_stripped(self) -> None:
+        assert sanitize_user_for_branch(".alice") == "alice"
+
+    def test_trailing_slash_stripped(self) -> None:
+        assert sanitize_user_for_branch("alice/") == "alice"
+
+    def test_complex_oidc_claim(self) -> None:
+        assert sanitize_user_for_branch("../team//alice.lock") == "team/alice"
+
 
 class TestGetUserFromToken:
     def test_no_token_returns_anonymous(self) -> None:

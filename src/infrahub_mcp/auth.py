@@ -56,17 +56,31 @@ def create_auth_provider(config: ServerConfig) -> OIDCProxy | None:
 # Branch names: allow alphanumeric, hyphens, underscores, dots, slashes
 _BRANCH_UNSAFE = re.compile(r"[^a-zA-Z0-9._/-]")
 _COLLAPSE_HYPHENS = re.compile(r"-{2,}")
+_DOUBLE_DOT = re.compile(r"\.{2,}")
+_DOUBLE_SLASH = re.compile(r"/{2,}")
+_SLASH_DOT = re.compile(r"/\.")
+_DOT_LOCK_END = re.compile(r"\.lock$")
 
 
 def sanitize_user_for_branch(raw: str) -> str:
     """Sanitize a user identity string for use in git branch names.
 
-    Replaces characters not allowed in branch names with hyphens,
-    collapses runs of hyphens, and strips leading/trailing hyphens.
+    Applies the rules from ``git check-ref-format``:
+    - Replace characters not in ``[a-zA-Z0-9._/-]`` with hyphens.
+    - Replace ``..`` sequences (forbidden in refs) with a single dot.
+    - Replace ``//`` sequences with a single slash.
+    - Replace ``/.`` sequences with ``/`` (refs cannot have components starting with ``.``).
+    - Strip a trailing ``.lock`` suffix.
+    - Strip leading/trailing dots, slashes, and hyphens.
+    - Collapse runs of hyphens.
     """
     cleaned = _BRANCH_UNSAFE.sub("-", raw)
+    cleaned = _DOUBLE_DOT.sub(".", cleaned)
+    cleaned = _DOUBLE_SLASH.sub("/", cleaned)
+    cleaned = _SLASH_DOT.sub("/", cleaned)
+    cleaned = _DOT_LOCK_END.sub("", cleaned)
     cleaned = _COLLAPSE_HYPHENS.sub("-", cleaned)
-    return cleaned.strip("-") or "anonymous"
+    return cleaned.strip("-./") or "anonymous"
 
 
 def get_user_from_token(claim: str = "email") -> str:

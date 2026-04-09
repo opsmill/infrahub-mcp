@@ -208,6 +208,14 @@ class AuditMiddleware(Middleware):
     Includes authenticated user identity when available (OIDC mode).
     """
 
+    def __init__(self, *, user_claim: str | None = None) -> None:
+        self._user_claim = user_claim
+
+    def _get_user(self) -> str:
+        if self._user_claim is not None:
+            return get_user_from_token(claim=self._user_claim)
+        return "anonymous"
+
     @override
     async def on_call_tool(
         self,
@@ -215,7 +223,7 @@ class AuditMiddleware(Middleware):
         call_next: CallNext[mt.CallToolRequestParams, ToolResult],
     ) -> ToolResult:
         tool_name = context.message.name
-        user = get_user_from_token()
+        user = self._get_user()
         logger.info("tool_call tool=%s user=%s", tool_name, user)
         return await call_next(context)
 
@@ -226,7 +234,7 @@ class AuditMiddleware(Middleware):
         call_next: CallNext[Any, Any],
     ) -> Any:
         uri = getattr(context.message, "uri", "unknown")
-        user = get_user_from_token()
+        user = self._get_user()
         logger.info("resource_read uri=%s user=%s", uri, user)
         return await call_next(context)
 
@@ -530,10 +538,10 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
         )
     )
 
-    # 9. Auth middleware — scope-based authorization for HTTP transport (conditional)
-    #    In OIDC mode: always enable with write scope gating (default scope: "write")
-    #    In none mode: enable only when auth_scopes_write is explicitly configured
-    if config.auth_mode == AUTH_MODE_OIDC or config.auth_scopes_write:
+    # 9. Auth middleware — scope-based authorization for OIDC transport (conditional)
+    #    Only enabled in OIDC mode where an auth provider supplies tokens with scopes.
+    #    In none mode (incl. stdio): no token provider exists, so scope checks are skipped.
+    if config.auth_mode == AUTH_MODE_OIDC:
         scopes_raw = config.auth_scopes_write or "write"
         scopes = [s.strip() for s in scopes_raw.split(",") if s.strip()]
         mcp.add_middleware(
@@ -551,7 +559,8 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
         logger.info("read_only_mode enabled=true")
 
     # 11. Audit trail — structured tool/resource access log
-    mcp.add_middleware(AuditMiddleware())
+    audit_claim = config.oidc_user_claim if config.auth_mode == AUTH_MODE_OIDC else None
+    mcp.add_middleware(AuditMiddleware(user_claim=audit_claim))
 
     # 12. Response caching — TTL-based for schema/list operations (conditional)
     if config.cache_enabled:
