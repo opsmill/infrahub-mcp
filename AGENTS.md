@@ -90,9 +90,9 @@ When modifying MCP functionality, changes typically need to be applied across al
 ### Documentation Guidelines
 
 - All documentation files are in `docs/docs/` and use `.mdx` format
-- **ALWAYS run markdownlint before committing documentation changes**: `markdownlint docs/docs/**/*.mdx`
-- Use `markdownlint --fix docs/docs/**/*.mdx` to automatically fix formatting issues
-- Follow the project's `.markdownlint.yaml` configuration
+- **ALWAYS run rumdl before committing documentation changes**: `uv run rumdl check docs/docs/`
+- Use `uv run rumdl fmt docs/docs/` to automatically fix formatting issues
+- Follow the project's `[tool.rumdl]` configuration in `pyproject.toml`
 - Test documentation builds with `cd docs && npm run build` before submitting
 - Documentation follows the Diataxis framework (Getting Started, Features, Guides, Reference)
 

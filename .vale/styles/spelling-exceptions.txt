@@ -85,6 +85,7 @@ Keycloak
 livestream
 Loopbacks
 markdownlint
+rumdl
 max_count
 memgraph
 menu_placement
@@ -113,6 +114,7 @@ Prefetch
 profile_name
 pseudocode
 psutil
+sanitization
 PyPI
 query_peers
 rebase
@@ -164,10 +166,16 @@ Slurp'it
 walkthrough
 backoff
 Datadog
+Entra
+hardcoded
+hardcodes
 Grafana
 lookups
 middleware
 Middleware
 OAuth
+oidc
+OIDCProxy
+Okta
 Otternet
 tracebacks

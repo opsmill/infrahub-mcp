@@ -9,6 +9,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'guides/installation',
         'guides/docker',
+        'guides/authentication',
       ],
     },
     {

@@ -83,16 +83,16 @@ Microsoft Entra. This provides:
 Infrahub API calls still use the shared env var credentials. The OIDC token is for
 MCP-level access control only. HTTP transport is required (OIDC is not supported over stdio).
 
-| Variable | Required | Default | Description |
-| --- | --- | --- | --- |
-| `INFRAHUB_MCP_AUTH_MODE` | No | `none` | Authentication mode (`none` or `oidc`) |
-| `INFRAHUB_MCP_OIDC_CONFIG_URL` | Yes (oidc) | | OIDC discovery endpoint URL |
-| `INFRAHUB_MCP_OIDC_CLIENT_ID` | Yes (oidc) | | OAuth client ID registered with the IdP |
-| `INFRAHUB_MCP_OIDC_CLIENT_SECRET` | No | | OAuth client secret (omit for PKCE flow) |
-| `INFRAHUB_MCP_OIDC_BASE_URL` | Yes (oidc) | | Public URL where the MCP server is accessible |
-| `INFRAHUB_MCP_OIDC_AUDIENCE` | No | | Token audience claim |
-| `INFRAHUB_MCP_OIDC_USER_CLAIM` | No | `email` | JWT claim used for user identity |
-| `INFRAHUB_MCP_AUTH_SCOPES_WRITE` | No | `write` | Scopes required for write operations (comma-separated) |
+| Variable                          | Required   | Default | Description                                            |
+| --------------------------------- | ---------- | ------- | ------------------------------------------------------ |
+| `INFRAHUB_MCP_AUTH_MODE`          | No         | `none`  | Authentication mode (`none` or `oidc`)                 |
+| `INFRAHUB_MCP_OIDC_CONFIG_URL`    | Yes (oidc) |         | OIDC discovery endpoint URL                            |
+| `INFRAHUB_MCP_OIDC_CLIENT_ID`     | Yes (oidc) |         | OAuth client ID registered with the IdP                |
+| `INFRAHUB_MCP_OIDC_CLIENT_SECRET` | No         |         | OAuth client secret (omit for PKCE flow)               |
+| `INFRAHUB_MCP_OIDC_BASE_URL`      | Yes (oidc) |         | Public URL where the MCP server is accessible          |
+| `INFRAHUB_MCP_OIDC_AUDIENCE`      | No         |         | Token audience claim                                   |
+| `INFRAHUB_MCP_OIDC_USER_CLAIM`    | No         | `email` | JWT claim used for user identity                       |
+| `INFRAHUB_MCP_AUTH_SCOPES_WRITE`  | No         | `write` | Scopes required for write operations (comma-separated) |
 
 ### Scope-based write authorization
 

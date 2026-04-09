@@ -12,6 +12,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "rumdl",
     "invoke>=2.2.0",
     "mypy>=1.17.0",
     "pytest>=8.4.1",
@@ -108,6 +109,32 @@ constraint-dependencies = [
     "urllib3>=2.6.3",
     "wheel>=0.46.2",
 ]
+
+[tool.rumdl]
+# Disabled rules
+disable = ["MD013", "MD029", "MD033", "MD041"]
+
+# Opt-in rules
+extend-enable = ["MD060"]
+
+# File exclusions
+exclude = ["docs/docs/release-notes/**", "*-workspace/**"]
+
+# Per-file ignores
+[tool.rumdl.per-file-ignores]
+"**/AGENTS.md" = ["MD013", "MD024", "MD025", "MD029", "MD033", "MD041"]
+
+# MD024: allow duplicate headings among siblings only
+[tool.rumdl.MD024]
+siblings-only = true
+
+# MD025: don't treat frontmatter title as H1
+[tool.rumdl.MD025]
+front-matter-title = ""
+
+# MD060: require leading and trailing pipes
+[tool.rumdl.MD060]
+enabled = true
 
 [build-system]
 requires = ["hatchling"]
