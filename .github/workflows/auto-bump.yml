@@ -1,0 +1,131 @@
+---
+# yamllint disable rule:truthy
+name: Auto bump version
+
+on:
+  push:
+    branches: [stable]
+
+concurrency:
+  group: auto-bump
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Guard: skip bot commits to prevent infinite loops
+  # ---------------------------------------------------------------------------
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: Check commit author and message
+        id: check
+        run: |
+          MSG="${{ github.event.head_commit.message }}"
+          AUTHOR="${{ github.event.head_commit.author.username }}"
+
+          if [[ "$MSG" == chore\(release\):* ]] || [[ "$MSG" == "chore: sync version"* ]]; then
+            echo "Skipping: bot commit message detected"
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          elif [[ "$AUTHOR" == "opsmill-bot" ]]; then
+            echo "Skipping: opsmill-bot author detected"
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Bump: calculate next version, update files, commit, tag
+  # ---------------------------------------------------------------------------
+  bump:
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.next-version }}
+      changed: ${{ steps.compare.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GH_INFRAHUB_BOT_TOKEN }}
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Install mcp-discovery
+        # yamllint disable rule:line-length
+        run: |
+          curl -sL https://github.com/rust-mcp-stack/mcp-discovery/releases/latest/download/mcp-discovery-x86_64-unknown-linux-gnu.tar.xz \
+            | tar -xJ
+          sudo mv mcp-discovery /usr/local/bin/
+        # yamllint enable rule:line-length
+
+      - name: Calculate next version from PR labels
+        uses: patrickjahns/version-drafter-action@v1.3.1
+        id: next
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_INFRAHUB_BOT_TOKEN }}
+
+      - name: Compare with current version
+        id: compare
+        run: |
+          CURRENT=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
+          NEXT="${{ steps.next.outputs.next-version }}"
+          echo "Current: $CURRENT"
+          echo "Next:    $NEXT"
+          if [ "$CURRENT" = "$NEXT" ]; then
+            echo "No version change needed"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Version bump: $CURRENT -> $NEXT"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sync versions to all files
+        if: steps.compare.outputs.changed == 'true'
+        run: bash scripts/sync-versions.sh "${{ steps.next.outputs.next-version }}"
+
+      - name: Regenerate CAPABILITIES.md
+        if: steps.compare.outputs.changed == 'true'
+        run: bash scripts/update-capabilities.sh
+
+      - name: Commit and tag
+        if: steps.compare.outputs.changed == 'true'
+        run: |
+          VERSION="${{ steps.next.outputs.next-version }}"
+          git config user.name "opsmill-bot"
+          git config user.email "opsmill-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(release): bump to v${VERSION}"
+          git push origin stable
+
+      - name: Create annotated tag
+        if: steps.compare.outputs.changed == 'true'
+        run: |
+          VERSION="${{ steps.next.outputs.next-version }}"
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+          git push origin "v${VERSION}"
+
+  # ---------------------------------------------------------------------------
+  # Release draft: create/update a draft GitHub release
+  # ---------------------------------------------------------------------------
+  release-draft:
+    needs: bump
+    if: needs.bump.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: release-drafter/release-drafter@v6
+        with:
+          tag: "v${{ needs.bump.outputs.version }}"
+          version: "${{ needs.bump.outputs.version }}"
+          publish: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_INFRAHUB_BOT_TOKEN }}

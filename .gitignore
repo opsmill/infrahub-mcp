@@ -18,3 +18,5 @@ __pycache__
 
 .deepeval/
 .mcp.json
+**/worktrees
+

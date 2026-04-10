@@ -1,0 +1,63 @@
+---
+# yamllint disable rule:truthy
+name: Version sync
+
+on:
+  push:
+    branches: [stable]
+    paths:
+      - "pyproject.toml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync-versions:
+    # Skip when auto-bump already handled the sync
+    if: >-
+      !startsWith(github.event.head_commit.message, 'chore(release):')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Install mcp-discovery
+        # yamllint disable rule:line-length
+        run: |
+          curl -sL https://github.com/rust-mcp-stack/mcp-discovery/releases/latest/download/mcp-discovery-x86_64-unknown-linux-gnu.tar.xz \
+            | tar -xJ
+          sudo mv mcp-discovery /usr/local/bin/
+        # yamllint enable rule:line-length
+
+      - name: Extract version from pyproject.toml
+        id: version
+        run: |
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Sync versions
+        run: bash scripts/sync-versions.sh "${{ steps.version.outputs.version }}"
+
+      - name: Regenerate CAPABILITIES.md
+        run: bash scripts/update-capabilities.sh
+
+      - name: Commit changes if any
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add server.json CAPABILITIES.md pyproject.toml
+          if git diff --staged --quiet; then
+            echo "All versions already in sync"
+            exit 0
+          fi
+          git commit -m "chore: sync version to ${{ steps.version.outputs.version }}"
+          git push

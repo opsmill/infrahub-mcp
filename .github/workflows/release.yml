@@ -1,0 +1,77 @@
+---
+# yamllint disable rule:truthy
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Extract version from tag
+        id: tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Validate pyproject.toml version matches tag
+        run: |
+          PYPROJECT_VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
+          TAG_VERSION="${{ steps.tag.outputs.version }}"
+          if [ "$PYPROJECT_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Version mismatch: pyproject.toml=$PYPROJECT_VERSION, tag=v$TAG_VERSION"
+            exit 1
+          fi
+
+      - name: Validate server.json versions match tag
+        run: |
+          TAG_VERSION="${{ steps.tag.outputs.version }}"
+          TOP_VERSION=$(jq -r .version server.json)
+          PKG_VERSION=$(jq -r '.packages[0].version' server.json)
+          if [ "$TOP_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Version mismatch: server.json .version=$TOP_VERSION, tag=v$TAG_VERSION"
+            exit 1
+          fi
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Version mismatch: server.json .packages[0].version=$PKG_VERSION, tag=v$TAG_VERSION"
+            exit 1
+          fi
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Install mcp-discovery
+        # yamllint disable rule:line-length
+        run: |
+          curl -sL https://github.com/rust-mcp-stack/mcp-discovery/releases/latest/download/mcp-discovery-x86_64-unknown-linux-gnu.tar.xz \
+            | tar -xJ
+          sudo mv mcp-discovery /usr/local/bin/
+        # yamllint enable rule:line-length
+
+      - name: Validate CAPABILITIES.md is up to date
+        run: |
+          bash scripts/update-capabilities.sh /tmp/capabilities-check.md
+          if ! diff -q CAPABILITIES.md /tmp/capabilities-check.md > /dev/null 2>&1; then
+            echo "::error::CAPABILITIES.md is out of date. Run 'bash scripts/update-capabilities.sh' and commit."
+            diff CAPABILITIES.md /tmp/capabilities-check.md || true
+            exit 1
+          fi
+
+  publish:
+    needs: validate
+    uses: ./.github/workflows/workflow-publish.yml
+    secrets: inherit
+    with:
+      publish: true
+      version: ${{ github.ref_name }}

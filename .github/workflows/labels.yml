@@ -5,8 +5,7 @@ name: github
 on:
   push:
     branches:
-      - "develop"
-      - "main"
+      - "stable"
     paths:
       - ".github/labels.yml"
       - ".github/workflows/labels.yml"
