@@ -378,11 +378,11 @@ class OTelTracingMiddleware(Middleware):
 
 
 class SafeRetryMiddleware(RetryMiddleware):
-    """Retry middleware that only retries tool calls marked as idempotent.
+    """Retry middleware that only retries safe tool calls.
 
     Extends FastMCP's ``RetryMiddleware`` with an ``on_call_tool`` override
-    that checks ``ToolAnnotations.idempotentHint`` before retrying.
-    Non-idempotent tool calls (e.g. ``node_upsert`` without an id) are
+    that checks ``ToolAnnotations.idempotentHint`` or ``readOnlyHint`` before
+    retrying.  Non-safe tool calls (e.g. ``node_upsert`` without an id) are
     passed through without retries to avoid duplicate side effects.
 
     Other MCP methods (resource reads, prompt gets, list operations) are
@@ -402,11 +402,13 @@ class SafeRetryMiddleware(RetryMiddleware):
                 context.message.name
             )
 
-        is_idempotent = False
+        is_safe_to_retry = False
         if tool is not None and tool.annotations is not None:
-            is_idempotent = bool(tool.annotations.idempotentHint)
+            is_safe_to_retry = bool(
+                tool.annotations.idempotentHint or tool.annotations.readOnlyHint
+            )
 
-        if not is_idempotent:
+        if not is_safe_to_retry:
             # Skip retry logic — call through directly
             return await call_next(context)
 

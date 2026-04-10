@@ -1,14 +1,15 @@
-## Infrahub MCP Server 1.0.0
+## Infrahub MCP Server 1.0.1
 
-| Tools (6) | Prompts (4) | Resources (4) |
-| --- | --- | --- |
+| ✔ Tools (7) | ✔ Prompts (4) | ✔ Resources (3) | ✔ Logging | ~~<span style="opacity:0.6" class="error">✘ Completions</span>~~ | ~~<span style="opacity:0.6" class="error">✘ Tasks</span>~~ |
+| --- | --- | --- | --- | --- | --- |
 
-## Tools (6)
+## 🛠️ Tools (7)
 
 <table style="text-align: left;">
 <thead>
     <tr>
         <th style="width: auto;"></th>
+        <th style="width: auto;">Icon</th>
         <th style="width: auto;">Tool Name</th>
         <th style="width: auto;">Description</th>
         <th style="width: auto;">Inputs</th>
@@ -18,134 +19,129 @@
         <tr>
             <td>1.</td>
             <td>
+                <!--- no icon -->
+            </td>
+            <td>
                 <code><b>get_nodes</b></code>
             </td>
-            <td>Retrieve objects of a specific kind from Infrahub. Supports attribute/relationship filters, partial matching, and optional full attribute output in TOON tabular format.<br/><br/>Tags: <code>nodes</code>, <code>retrieve</code><br/>Read-only: yes</td>
+            <td>Retrieve objects of a specific kind from Infrahub.<br/><br/>To discover available kinds, read the ``infrahub://schema`` resource.<br/>If your client does not support MCP resources, call the `<code>get_schema</code>` tool instead.<br/>To discover available filters for a kind, read ``infrahub://schema/{kind}``<br/>or call ``get_schema(kind='...')``.<br/><br/>Args:<br/>    kind: Kind of the objects to retrieve.<br/>    branch: Branch to query. Defaults to the default branch.<br/>    filters: Dictionary of filters to apply.<br/>    partial_match: Whether to use partial matching for string filters.<br/>    include_attributes: Return full attribute dicts instead of display labels only.<br/>    limit: Cap on results returned (default 50). Pass -1 for all.<br/><br/>Returns:<br/>    A list of display labels (default) or a TOON-encoded string of full attribute dicts.<br/><br/>Raises:<br/>    RuntimeError: Via `<code>_log_and_raise_error</code>` when the schema is not found or the query fails.</td>
             <td>
                 <ul>
-                    <li><code>kind</code> : string — Kind of the objects to retrieve.</li>
-                    <li><code>branch</code> : string | null — Branch to query. Defaults to the default branch.</li>
-                    <li><code>filters</code> : object | null — Attribute/relationship filters. See <code>infrahub://schema/{kind}</code> for the full filter map.</li>
-                    <li><code>partial_match</code> : boolean (default false) — Use partial (substring) matching for string filters.</li>
-                    <li><code>include_attributes</code> : boolean (default false) — Return full attribute values in TOON tabular format instead of just display labels.</li>
-                    <li><code>limit</code> : integer (default 50, -1 for all) — Maximum nodes to return.</li>
+                    <li> <code>branch</code> : string | null<br /></li>
+                    <li> <code>filters</code> : unknown<br /></li>
+                    <li> <code>include_attributes</code> : boolean<br /></li>
+                    <li> <code>kind</code> : string<br /></li>
+                    <li> <code>limit</code> : integer<br /></li>
+                    <li> <code>partial_match</code> : boolean<br /></li>
                 </ul>
             </td>
         </tr>
         <tr>
             <td>2.</td>
             <td>
-                <code><b>search_nodes</b></code>
+                <!--- no icon -->
             </td>
-            <td>Search nodes of a specific kind by partial name match. A convenience wrapper around <code>get_nodes</code> with <code>partial_match=True</code> and a <code>name__value</code> filter.<br/><br/>Tags: <code>nodes</code>, <code>search</code><br/>Read-only: yes</td>
+            <td>
+                <code><b>get_schema</b></code>
+            </td>
+            <td>Discover available schema kinds and their structure in Infrahub.<br/><br/>Call without arguments to list all available kinds.<br/>Call with a `<code>kind</code>` to see its attributes, relationships, and valid filter keys.<br/><br/>Prefer reading the ``infrahub://schema`` resource if your client supports<br/>MCP resources — this tool provides the same data for clients that don't.<br/><br/>Args:<br/>    kind: Optional kind to get detail for. Omit to list all kinds.<br/>    branch: Branch to query. Defaults to the default branch.<br/><br/>Returns:<br/>    JSON catalog (no kind) or TOON-encoded schema detail (with kind).</td>
             <td>
                 <ul>
-                    <li><code>query</code> : string (min length 1) — Partial name/label to search for.</li>
-                    <li><code>kind</code> : string — Kind to search within.</li>
-                    <li><code>branch</code> : string | null — Branch to query. Defaults to the default branch.</li>
-                    <li><code>limit</code> : integer (default 10, 1-100) — Maximum number of results to return.</li>
+                    <li> <code>branch</code> : string | null<br /></li>
+                    <li> <code>kind</code> : string | null<br /></li>
                 </ul>
             </td>
         </tr>
         <tr>
             <td>3.</td>
             <td>
-                <code><b>query_graphql</b></code>
+                <!--- no icon -->
             </td>
-            <td>Execute a GraphQL query or mutation against Infrahub.<br/><br/>Tags: <code>graphql</code>, <code>retrieve</code><br/>Read-only: no</td>
+            <td>
+                <code><b>node_delete</b></code>
+            </td>
+            <td>Delete a node in Infrahub on the active session branch.<br/><br/>The deletion is applied to the session branch only and is not visible on the<br/>default branch until a proposed change is merged.<br/>To discover available kinds, read the ``infrahub://schema`` resource.<br/>If your client does not support MCP resources, call the `<code>get_schema</code>`<br/>tool instead.<br/><br/>Parameters:<br/>    kind: Kind of the node.<br/>    id: UUID of the node to delete.<br/>    hfid: Human-friendly ID segments of the node to delete.<br/><br/>Returns:<br/>    Dict confirming deletion on success.</td>
             <td>
                 <ul>
-                    <li><code>query</code> : string — GraphQL query to execute.</li>
-                    <li><code>branch</code> : string | null — Branch to execute the query against. Defaults to the default branch.</li>
+                    <li> <code>hfid</code> : string [ ] | null<br /></li>
+                    <li> <code>id</code> : string | null<br /></li>
+                    <li> <code>kind</code> : string<br /></li>
                 </ul>
             </td>
         </tr>
         <tr>
             <td>4.</td>
             <td>
+                <!--- no icon -->
+            </td>
+            <td>
                 <code><b>node_upsert</b></code>
             </td>
-            <td>Create or update a node in Infrahub on the active session branch. Omit both <code>id</code> and <code>hfid</code> to create; supply one to update. Only scalar attributes are accepted in <code>data</code>; use <code>query_graphql</code> for relationship mutations.<br/><br/>Tags: <code>nodes</code>, <code>write</code><br/>Read-only: no, Destructive: no</td>
+            <td>Create or update a node in Infrahub on the active session branch.<br/><br/>The session branch is auto-created on the first write of the session<br/>(``mcp/session-YYYYMMDD-<hex>``). Use `<code>propose_changes</code>` to open a<br/>review once your changes are ready.<br/>To discover available kinds and attributes, read the ``infrahub://schema``<br/>resource. If your client does not support MCP resources, call the<br/>`<code>get_schema</code>` tool instead.<br/><br/>- **Create**: omit both `<code>id</code>` and `<code>hfid</code>`.<br/>- **Update**: supply either `<code>id</code>` or `<code>hfid</code>` to identify the target node.<br/><br/>Only scalar attribute fields are accepted in `<code>data</code>`. To set relationship<br/>fields, use `<code>query_graphql</code>` with an appropriate GraphQL mutation.<br/><br/>Parameters:<br/>    kind: Node kind to create or update.<br/>    data: Flat attribute map ``{attribute_name: value}``.<br/>    id: UUID of the node to update (update mode).<br/>    hfid: Human-friendly ID segments of the node to update (update mode).<br/><br/>Returns:<br/>    Dict with node id, display_label, and branch on success.</td>
             <td>
                 <ul>
-                    <li><code>kind</code> : string — Kind of the node to create or update.</li>
-                    <li><code>data</code> : object — Flat {attribute: value} map.</li>
-                    <li><code>id</code> : string | null — UUID of an existing node to update.</li>
-                    <li><code>hfid</code> : array of strings | null — Human-friendly ID of an existing node to update.</li>
+                    <li> <code>data</code> : unknown<br /></li>
+                    <li> <code>hfid</code> : string [ ] | null<br /></li>
+                    <li> <code>id</code> : string | null<br /></li>
+                    <li> <code>kind</code> : string<br /></li>
                 </ul>
             </td>
         </tr>
         <tr>
             <td>5.</td>
             <td>
-                <code><b>node_delete</b></code>
+                <!--- no icon -->
             </td>
-            <td>Delete a node in Infrahub on the active session branch. The deletion is not visible on the default branch until a proposed change is merged.<br/><br/>Tags: <code>nodes</code>, <code>write</code><br/>Read-only: no, Destructive: yes</td>
+            <td>
+                <code><b>propose_changes</b></code>
+            </td>
+            <td>Open a proposed change (pull request) from the active session branch to the default branch.<br/><br/>Creates a `<code>CoreProposedChange</code>` in Infrahub so a human can review, approve,<br/>and merge the changes made during this session. The session branch remains<br/>active after calling this — you can continue making changes.<br/><br/>Parameters:<br/>    title: Title of the proposed change.<br/>    description: Optional description of the changes.<br/>    destination_branch: Target branch (default: resolved from Infrahub's default branch).<br/><br/>Returns:<br/>    Dict with proposed change id and branch details on success.</td>
             <td>
                 <ul>
-                    <li><code>kind</code> : string — Kind of the node to delete.</li>
-                    <li><code>id</code> : string | null — UUID of the node to delete.</li>
-                    <li><code>hfid</code> : array of strings | null — Human-friendly ID of the node to delete.</li>
+                    <li> <code>description</code> : string | null<br /></li>
+                    <li> <code>destination_branch</code> : string | null<br /></li>
+                    <li> <code>title</code> : string<br /></li>
                 </ul>
             </td>
         </tr>
         <tr>
             <td>6.</td>
             <td>
-                <code><b>propose_changes</b></code>
+                <!--- no icon -->
             </td>
-            <td>Open a proposed change (pull request) from the active session branch to the default branch for human review. The session branch remains active after calling this.<br/><br/>Tags: <code>branches</code>, <code>write</code><br/>Read-only: no, Destructive: no</td>
+            <td>
+                <code><b>query_graphql</b></code>
+            </td>
+            <td>Execute a GraphQL query against Infrahub.<br/><br/>To discover available kinds and their attributes, read the ``infrahub://schema``<br/>resource. If your client does not support MCP resources, call the `<code>get_schema</code>`<br/>tool instead. For the full GraphQL SDL, read ``infrahub://graphql-schema``.<br/><br/>Parameters:<br/>    query: GraphQL query to execute.<br/>    branch: Branch to execute the query against. Defaults to None (uses default branch).<br/><br/>Returns:<br/>    The result of the query.</td>
             <td>
                 <ul>
-                    <li><code>title</code> : string — Title for the proposed change.</li>
-                    <li><code>description</code> : string | null — Optional description explaining the motivation for the changes.</li>
-                    <li><code>destination_branch</code> : string | null — Branch to merge into. Defaults to the instance's default branch.</li>
+                    <li> <code>branch</code> : string | null<br /></li>
+                    <li> <code>query</code> : string<br /></li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>7.</td>
+            <td>
+                <!--- no icon -->
+            </td>
+            <td>
+                <code><b>search_nodes</b></code>
+            </td>
+            <td>Search nodes of a specific kind by partial name match.<br/><br/>A convenience wrapper around get_nodes with ``partial_match=True`` and a `<code>name__value</code>`<br/>filter. Use when you need to find a node without knowing its exact name.<br/><br/>To discover available kinds, read the ``infrahub://schema`` resource.<br/>If your client does not support MCP resources, call the `<code>get_schema</code>` tool instead.<br/><br/>Args:<br/>    query: Partial name string to search for.<br/>    kind: Kind to search within.<br/>    branch: Branch to query.<br/>    limit: Maximum results (1-100, default 10).<br/><br/>Returns:<br/>    A list of matching node display labels.<br/><br/>Raises:<br/>    RuntimeError: Via `<code>_log_and_raise_error</code>` when the schema is not found or the query fails.</td>
+            <td>
+                <ul>
+                    <li> <code>branch</code> : string | null<br /></li>
+                    <li> <code>kind</code> : string<br /></li>
+                    <li> <code>limit</code> : integer<br /></li>
+                    <li> <code>query</code> : string<br /></li>
                 </ul>
             </td>
         </tr>
 </tbody>
 </table>
 
-## Resources (4)
-
-<table style="text-align: left;">
-<thead>
-    <tr>
-        <th style="width: auto;"></th>
-        <th style="width: auto;">URI Pattern</th>
-        <th style="width: auto;">Name</th>
-        <th style="width: auto;">Description</th>
-    </tr>
-</thead>
-<tbody style="vertical-align: top;">
-        <tr>
-            <td>1.</td>
-            <td><code>infrahub://schema</code></td>
-            <td>Schema Catalog</td>
-            <td>All non-internal schema kinds available in this Infrahub instance, as a JSON object mapping kind names to their human-readable labels. Use this to discover what kinds exist before calling <code>get_nodes</code> or <code>node_upsert</code>.<br/><br/>MIME type: <code>application/json</code></td>
-        </tr>
-        <tr>
-            <td>2.</td>
-            <td><code>infrahub://schema/{kind}</code></td>
-            <td>Schema Kind Detail</td>
-            <td>Full schema definition for a specific node kind: attributes, relationships, and the complete set of filters accepted by <code>get_nodes</code>. Arrays are encoded in TOON tabular format.<br/><br/>MIME type: <code>text/plain</code></td>
-        </tr>
-        <tr>
-            <td>3.</td>
-            <td><code>infrahub://graphql-schema</code></td>
-            <td>GraphQL Schema</td>
-            <td>Full GraphQL schema SDL for this Infrahub instance. Use as a reference when constructing complex <code>query_graphql</code> calls.<br/><br/>MIME type: <code>text/plain</code></td>
-        </tr>
-        <tr>
-            <td>4.</td>
-            <td><code>infrahub://branches</code></td>
-            <td>Branches</td>
-            <td>All branches currently present in this Infrahub instance, including the active session branch when one has been created. Read this to know which branches are available before querying or proposing changes.<br/><br/>MIME type: <code>application/json</code></td>
-        </tr>
-</tbody>
-</table>
-
-## Prompts (4)
+## 📝 Prompts (4)
 
 <table style="text-align: left;">
 <thead>
@@ -153,50 +149,122 @@
         <th style="width: auto;"></th>
         <th style="width: auto;">Prompt Name</th>
         <th style="width: auto;">Description</th>
-        <th style="width: auto;">Parameters</th>
     </tr>
 </thead>
 <tbody style="vertical-align: top;">
         <tr>
             <td>1.</td>
-            <td><code><b>infrahub_agent</b></code></td>
-            <td>System prompt for the Infrahub infrastructure agent. Provides a complete operating guide including available resources, tools, branch-per-session workflow, and safety rules.</td>
-            <td><em>None</em></td>
+            <td>
+                <code><b>infrahub_agent</b></code>
+            </td>
+            <td>System prompt for the Infrahub infrastructure agent.</td>
         </tr>
         <tr>
             <td>2.</td>
-            <td><code><b>answer_infra_question</b></code></td>
-            <td>Read-only pipeline for answering infrastructure questions using Infrahub data. Guides the agent through kind discovery, schema reading, data retrieval, relationship traversal, and answer formatting.</td>
             <td>
-                <ul>
-                    <li><code>question</code> : string — The infrastructure question to answer.</li>
-                    <li><code>kind_hint</code> : string | null — Known or guessed schema kind. Skips the discovery step if provided.</li>
-                    <li><code>fields</code> : string | null — Comma-separated attribute names to include in the result.</li>
-                    <li><code>branch</code> : string | null — Branch to query.</li>
-                </ul>
+                <code><b>answer_infra_question</b></code>
             </td>
+            <td>Read-only pipeline for answering infrastructure questions using Infrahub data.</td>
         </tr>
         <tr>
             <td>3.</td>
-            <td><code><b>make_infra_change</b></code></td>
-            <td>Write workflow for making infrastructure changes through Infrahub. Guides the agent through schema validation, applying changes via <code>node_upsert</code>/<code>node_delete</code>, verification, and proposing changes for review.</td>
             <td>
-                <ul>
-                    <li><code>description</code> : string — What infrastructure change to make.</li>
-                    <li><code>kind</code> : string | null — Target schema kind for the change.</li>
-                    <li><code>branch</code> : string | null — Existing branch to target.</li>
-                </ul>
+                <code><b>make_infra_change</b></code>
             </td>
+            <td>Write workflow for making infrastructure changes through Infrahub.</td>
         </tr>
         <tr>
             <td>4.</td>
-            <td><code><b>explore_schema</b></code></td>
-            <td>Schema discovery prompt for exploring Infrahub's data model. Guides the agent through reading the schema catalog or a specific kind's full definition including attributes, relationships, and filters.</td>
             <td>
-                <ul>
-                    <li><code>kind</code> : string | null — Specific kind to explore. Omit to browse the full catalog.</li>
-                </ul>
+                <code><b>explore_schema</b></code>
             </td>
+            <td>Schema discovery prompt for exploring Infrahub's data model.</td>
         </tr>
 </tbody>
 </table>
+
+## 📄 Resources (3)
+
+<table style="text-align: left;">
+<thead>
+    <tr>
+        <th style="width: auto;"></th>
+        <th style="width: auto;">Icon</th>
+        <th style="width: auto;">Resource Name</th>
+        <th style="width: auto;">Uri</th>
+        <th style="width: auto;">Description</th>
+    </tr>
+</thead>
+<tbody style="vertical-align: top;">
+        <tr>
+            <td>1.</td>
+            <td>
+              <!--- no icon -->
+            </td>
+            <td>
+                <code><b>Schema Catalog</b></code>
+            </td>
+            <td>
+                <a>infrahub://schema</a> <i>(application/json)</i>
+            </td>
+            <td>All non-internal schema kinds available in this Infrahub instance, as a JSON object mapping kind names to their human-readable labels. Use this to discover what kinds exist before calling get_nodes or node_upsert.</td>
+        </tr>
+        <tr>
+            <td>2.</td>
+            <td>
+              <!--- no icon -->
+            </td>
+            <td>
+                <code><b>GraphQL Schema</b></code>
+            </td>
+            <td>
+                <a>infrahub://graphql-schema</a> <i>(text/plain)</i>
+            </td>
+            <td>Full GraphQL schema SDL for this Infrahub instance. Use as a reference when constructing complex query_graphql calls.</td>
+        </tr>
+        <tr>
+            <td>3.</td>
+            <td>
+              <!--- no icon -->
+            </td>
+            <td>
+                <code><b>Branches</b></code>
+            </td>
+            <td>
+                <a>infrahub://branches</a> <i>(application/json)</i>
+            </td>
+            <td>All branches currently present in this Infrahub instance, including the active session branch when one has been created. Read this to know which branches are available before querying or proposing changes.</td>
+        </tr>
+</tbody>
+</table>
+
+## 🧩 Resource Templates (1)
+
+<table style="text-align: left;">
+<thead>
+    <tr>
+        <th style="width: auto;"></th>
+        <th style="width: auto;">Icon</th>
+        <th style="width: auto;">Name</th>
+        <th style="width: auto;">Uri Template</th>
+        <th style="width: auto;">Description</th>
+    </tr>
+</thead>
+<tbody style="vertical-align: top;">
+        <tr>
+            <td>1.</td>
+            <td>
+                <!--- no icon -->
+            </td>
+            <td>
+                <code><b>Schema Kind Detail</b></code>
+            </td>
+            <td>
+                <a>infrahub://schema/{kind}</a> <i>(text/plain)</i>
+            </td>
+            <td>Full schema definition for a specific node kind: attributes, relationships, and the complete set of filters accepted by get_nodes. Fetch this before filtering nodes of an unfamiliar kind. Arrays are encoded in TOON tabular format: header declares fields once, each row is one entry.</td>
+        </tr>
+</tbody>
+</table>
+
+<sup>◾ generated by [mcp-discovery](https://github.com/rust-mcp-stack/mcp-discovery)</sup>

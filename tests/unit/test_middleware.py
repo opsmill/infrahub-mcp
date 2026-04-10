@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import mcp.types as mt
 import pytest
@@ -22,6 +22,7 @@ from infrahub_mcp.middleware import (
     OTelTracingMiddleware,
     ReadOnlyMiddleware,
     RequestIdMiddleware,
+    SafeRetryMiddleware,
     WRITE_TAG,
     configure_middleware,
     get_caching_middleware,
@@ -68,9 +69,16 @@ def _make_resource_context(
 class _FakeTool:
     """Lightweight stand-in for fastmcp Tool in middleware tests."""
 
-    def __init__(self, name: str, *, tags: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        *,
+        tags: set[str] | None = None,
+        annotations: mt.ToolAnnotations | None = None,
+    ) -> None:
         self.name = name
         self.tags = tags or set()
+        self.annotations = annotations
 
 
 def _make_tool(name: str, *, tags: set[str] | None = None) -> Any:
@@ -911,3 +919,104 @@ class TestConfigureMiddlewareOidc:
 
         types = [type(m).__name__ for m in mock_mcp.middleware]
         assert "AuthMiddleware" in types
+
+
+# ---------------------------------------------------------------------------
+# SafeRetryMiddleware — on_call_tool routing
+# ---------------------------------------------------------------------------
+
+
+def _make_retry_tool_context(
+    tool_name: str,
+    tool: Any,
+) -> MiddlewareContext[mt.CallToolRequestParams]:
+    """Create a tool context with a fastmcp_context that returns *tool*."""
+    mock_fastmcp = MagicMock()
+    mock_fastmcp.get_tool = AsyncMock(return_value=tool)
+    mock_ctx = MagicMock()
+    mock_ctx.fastmcp = mock_fastmcp
+    params = mt.CallToolRequestParams(name=tool_name, arguments={})
+    return MiddlewareContext(
+        message=params,
+        method="tools/call",
+        fastmcp_context=mock_ctx,
+    )
+
+
+class TestSafeRetryMiddlewareRouting:
+    """Verify that SafeRetryMiddleware retries safe tools and skips unsafe ones."""
+
+    @pytest.mark.anyio
+    async def test_read_only_tool_is_retried(self) -> None:
+        """Tools with readOnlyHint=True should be delegated to parent retry logic."""
+        tool = _FakeTool(
+            "get_schema",
+            annotations=mt.ToolAnnotations(readOnlyHint=True),
+        )
+        ctx = _make_retry_tool_context("get_schema", tool)
+        mw = SafeRetryMiddleware(max_retries=2, base_delay=0)
+
+        call_next_called = False
+
+        async def call_next(_: Any) -> ToolResult:
+            nonlocal call_next_called
+            call_next_called = True
+            return ToolResult(content=[])
+
+        with patch.object(
+            type(mw).__mro__[1], "on_call_tool", return_value=ToolResult(content=[])
+        ) as mock_super:
+            await mw.on_call_tool(ctx, call_next)
+            assert mock_super.called, "Should delegate to parent retry logic"
+            assert not call_next_called, "Should NOT call call_next directly"
+
+    @pytest.mark.anyio
+    async def test_idempotent_tool_is_retried(self) -> None:
+        """Tools with idempotentHint=True should be delegated to parent retry logic."""
+        tool = _FakeTool(
+            "some_idempotent_tool",
+            annotations=mt.ToolAnnotations(idempotentHint=True),
+        )
+        ctx = _make_retry_tool_context("some_idempotent_tool", tool)
+        mw = SafeRetryMiddleware(max_retries=2, base_delay=0)
+
+        with patch.object(
+            type(mw).__mro__[1], "on_call_tool", return_value=ToolResult(content=[])
+        ) as mock_super:
+            await mw.on_call_tool(ctx, call_next=MagicMock())
+            assert mock_super.called
+
+    @pytest.mark.anyio
+    async def test_non_safe_tool_skips_retry(self) -> None:
+        """Mutating tools (not read-only, not idempotent) bypass retry logic."""
+        tool = _FakeTool(
+            "node_upsert",
+            annotations=mt.ToolAnnotations(
+                readOnlyHint=False, idempotentHint=False, destructiveHint=False
+            ),
+        )
+        ctx = _make_retry_tool_context("node_upsert", tool)
+        mw = SafeRetryMiddleware(max_retries=2, base_delay=0)
+
+        sentinel = ToolResult(content=[])
+
+        async def call_next(_: Any) -> ToolResult:
+            return sentinel
+
+        result = await mw.on_call_tool(ctx, call_next)
+        assert result is sentinel, "Should call through directly without retry"
+
+    @pytest.mark.anyio
+    async def test_tool_without_annotations_skips_retry(self) -> None:
+        """Tools with no annotations should not be retried (safe default)."""
+        tool = _FakeTool("unknown_tool")
+        ctx = _make_retry_tool_context("unknown_tool", tool)
+        mw = SafeRetryMiddleware(max_retries=2, base_delay=0)
+
+        sentinel = ToolResult(content=[])
+
+        async def call_next(_: Any) -> ToolResult:
+            return sentinel
+
+        result = await mw.on_call_tool(ctx, call_next)
+        assert result is sentinel

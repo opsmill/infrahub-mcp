@@ -2,6 +2,7 @@ import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from importlib.metadata import version
 
 from fastmcp import FastMCP
 from infrahub_sdk.client import InfrahubClient
@@ -59,7 +60,7 @@ _auth_provider = create_auth_provider(_config)
 
 mcp: FastMCP = FastMCP(
     name="Infrahub MCP Server",
-    version="1.0.0",
+    version=version("infrahub-mcp"),
     lifespan=app_lifespan,
     auth=_auth_provider,
 )
@@ -76,14 +77,15 @@ async def health_check(request: Request) -> JSONResponse:  # noqa: ARG001
     Uses the SDK's ``get_version()`` to validate Infrahub connectivity.
     Returns 200 when healthy, 503 when Infrahub is unreachable.
     """
+    address = os.environ.get("INFRAHUB_ADDRESS", "unknown")
     try:
         client = InfrahubClient()
         await client.get_version()
         return JSONResponse({"status": "healthy"})
     except ServerNotReachableError:
-        logger.warning("Health check failed: Infrahub unreachable at %s", client.address)
+        logger.warning("Health check failed: Infrahub unreachable at %s", address)
         return JSONResponse(
-            {"status": "unhealthy", "reason": f"Infrahub unreachable at {client.address}"},
+            {"status": "unhealthy", "reason": f"Infrahub unreachable at {address}"},
             status_code=503,
         )
     except ServerNotResponsiveError as exc:
