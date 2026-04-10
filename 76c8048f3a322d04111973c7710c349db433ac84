@@ -1,0 +1,23 @@
+Dockerfile
+  77a8252825a84ba2 45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "76c8048f3a322d04111973c7710c349db433ac84",
+  "prompts": {
+    "77a8252825a84ba2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "54ca9ac0-42f0-4ac0-803a-ddb9070f0d5c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 251,
+      "total_deletions": 1,
+      "accepted_lines": 250,
+      "overriden_lines": 1
+    }
+  }
+}
