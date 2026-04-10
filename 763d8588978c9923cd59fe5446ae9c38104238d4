@@ -1,0 +1,64 @@
+src/infrahub_mcp/middleware.py
+  a7f307948795fbb4 381,384-385,405,407-409,411
+.github/workflows/release.yml
+  a7f307948795fbb4 1-77
+scripts/update-capabilities.sh
+  a7f307948795fbb4 1-20
+.github/workflows/version-sync.yml
+  a7f307948795fbb4 1-63
+server.json
+  a7f307948795fbb4 9,14
+tests/unit/test_health.py
+  a7f307948795fbb4 5,36-39,49-64
+.github/release-drafter.yml
+  a7f307948795fbb4 1-57
+src/infrahub_mcp/server.py
+  a7f307948795fbb4 5
+scripts/sync-versions.sh
+  a7f307948795fbb4 1-22
+.github/workflows/labels.yml
+  a7f307948795fbb4 8
+.github/workflows/auto-bump.yml
+  a7f307948795fbb4 1-131
+.github/version-drafter.yml
+  a7f307948795fbb4 1-20
+.github/workflows/release-drafter.yml
+  a7f307948795fbb4 1-20
+tests/unit/test_middleware.py
+  a7f307948795fbb4 8,25,72-78,81,922-1022
+.gitignore
+  a7f307948795fbb4 22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "763d8588978c9923cd59fe5446ae9c38104238d4",
+  "prompts": {
+    "77a8252825a84ba2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "54ca9ac0-42f0-4ac0-803a-ddb9070f0d5c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 249,
+      "overriden_lines": 0
+    },
+    "a7f307948795fbb4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "459c0d2b-31f5-4069-8e5a-d21054843c7f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 843,
+      "total_deletions": 24,
+      "accepted_lines": 826,
+      "overriden_lines": 0
+    }
+  }
+}
