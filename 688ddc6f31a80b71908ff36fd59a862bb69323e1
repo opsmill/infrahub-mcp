@@ -1,0 +1,43 @@
+.github/workflows/release-drafter.yml
+  91ecc627559b7ab1 1-20
+.github/workflows/version-sync.yml
+  91ecc627559b7ab1 1-63
+.github/workflows/auto-bump.yml
+  91ecc627559b7ab1 1-131
+src/infrahub_mcp/server.py
+  91ecc627559b7ab1 4,46
+server.json
+  91ecc627559b7ab1 9,14
+.github/version-drafter.yml
+  91ecc627559b7ab1 1-20
+.github/workflows/release.yml
+  91ecc627559b7ab1 1-77
+.github/workflows/labels.yml
+  91ecc627559b7ab1 8
+.github/release-drafter.yml
+  91ecc627559b7ab1 1-57
+scripts/update-capabilities.sh
+  91ecc627559b7ab1 1-20
+scripts/sync-versions.sh
+  91ecc627559b7ab1 1-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "688ddc6f31a80b71908ff36fd59a862bb69323e1",
+  "prompts": {
+    "91ecc627559b7ab1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99c9d233-ba8c-43c0-b024-011be9c28b9e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 776,
+      "total_deletions": 96,
+      "accepted_lines": 685,
+      "overriden_lines": 0
+    }
+  }
+}
