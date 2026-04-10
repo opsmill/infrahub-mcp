@@ -1,0 +1,40 @@
+.github/workflows/auto-bump.yml
+  4c1303f63394f221 65
+.github/workflows/release.yml
+  4c1303f63394f221 58
+.github/workflows/version-sync.yml
+  4c1303f63394f221 37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "e1018c701f73f6f164dbe4f819c227cce8839072",
+  "prompts": {
+    "4c1303f63394f221": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "19dc69e6-3442-47bd-9dd0-5d30a872bc7d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 3,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "91ecc627559b7ab1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99c9d233-ba8c-43c0-b024-011be9c28b9e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 270,
+      "overriden_lines": 0
+    }
+  }
+}
