@@ -1,96 +1,218 @@
-<!-- markdownlint-disable -->
-![Infrahub Logo](https://assets-global.website-files.com/657aff4a26dd8afbab24944b/657b0e0678f7fd35ce130776_Logo%20INFRAHUB.svg)
-<!-- markdownlint-restore -->
+<p align="center">
+  <img width="96" src="./docs/_media/mcp-discovery-logo.png" alt="MCP Discovery Logo" width="300">
+</p>
 
-<!-- mcp-name: com.opsmill/infrahub-mcp -->
+# MCP Discovery
 
-# Infrahub MCP Server
+A command-line tool written in Rust for discovering and documenting MCP Server capabilities.
 
-Infrahub MCP Server connects AI assistants and IDE agents to [Infrahub](https://github.com/opsmill/infrahub) using the open [Model Context Protocol](https://modelcontextprotocol.io) standard — so agents can query, create, update, and propose changes to your infrastructure data through a consistent, audited interface. It works with any MCP-compatible client (Claude Desktop, VS Code, Cursor, CLI agents, and more) with no custom glue code required.
+It supports outputting the results in the terminal or saving them to files in [Markdown](https://github.com/rust-mcp-stack/mcp-discovery/blob/main/docs/examples/update-md.md#server-info-and-capabilities), [HTML](https://rust-mcp-stack.github.io/mcp-discovery/examples/server-info.html), [plain text](https://rust-mcp-stack.github.io/mcp-discovery/examples/capabilities.txt), JSON, or a custom template defined by you.
 
-All writes are branch-isolated and require human approval before merging — agents never modify your default branch directly.
 
-## What You Can Do With It
+Check the [project documentation](https://rust-mcp-stack.github.io/mcp-discovery) for instructions and [command examples](https://rust-mcp-stack.github.io/mcp-discovery/#/guide/command-examples).
 
-- **Query your infrastructure data from natural language** — ask an AI assistant to find devices, interfaces, IP addresses, or any node kind defined in your Infrahub schema, with attribute filtering and partial-match search
-- **Explore your schema without leaving the conversation** — the server exposes your full schema catalog, per-kind attribute and filter maps, and the GraphQL SDL as MCP resources that agents read automatically
-- **Make changes on isolated branches** — all writes happen on an auto-created session branch (`mcp/session-YYYYMMDD-<hex>`), so the default branch is never modified directly
-- **Submit changes for human review** — when edits are ready, call `propose_changes` to open a Proposed Change (the Infrahub equivalent of a pull request) for approval before merging
-- **Run arbitrary GraphQL queries** — for advanced use cases, execute any GraphQL query or mutation directly against the Infrahub API
+## Features 💡
 
-## Who This Is For
+- **Display MCP Details**: Output MCP Server information, including tools, resources, and capabilities, directly to the terminal.
+- **Generate Files**: Create files in Markdown (`.md`), HTML (`.html`), or plain text (`.txt`) formats with MCP Server details and capabilities.
+- **Update Files**: Modify existing Markdown, HTML, or text files by adding MCP Server capabilities within specified markers, enabling MCP Server developers to automatically maintain up-to-date documentation and repository README files.
+- **Flexible Output Customization**: Choose from built-in templates (`md`, `md-plain`, `html`, `txt`) or supply custom Handlebars templates for personalized output.
+- **MCP Discovery GitHub Action**: Integrate the mcp-discovery CLI as a GitHub Action to automate and maintain up-to-date MCP Server documentation in your development workflow.
 
-**An infrastructure or network team already using Infrahub** that wants their AI coding assistants to understand and interact with their source of truth. You get schema-aware querying, safe branch-isolated writes, and a human-in-the-loop review path — all from your IDE or chat assistant. Start with the [Installation guide](https://docs.infrahub.app/mcp/guides/installation).
 
-**A developer building AI-powered infrastructure automation** who needs a standardized interface between agents and Infrahub. The MCP server handles authentication, schema discovery, and branch management so you can focus on the agent logic. Start with the [Docker deployment guide](https://docs.infrahub.app/mcp/guides/docker) for a production-ready setup.
+<img align="top" src="docs/_media/rust-mcp-stack-icon.png" width="24" style="border-radius:0.2rem;"> This open-source project leverages the [rust-mcp-sdk](https://github.com/rust-mcp-stack/rust-mcp-sdk) for seamless interaction with MCP Servers.
 
-## Prerequisites
+🌐 Check out the **rust-mcp-filesystem** [capabilities](https://rust-mcp-stack.github.io/rust-mcp-filesystem/#/capabilities) page for a sample output.
 
-- Python 3.13+
-- [uv](https://docs.astral.sh/uv/) package manager
-- A running [Infrahub](https://github.com/opsmill/infrahub) instance
-- An Infrahub API token or username/password credentials
+## Installation ⬇️
 
-## Quick Start
+### Running as CLI
+
+Check the [project documentation](https://rust-mcp-stack.github.io/mcp-discovery) for instructions on installing the tool on different platforms.
+
+### GitHub Action
+
+The easiest way to automate and maintain up-to-date MCP Server documentation , is to use mcp-discovery as a GitHub action.
+Please see [rust-mcp-stack/mcp-discovery-action](https://github.com/rust-mcp-stack/mcp-discovery-action) for installation and configuration instructions.
+
+## Subcommands
+
+- **`print`**: Displays MCP Server capabilities in the terminal.
+- **`create`**: Creates a new file with MCP Server capability details.
+- **`update`**: Updates an existing file by inserting MCP Server capabilities between specified
+  markers.
+
+👉 Note: If no subcommand is provided, the `print` subcommand will be used by default.
+
+### Options ⚙️
+
+- `-f, --filename <FILENAME>`: Used with `create` and `update` commands to specify the output file to generate or modify.
+- `-t, --template <TEMPLATE>`: Choose a built-in output template. Options: `md`, `md-plain`, `html`, `txt`.
+- `-p, --template-file <TEMPLATE_FILE>`: Path to a custom Handlebars template file.
+- `-s, --template-string <TEMPLATE_STRING>`: Inline Handlebars template provided as a string.
+- `-h, --help`: Display help information.
+- `-V, --version`: Display the version of `mcp-discovery`.
+
+👉 Note: If no template is provided, `mcp-discovery` will automatically select the most suitable built-in template based on the file extension.
+
+## Built-in Templates 🧬
+
+The CLI supports the following built-in output templates:
+
+- **`md`**: Formatted Markdown that presents MCP Server capabilities in a table format.
+- **`md-plain`**: Minimalist Markdown for straightforward output, using plain text instead of tables.
+- **`html`**: Structured HTML with basic styling.
+- **`txt`**: Plain text for raw, unformatted output.
+
+## Custom Templates 🧩
+
+You can provide custom Handlebars templates in different ways:
+
+1.  Use the `--template-file` flag to provide a custom template file.
+2.  Use the `--template-string` flag to provide a raw Handlebars template directly as a string.
+3.  To use an inline template, define it in a file for the `update` command only — <i>this will not function with print or create.</i>
+
+> Inline templates must be enclosed within designated marker annotations.
+
+### Examples
+
+##### Print MCP Server capabilities to the terminal:
 
 ```bash
-# Clone the repository
-git clone https://github.com/opsmill/infrahub-mcp.git
-cd infrahub-mcp
-
-# Install dependencies
-uv sync
-
-# Set your Infrahub connection (token auth)
-export INFRAHUB_ADDRESS="http://localhost:8000"
-export INFRAHUB_API_TOKEN="your-api-token"
-
-# Run the MCP server (stdio transport — ready for IDE clients)
-uv run fastmcp run src/infrahub_mcp/server.py:mcp
+mcp-discovery -- npx -y @modelcontextprotocol/server-everything
 ```
 
-Then add the server to your MCP client. See the [Installation guide](https://docs.infrahub.app/mcp/guides/installation) for Cursor, VS Code, and Claude Desktop configuration examples.
+#### Create a HTML file with MCP Server capabilities:
 
-## Configuration
+```bash
+mcp-discovery create -f capabilities.html -- npx -y @modelcontextprotocol/server-everything
+```
 
-| Variable | Description | Default |
-| --- | --- | --- |
-| `INFRAHUB_ADDRESS` | URL of your Infrahub instance | **required** |
-| `INFRAHUB_API_TOKEN` | API token *(or use username + password)* | — |
-| `INFRAHUB_USERNAME` | Username for basic-auth login | — |
-| `INFRAHUB_PASSWORD` | Password for basic-auth login | — |
-| `INFRAHUB_TIMEOUT` | HTTP request timeout in seconds | `30` |
-| `MCP_HOST` | Bind address for the HTTP server (Docker) | `0.0.0.0` |
-| `MCP_PORT` | Port for the HTTP server (Docker) | `8001` |
+<b>📄</b> <a href="https://rust-mcp-stack.github.io/mcp-discovery/examples/server-info.html" target="_blank"> Click here to view generated html file</a>
 
-## What's Included
+#### Create a MD file with MCP Server capabilities:
 
-- **Tools (read)** — `get_nodes` retrieves objects by kind with filters, `search_nodes` finds nodes by partial name match, `query_graphql` executes arbitrary GraphQL queries
-- **Tools (write)** — `node_upsert` creates or updates nodes, `node_delete` removes nodes, `propose_changes` opens a Proposed Change for human review — all on an auto-created session branch
-- **Resources** — `infrahub://schema` lists all available kinds, `infrahub://schema/{kind}` returns full attribute/filter details, `infrahub://graphql-schema` exposes the GraphQL SDL, `infrahub://branches` lists all branches
-- **Prompts** — a built-in `infrahub_agent` system prompt that teaches agents the branch-per-session workflow and available tools
-- **Infrastructure** — Dockerfile for container deployment, Docker Compose sidecar configuration, streamable HTTP transport support
+```bash
+mcp-discovery create -f capabilities.md -- npx -y @modelcontextprotocol/server-everything
+```
 
-| File | What it does |
-| --- | --- |
-| `src/infrahub_mcp/server.py` | Main server entry point — validates config, creates the Infrahub client, mounts all tools/resources/prompts |
-| `src/infrahub_mcp/tools/nodes.py` | Read tools: `get_nodes`, `search_nodes` |
-| `src/infrahub_mcp/tools/gql.py` | GraphQL tool: `query_graphql` |
-| `src/infrahub_mcp/tools/write.py` | Write tools: `node_upsert`, `node_delete`, `propose_changes` |
-| `src/infrahub_mcp/resources/schema.py` | Schema resources: catalog, kind detail, GraphQL SDL |
-| `src/infrahub_mcp/resources/branches.py` | Branch listing resource |
-| `src/infrahub_mcp/prompts/prompts.py` | Prompt templates for agent system prompts |
-| `Dockerfile` | Container image for streamable HTTP deployment |
-| `server.json` | MCP server manifest for registry discovery |
+#### Use a custom Handlebars template:
 
-## Going Deeper
+```bash
+mcp-discovery create -f capabilities.md  --template-file=custom_template.hbs -- npx -y @modelcontextprotocol/server-everything
+```
 
-| | |
-| --- | --- |
-| **Install and configure your MCP client** | [Installation guide](https://docs.infrahub.app/mcp/guides/installation) — step-by-step setup for Cursor, VS Code, and Claude Desktop |
-| **Deploy as a container** | [Docker guide](https://docs.infrahub.app/mcp/guides/docker) — standalone or as a sidecar alongside Infrahub |
-| **See all available tools and resources** | [Methods reference](https://docs.infrahub.app/mcp/references/methods) — full list of tools, resources, and prompts with parameters |
+💡 See the [Command Examples](https://rust-mcp-stack.github.io/mcp-discovery/#/guide/command-examples) section in the project documentation for additional CLI usage examples.
 
-## About Infrahub
+## Defining Update Regions with Markers
 
-[Infrahub](https://github.com/opsmill/infrahub) is an open source infrastructure data management and automation platform (AGPLv3), developed by [OpsMill](https://opsmill.com). It gives infrastructure and network teams a unified, schema-driven source of truth for all infrastructure data — devices, topology, IP space, configuration — with built-in version control, a generator framework for automation, and native integrations with Git, Ansible, Terraform, and CI/CD pipelines.
+When using the `update` subcommand, `mcp-discovery` places capabilities between designated markers in the target file, which vary by file format and are typically comment lines.
+The update command simplifies the process for developers and maintainers to keep documentation current effortlessly.
+Run the mcp-discovery update command anytime to refresh the file with the latest MCP Server capabilities.
+
+### Marker Annotations
+
+- **Render Block Start** : **`mcp-discovery-render`**
+- **Render Block End** : **`mcp-discovery-render-end`**
+
+**👉** The mcp-discovery-render marker supports template and template-file properties as well. Check the examples below for details.
+
+You can optionally include an inline template identifier within the render block, enclosed by:
+
+- **Template Block Start**: **`mcp-discovery-template`**
+- **Template Block End**: **`mcp-discovery-template-end`**
+
+If a template annotation is detected within a render block, `mcp-discovery` will use it to render the output. This allows for customized templates without depending on built-in or external template files. Check the examples below for details:
+
+### Sample Markdown file annotated with render block:
+
+```md
+# Server Info and Capabilities
+
+<!-- mcp-discovery-render -->
+
+Server Capabilities will be placed here...
+
+<!-- mcp-discovery-render-end -->
+```
+
+### Sample Markdown file, annotated with render block and template name:
+
+```md
+# Server Info and Capabilities
+
+<!-- mcp-discovery-render template=md-plain -->
+
+Server Capabilities will be placed here...
+
+<!-- mcp-discovery-render-end -->
+```
+
+### Sample Markdown file, annotated with render block and custom template file:
+
+```md
+# Server Info and Capabilities
+
+<!-- mcp-discovery-render template=my-custom-template.hbs -->
+
+Server Capabilities will be placed here...
+
+<!-- mcp-discovery-render-end -->
+```
+
+### Sample HTML file with annotations :
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>My MCP Server</title>
+  </head>
+  <body>
+    <h1>MCP Server Details</h1>
+    <div>
+      <!-- mcp-discovery-render -->
+
+      <!-- mcp-discovery-render-end -->
+    </div>
+  </body>
+</html>
+```
+
+### Sample HTML file with inline template :
+
+```html
+<h1>MCP Server Details</h1>
+<div>
+  <!-- mcp-discovery-render -->
+  <!-- mcp-discovery-template
+    <b>Name: </b>{{name}}
+    <br/>
+    <b>Version: </b>{{version}}
+    <br/>
+    <b>Number of tools:</b> {{len tools}}
+    <h2>Summary:</h2>
+    {{> html-summary }}
+    mcp-discovery-template-end -->
+  <!-- mcp-discovery-render-end -->
+</div>
+```
+
+Below is a screenshot showing the resulting HTML after the mcp-discovery update command is executed:
+
+<img src="./docs/_media/example-html-inline.jpg" alt="MCP Discovery HTML Inline Template" width="400">
+
+> You can execute the mcp-discovery update command whenever you need to refresh the file with the latest MCP Server capabilities.
+
+## Contributing
+
+We welcome everyone who wishes to contribute! Please refer to the [contributing](CONTRIBUTING.md) guidelines for more details.
+
+All contributions, including issues and pull requests, must follow
+Rust's Code of Conduct.
+
+Unless explicitly stated otherwise, any contribution you submit for inclusion in mcp-discovery is provided under the terms of the MIT License, without any additional conditions or restrictions.
+
+## License
+
+This project is licensed under the MIT License. see the [LICENSE](LICENSE) file for details.
