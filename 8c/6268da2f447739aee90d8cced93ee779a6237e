@@ -1,0 +1,50 @@
+.github/workflows/auto-bump.yml
+  ba77e022360b52d6 123-124,133
+  08b9ca475e7aa103 48,84-92,109,120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "8c6268da2f447739aee90d8cced93ee779a6237e",
+  "prompts": {
+    "08b9ca475e7aa103": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3e31190d-55ae-4b55-9716-2c3b66f271cf",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 41,
+      "total_deletions": 30,
+      "accepted_lines": 20,
+      "overriden_lines": 0
+    },
+    "91ecc627559b7ab1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99c9d233-ba8c-43c0-b024-011be9c28b9e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 270,
+      "overriden_lines": 0
+    },
+    "ba77e022360b52d6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "97778e2f-ce1a-4278-ade7-d0653b08b393",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 1,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}
