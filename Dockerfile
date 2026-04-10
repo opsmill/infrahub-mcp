@@ -2,9 +2,7 @@
 # STAGE 1: Builder — install dependencies with uv
 # ****************************************************************
 ARG PYTHON_VER=3.13
-FROM docker.io/python:${PYTHON_VER}-slim AS builder
-
-RUN pip install --no-cache-dir uv
+FROM ghcr.io/astral-sh/uv:0.7-python${PYTHON_VER}-bookworm-slim AS builder
 
 WORKDIR /app
 
@@ -24,18 +22,16 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 ARG PYTHON_VER=3.13
 FROM docker.io/python:${PYTHON_VER}-slim AS runtime
 
+LABEL io.modelcontextprotocol.server.name="infrahub-mcp"
+
 ENV PYTHONUNBUFFERED=1
 ENV MCP_HOST=0.0.0.0
 ENV MCP_PORT=8001
 
 WORKDIR /app
 
-# Copy only the virtual environment and source from builder
+# Copy only the virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
-COPY --from=builder /app/src ./src/
-COPY --from=builder /app/pyproject.toml ./
-
-# Activate the virtual environment
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Run as non-root user
@@ -45,6 +41,5 @@ USER app
 
 EXPOSE ${MCP_PORT}
 
-# Exec form with explicit shell for $MCP_HOST / $MCP_PORT expansion at runtime
-# (configurable via docker-compose env or `docker run -e`)
-CMD ["/bin/sh", "-c", "fastmcp run src/infrahub_mcp/server.py:mcp --transport streamable-http --host \"$MCP_HOST\" --port \"$MCP_PORT\""]
+ENTRYPOINT ["infrahub-mcp"]
+CMD ["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8001"]

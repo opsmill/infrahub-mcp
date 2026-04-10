@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastmcp import FastMCP
 from infrahub_sdk.client import InfrahubClient
+from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -79,6 +80,24 @@ async def health_check(request: Request) -> JSONResponse:  # noqa: ARG001
         client = InfrahubClient()
         await client.get_version()
         return JSONResponse({"status": "healthy"})
+    except ServerNotReachableError:
+        logger.warning("Health check failed: Infrahub unreachable at %s", client.address)
+        return JSONResponse(
+            {"status": "unhealthy", "reason": f"Infrahub unreachable at {client.address}"},
+            status_code=503,
+        )
+    except ServerNotResponsiveError as exc:
+        logger.warning("Health check failed: %s", exc)
+        return JSONResponse(
+            {"status": "unhealthy", "reason": f"Infrahub not responding: {exc}"},
+            status_code=503,
+        )
+    except AuthenticationError as exc:
+        logger.warning("Health check failed: authentication error — %s", exc)
+        return JSONResponse(
+            {"status": "unhealthy", "reason": f"Authentication failed: {exc}"},
+            status_code=503,
+        )
     except Exception:
         logger.exception("Health check failed")
         return JSONResponse({"status": "unhealthy"}, status_code=503)
