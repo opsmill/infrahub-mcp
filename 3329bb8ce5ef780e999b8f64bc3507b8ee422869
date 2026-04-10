@@ -1,0 +1,36 @@
+.github/workflows/auto-bump.yml
+  544a4c0e45c04fc2 24-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "3329bb8ce5ef780e999b8f64bc3507b8ee422869",
+  "prompts": {
+    "544a4c0e45c04fc2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4be6f1c3-59fb-465b-ada5-6ba5ead8666c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 3,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "91ecc627559b7ab1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99c9d233-ba8c-43c0-b024-011be9c28b9e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 270,
+      "overriden_lines": 0
+    }
+  }
+}
