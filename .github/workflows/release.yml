@@ -55,7 +55,7 @@ jobs:
         # yamllint disable rule:line-length
         run: |
           curl -sL https://github.com/rust-mcp-stack/mcp-discovery/releases/latest/download/mcp-discovery-x86_64-unknown-linux-gnu.tar.xz \
-            | tar -xJ
+            | tar -xJ --strip-components=1
           sudo mv mcp-discovery /usr/local/bin/
         # yamllint enable rule:line-length
 
