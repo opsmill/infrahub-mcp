@@ -14,7 +14,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY README.md ./
 COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+    uv sync --frozen --no-dev --no-editable
 
 # ****************************************************************
 # STAGE 2: Runtime — minimal image
