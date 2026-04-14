@@ -41,5 +41,4 @@ USER app
 
 EXPOSE ${MCP_PORT}
 
-ENTRYPOINT ["infrahub-mcp"]
-CMD --transport streamable-http --host "$MCP_HOST" --port "$MCP_PORT"
+CMD ["sh", "-c", "exec infrahub-mcp --transport streamable-http --host $MCP_HOST --port $MCP_PORT"]
