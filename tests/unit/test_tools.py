@@ -1,4 +1,5 @@
 import json
+import secrets
 
 import toon
 from fastmcp import Client
@@ -143,9 +144,7 @@ async def test_get_nodes_unknown_kind_includes_valid_kinds() -> None:
 async def test_search_nodes_unknown_kind_includes_valid_kinds() -> None:
     """search_nodes with invalid kind error includes the list of valid kinds."""
     async with Client(mcp) as client:
-        result = await client.call_tool(
-            "search_nodes", {"query": "test", "kind": "DoesNotExist"}, raise_on_error=False
-        )
+        result = await client.call_tool("search_nodes", {"query": "test", "kind": "DoesNotExist"}, raise_on_error=False)
         assert result.is_error is True
         text = result.content[0].text  # type: ignore[union-attr]
         assert "Valid kinds:" in text
@@ -191,3 +190,64 @@ async def test_query_graphql_error_includes_schema_hint() -> None:
         assert result.is_error is True
         text = result.content[0].text  # type: ignore[union-attr]
         assert "get_schema()" in text
+
+
+async def test_create_branch() -> None:
+    """create_branch creates a branch and returns its metadata."""
+    branch_name = f"test-create-{secrets.token_hex(4)}"
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "create_branch",
+            {"name": branch_name, "set_as_session_branch": False},
+        )
+        assert result.is_error is False
+        assert isinstance(result.data, dict)
+        assert result.data["name"] == branch_name
+        assert "id" in result.data
+        assert result.data["is_session_branch"] is False
+
+
+async def test_create_branch_as_session_branch() -> None:
+    """create_branch with set_as_session_branch=True makes subsequent writes target it."""
+    branch_name = f"test-session-{secrets.token_hex(4)}"
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "create_branch",
+            {"name": branch_name},
+        )
+        assert result.is_error is False
+        assert result.data["is_session_branch"] is True
+
+        # A subsequent write should target this branch
+        upsert_result = await client.call_tool(
+            "node_upsert",
+            {"kind": "BuiltinTag", "data": {"name": f"test-tag-{secrets.token_hex(4)}"}},
+        )
+        assert upsert_result.is_error is False
+        assert upsert_result.data["branch"] == branch_name
+
+
+async def test_set_session_branch() -> None:
+    """set_session_branch points the session at an existing branch."""
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "set_session_branch",
+            {"branch_name": "main"},
+        )
+        assert result.is_error is False
+        assert isinstance(result.data, dict)
+        assert result.data["session_branch"] == "main"
+
+
+async def test_set_session_branch_nonexistent() -> None:
+    """set_session_branch with non-existent branch returns error with remediation."""
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "set_session_branch",
+            {"branch_name": "does-not-exist-branch"},
+            raise_on_error=False,
+        )
+        assert result.is_error is True
+        text = result.content[0].text  # type: ignore[union-attr]
+        assert "does-not-exist-branch" in text
+        assert "Remediation:" in text

@@ -36,8 +36,35 @@ async def get_or_create_session_branch(ctx: Context) -> str:
             date = datetime.now(UTC).strftime("%Y%m%d")
             branch_name = f"mcp/session-{date}-{slug}"
             await ctx.info(f"Auto-creating session branch: {branch_name}")
-            await app_ctx.client.branch.create(branch_name=branch_name, sync_with_git=False, background_execution=False)
+            await app_ctx.client.branch.create(branch_name=branch_name, sync_with_git=False, wait_until_completion=True)
             app_ctx.session_branch = branch_name
+    return app_ctx.session_branch
+
+
+async def set_session_branch_name(ctx: Context, branch_name: str) -> str | None:
+    """Set the session branch, returning the previous value (if any).
+
+    Acquires the session-branch lock to prevent races with
+    ``get_or_create_session_branch``.
+    """
+    app_ctx: AppContext = ctx.request_context.lifespan_context  # type: ignore[union-attr]
+    async with app_ctx._session_branch_lock:  # noqa: SLF001
+        previous = app_ctx.session_branch
+        app_ctx.session_branch = branch_name
+    return previous
+
+
+def resolve_branch(ctx: Context, branch: str | None) -> str | None:
+    """Return the effective branch for a query.
+
+    If *branch* is explicitly provided, use it. Otherwise fall back to the
+    session branch (when one has been set via ``create_branch``,
+    ``set_session_branch``, or auto-created on first write). Returns ``None``
+    (meaning "use the default branch") only when no session branch exists.
+    """
+    if branch is not None:
+        return branch
+    app_ctx: AppContext = ctx.request_context.lifespan_context  # type: ignore[union-attr]
     return app_ctx.session_branch
 
 

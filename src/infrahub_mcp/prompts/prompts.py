@@ -132,6 +132,7 @@ Call `propose_changes(title=..., description=...)` to open a proposed change for
 
 ### Safety reminders
 - All writes target a **session branch** (auto-created on first write as `mcp/session-YYYYMMDD-<hex>`).
+- You can also use `create_branch` or `set_session_branch` to target a specific branch.
 - The default branch is **never modified directly**.
 - You can continue making changes after calling `propose_changes`.
 - Only scalar attributes are supported in `node_upsert` data — \

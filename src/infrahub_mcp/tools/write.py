@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from fastmcp import Context, FastMCP
 from infrahub_sdk.exceptions import GraphQLError, NodeNotFoundError, SchemaNotFoundError
+from infrahub_sdk.node import RelatedNode, RelationshipManager
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
@@ -13,6 +14,7 @@ from infrahub_mcp.utils import _log_and_raise_error, get_or_create_session_branc
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
+    from infrahub_sdk.node import InfrahubNode
 
 # pylint: disable=duplicate-code
 mcp: FastMCP = FastMCP(name="Infrahub Write")
@@ -20,6 +22,41 @@ logger = logging.getLogger(__name__)
 
 _NO_IDENTIFIER_MSG = "Provide either 'id' (UUID) or 'hfid' (human-friendly ID list) to identify the node."
 _BRANCH_NOTE = "All writes target the active session branch, auto-created on the first write of a session."
+
+
+async def _apply_updates(
+    node: "InfrahubNode",
+    attr_data: dict[str, Any],
+    rel_data: dict[str, Any],
+) -> list[str]:
+    """Apply attribute and relationship updates to an existing node.
+
+    Returns a list of field names that could not be resolved on the node.
+    """
+    unknown_fields: list[str] = []
+
+    for attr_name, attr_payload in attr_data.items():
+        attr = getattr(node, attr_name, None)
+        if attr is not None and hasattr(attr, "value"):
+            attr.value = attr_payload["value"]
+        else:
+            unknown_fields.append(attr_name)
+
+    for rel_name, rel_value in rel_data.items():
+        rel = getattr(node, rel_name, None)
+        if rel is None:
+            unknown_fields.append(rel_name)
+        elif isinstance(rel, RelatedNode):
+            setattr(node, rel_name, rel_value)
+        elif isinstance(rel, RelationshipManager):
+            if not rel.initialized:
+                await rel.fetch()
+            for peer in list(rel.peers):
+                rel.remove(peer.id)
+            items = rel_value if isinstance(rel_value, list) else [rel_value]
+            rel.extend(items)
+
+    return unknown_fields
 
 
 @mcp.tool(
@@ -36,8 +73,10 @@ async def node_upsert(  # pylint: disable=too-many-locals
         dict[str, Any],
         Field(
             description=(
-                "Flat {attribute: value} map. See infrahub://schema/{kind} for valid names. "
-                "Scalar attributes only; use query_graphql for relationships."
+                "Attribute and relationship map. See infrahub://schema/{kind} for valid names. "
+                "Attributes: {name: value}. "
+                "Relationships (one): {rel_name: id_string} or {rel_name: {id: ...}}. "
+                "Relationships (many): {rel_name: [id_string, ...]}."
             )
         ),
     ],
@@ -68,12 +107,17 @@ async def node_upsert(  # pylint: disable=too-many-locals
     - **Create**: omit both ``id`` and ``hfid``.
     - **Update**: supply either ``id`` or ``hfid`` to identify the target node.
 
-    Only scalar attribute fields are accepted in ``data``. To set relationship
-    fields, use ``query_graphql`` with an appropriate GraphQL mutation.
+    Both attributes and relationships are supported in ``data``:
+
+    - **Attributes**: ``{name: value}`` — wrapped as ``{"value": value}`` for the SDK.
+    - **Relationships (one)**: ``{rel: "uuid"}`` or ``{rel: {"id": "uuid"}}``
+      or ``{rel: ["hfid-seg1", "hfid-seg2"]}``.
+    - **Relationships (many)**: ``{rel: ["uuid1", "uuid2"]}``
+      or ``{rel: [{"id": "uuid1"}, ...]}``.
 
     Parameters:
         kind: Node kind to create or update.
-        data: Flat attribute map ``{attribute_name: value}``.
+        data: Attribute and relationship map.
         id: UUID of the node to update (update mode).
         hfid: Human-friendly ID segments of the node to update (update mode).
 
@@ -94,7 +138,17 @@ async def node_upsert(  # pylint: disable=too-many-locals
             remediation=f"{valid}\nCall get_schema() for details on any kind.",
         )
 
-    sdk_data = {key: {"value": value} for key, value in data.items()}
+    # Separate attributes from relationships using the schema
+    rel_names = {rel.name for rel in schema.relationships}
+    attr_data: dict[str, Any] = {}
+    rel_data: dict[str, Any] = {}
+    for key, value in data.items():
+        if key in rel_names:
+            rel_data[key] = value
+        else:
+            attr_data[key] = {"value": value}
+
+    sdk_data: dict[str, Any] = {**attr_data, **rel_data}
 
     try:
         if id is not None or hfid is not None:
@@ -107,21 +161,9 @@ async def node_upsert(  # pylint: disable=too-many-locals
 
             await ctx.info(f"Updating {kind} node on branch {session_branch}")
             node = await client.get(**get_kwargs)
-            unknown_attrs: list[str] = []
-            for attr_name, attr_payload in sdk_data.items():
-                attr = getattr(node, attr_name, None)
-                if attr is not None and hasattr(attr, "value"):
-                    attr.value = attr_payload["value"]
-                else:
-                    unknown_attrs.append(attr_name)
-            if unknown_attrs:
-                identifier = id or hfid
-                logger.warning(
-                    "Unknown attribute(s) %s on %s node %s; skipping",
-                    unknown_attrs,
-                    kind,
-                    identifier,
-                )
+            unknown_fields = await _apply_updates(node, attr_data, rel_data)
+            if unknown_fields:
+                logger.warning("Unknown field(s) %s on %s node %s; skipping", unknown_fields, kind, id or hfid)
             await node.save()
         else:
             # Create path
@@ -135,7 +177,7 @@ async def node_upsert(  # pylint: disable=too-many-locals
         await _log_and_raise_error(
             ctx=ctx,
             error=exc,
-            remediation=f"Check attribute names against infrahub://schema/{kind}.",
+            remediation=f"Check attribute and relationship names against infrahub://schema/{kind}.",
         )
 
     return {"id": node.id, "display_label": node.display_label, "branch": session_branch}
