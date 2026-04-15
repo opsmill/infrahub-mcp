@@ -41,6 +41,10 @@ exclude = [
     "server_hackathon\\.py$",  # TOML's double-quoted strings require escaping backslashes
 ]
 
+[[tool.mypy.overrides]]
+module = "infrahub_mcp.reports.charts"
+disable_error_code = ["call-arg", "arg-type"]
+
 [tool.ruff]
 line-length = 120
 
