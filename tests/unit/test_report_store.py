@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 
 import pytest
 
@@ -19,7 +20,7 @@ class TestReportStoreCreate:
     async def test_create_initialises_progress_to_zero(self) -> None:
         store = ReportStore()
         report = await store.create("My Report")
-        assert report.progress == 0.0
+        assert report.progress == pytest.approx(0.0)
 
     async def test_create_initialises_status_message_to_empty_string(self) -> None:
         store = ReportStore()
@@ -44,8 +45,6 @@ class TestReportStoreCreate:
         assert report.name == "Kind Report: InfraDevice"
 
     async def test_create_sets_created_at(self) -> None:
-        from datetime import UTC, datetime
-
         store = ReportStore()
         before = datetime.now(tz=UTC)
         report = await store.create("My Report")
