@@ -7,17 +7,22 @@ from typing import TYPE_CHECKING, Any
 from fastmcp import Context  # noqa: TC002
 from prefab_ui.app import PrefabApp
 from prefab_ui.components import (
-    H3,
+    Card,
+    CardContent,
+    CardHeader,
+    CardTitle,
     Column,
     DataTable,
     DataTableColumn,
     Grid,
     Metric,
-    P,
+    Muted,
+    Row,
+    Separator,
     Tab,
     Tabs,
 )
-from prefab_ui.components.charts import PieChart
+from prefab_ui.components.charts import BarChart, ChartSeries, PieChart
 from prefab_ui.components.control_flow.foreach import ForEach
 from prefab_ui.rx import Rx
 
@@ -120,12 +125,21 @@ async def explore(
     panel_configs = [PanelConfig.from_dict(p) for p in panels] if panels else auto_detect_panels(schema)
 
     distributions = _compute_distributions(nodes, panel_configs)
-    panels_data = [
-        {"field": d["field"], "type": d["type"], "data": d["data"]}
-        for d in distributions
+
+    # Split distributions by chart type for proper rendering
+    pie_panels = [d for d in distributions if d["type"] == "pie"]
+    bar_panels = [d for d in distributions if d["type"] == "bar"]
+
+    # Build dynamic table columns from actual schema
+    table_col_defs = [
+        DataTableColumn(key=c, header=c.replace("_", " ").title(), sortable=True)
+        for c in columns
     ]
 
-    table_columns = [{"key": c, "header": c.replace("_", " ").title()} for c in columns]
+    # Compute active filters description
+    filter_desc = ""
+    if filters:
+        filter_desc = ", ".join(f"{k}={v}" for k, v in filters.items())
 
     with PrefabApp(
         title=f"Explore: {kind}",
@@ -133,32 +147,79 @@ async def explore(
             "node_count": len(nodes),
             "attr_count": len(schema["attributes"]),
             "rel_count": len(schema["relationships"]),
-            "panels_data": panels_data,
+            "pie_panels": pie_panels,
+            "bar_panels": bar_panels,
             "table_rows": nodes,
-            "table_columns": table_columns,
         },
     ) as prefab_app:
         with Tabs(value="overview"):
             with Tab("Overview"):
-                with Column():
-                    with Grid(columns=3):
-                        Metric(label="Nodes", value=Rx("node_count"))
-                        Metric(label="Attributes", value=Rx("attr_count"))
-                        Metric(label="Relationships", value=Rx("rel_count"))
-                    H3(content="Charts")
-                    with ForEach(Rx("panels_data")) as (_idx, panel_item):
-                        P(content=panel_item.field)
-                        PieChart(data=panel_item.data, data_key="count", name_key="name")  # type: ignore[call-arg]
+                with Column(gap=4):
+                    # Metric cards in Card containers
+                    with Grid(columns=3, gap=4):
+                        with Card():
+                            with CardContent():
+                                Metric(label="Nodes", value=Rx("node_count"))
+                        with Card():
+                            with CardContent():
+                                Metric(label="Attributes", value=Rx("attr_count"))
+                        with Card():
+                            with CardContent():
+                                Metric(label="Relationships", value=Rx("rel_count"))
+
+                    if filter_desc:
+                        Muted(f"Filtered: {filter_desc}", css_class="text-sm")
+
+                    # Pie charts — attribute/relationship distributions (donut style)
+                    if pie_panels:
+                        with Card():
+                            with CardHeader():
+                                CardTitle("Distributions")
+                                Muted("Attribute and relationship value breakdown")
+                            with CardContent():
+                                with Grid(columns=min(len(pie_panels), 3), gap=4):
+                                    with ForEach(Rx("pie_panels")) as (_idx, panel_item):
+                                        with Column(gap=1):
+                                            Muted(panel_item.field, css_class="text-sm font-medium text-center")
+                                            PieChart(  # type: ignore[call-arg]
+                                                data=panel_item.data,
+                                                data_key="count",
+                                                name_key="name",
+                                                inner_radius=50,
+                                                height=220,
+                                                show_legend=True,
+                                            )
+
+                    # Bar charts — numeric/many-relationship distributions
+                    if bar_panels:
+                        with Card():
+                            with CardHeader():
+                                CardTitle("Counts")
+                                Muted("Numeric and relationship count distributions")
+                            with CardContent():
+                                with ForEach(Rx("bar_panels")) as (_idx2, bar_item):
+                                    with Column(gap=1):
+                                        Muted(bar_item.field, css_class="text-sm font-medium")
+                                        BarChart(  # type: ignore[call-arg]
+                                            data=bar_item.data,
+                                            x_axis="name",
+                                            series=[ChartSeries(data_key="count")],  # type: ignore[call-arg]
+                                            height=250,
+                                        )
+                                        Separator()
+
             with Tab("Data"):
-                with Column():
-                    H3(content="Node Data")
-                    DataTable(
-                        columns=[
-                            DataTableColumn(key="name", header="Name", sortable=True),
-                            DataTableColumn(key="description", header="Description", sortable=True),
-                        ],
-                        rows=Rx("table_rows"),  # type: ignore[arg-type]
-                        paginated=True,
-                        page_size=10,
-                    )
+                with Card():
+                    with CardHeader():
+                        with Row(align="center", css_class="justify-between"):
+                            CardTitle("Node Data")
+                            Muted(f"{len(nodes)} records")
+                    with CardContent():
+                        DataTable(
+                            columns=table_col_defs,
+                            rows=Rx("table_rows"),  # type: ignore[arg-type]
+                            paginated=True,
+                            page_size=15,
+                            search=True,
+                        )
     return prefab_app

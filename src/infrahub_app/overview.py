@@ -11,12 +11,19 @@ from typing import TYPE_CHECKING, Any
 from fastmcp import Context  # noqa: TC002
 from prefab_ui.app import PrefabApp
 from prefab_ui.components import (
-    H3,
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
     Column,
     DataTable,
     DataTableColumn,
     Grid,
     Metric,
+    Muted,
+    Row,
+    Separator,
     Tab,
     Tabs,
 )
@@ -224,10 +231,18 @@ async def overview(
     distribution_data = [{"label": c["label"], "count": c["count"]} for c in populated[:20]]
     mermaid_str = await _build_mermaid_str(client, branch, catalog)
 
+    # Compute summary stats
+    total_kinds = len(catalog)
+    ns_count = len({e["namespace"] for e in catalog})
+    user_kinds = len([e for e in catalog if e["namespace"] not in _BUILTIN_NAMESPACES])
+
     with PrefabApp(
         title="Overview",
         state={
             "total_nodes": total_nodes,
+            "total_kinds": total_kinds,
+            "ns_count": ns_count,
+            "user_kinds": user_kinds,
             "populated_count": len(populated),
             "empty_count": len(empty),
             "namespace_data": namespace_data,
@@ -240,44 +255,104 @@ async def overview(
     ) as prefab_app:
         with Tabs(value="summary"):
             with Tab("Summary"):
-                with Column():
-                    with Grid(columns=3):
-                        Metric(label="Total Nodes", value=Rx("total_nodes"))
-                        Metric(label="Populated Kinds", value=Rx("populated_count"))
-                        Metric(label="Empty Kinds", value=Rx("empty_count"))
-                    H3(content="Namespace Distribution")
-                    PieChart(data=Rx("namespace_data"), data_key="value", name_key="name")  # type: ignore[call-arg]
-                    H3(content="Schema Coverage")
-                    PieChart(data=Rx("coverage_data"), data_key="value", name_key="name")  # type: ignore[call-arg]
+                with Column(gap=4):
+                    # KPI metric cards
+                    with Grid(columns=4, gap=4):
+                        with Card():
+                            with CardContent():
+                                Metric(label="Total Nodes", value=Rx("total_nodes"))
+                        with Card():
+                            with CardContent():
+                                Metric(label="Total Kinds", value=Rx("total_kinds"))
+                        with Card():
+                            with CardContent():
+                                Metric(label="Populated Kinds", value=Rx("populated_count"))
+                        with Card():
+                            with CardContent():
+                                Metric(label="Namespaces", value=Rx("ns_count"))
+
+                    # Namespace + Coverage side by side
+                    with Grid(columns=2, gap=4):
+                        with Card():
+                            with CardHeader():
+                                CardTitle("Namespaces")
+                                CardDescription("Kind distribution by namespace")
+                            with CardContent():
+                                PieChart(  # type: ignore[call-arg]
+                                    data=Rx("namespace_data"),
+                                    data_key="value",
+                                    name_key="name",
+                                    inner_radius=60,
+                                    height=250,
+                                    show_legend=True,
+                                )
+                        with Card():
+                            with CardHeader():
+                                CardTitle("Schema Coverage")
+                                CardDescription("Populated vs empty kinds")
+                            with CardContent():
+                                PieChart(  # type: ignore[call-arg]
+                                    data=Rx("coverage_data"),
+                                    data_key="value",
+                                    name_key="name",
+                                    inner_radius=60,
+                                    height=250,
+                                    show_legend=True,
+                                )
+
             with Tab("Distribution"):
-                with Column():
-                    H3(content="Top Kinds by Node Count")
-                    BarChart(  # type: ignore[call-arg]
-                        data=Rx("distribution_data"),
-                        x_axis="label",
-                        series=[ChartSeries(data_key="count")],
-                    )
+                with Card():
+                    with CardHeader():
+                        CardTitle("Top Kinds by Node Count")
+                        CardDescription("Most populated kinds in this instance")
+                    with CardContent():
+                        BarChart(  # type: ignore[call-arg]
+                            data=Rx("distribution_data"),
+                            x_axis="label",
+                            series=[ChartSeries(data_key="count")],  # type: ignore[call-arg]
+                            height=350,
+                        )
+
             with Tab("Complexity"):
-                with Column():
-                    H3(content="Top Kinds by Field Count")
-                    BarChart(  # type: ignore[call-arg]
-                        data=Rx("complexity_data"),
-                        x_axis="label",
-                        series=[
-                            ChartSeries(data_key="attributes"),
-                            ChartSeries(data_key="relationships"),
-                        ],
-                        stacked=True,
-                    )
+                with Card():
+                    with CardHeader():
+                        CardTitle("Schema Complexity")
+                        CardDescription("User-defined kinds ranked by total fields (excluding builtins)")
+                    with CardContent():
+                        with Column(gap=2):
+                            Muted(f"{user_kinds} user-defined kinds", css_class="text-sm")
+                            Separator()
+                            BarChart(  # type: ignore[call-arg]
+                                data=Rx("complexity_data"),
+                                x_axis="label",
+                                series=[
+                                    ChartSeries(data_key="attributes", label="Attributes"),  # type: ignore[call-arg]
+                                    ChartSeries(data_key="relationships", label="Relationships"),  # type: ignore[call-arg]
+                                ],
+                                stacked=True,
+                                height=350,
+                            )
+
             with Tab("Relationships"):
-                with Column():
-                    H3(content="Entity Relationship Diagram")
-                    Mermaid(chart=Rx("mermaid_str"))
+                with Card():
+                    with CardHeader():
+                        CardTitle("Entity Relationship Diagram")
+                        CardDescription("Top complex kinds and their relationships")
+                    with CardContent():
+                        Mermaid(chart=Rx("mermaid_str"))
+
             with Tab("Catalog"):
-                DataTable(
-                    columns=_CATALOG_TABLE_COLUMNS,
-                    rows=Rx("catalog_rows"),  # type: ignore[arg-type]
-                    paginated=True,
-                    page_size=10,
-                )
+                with Card():
+                    with CardHeader():
+                        with Row(align="center", css_class="justify-between"):
+                            CardTitle("Schema Catalog")
+                            Muted(f"{total_kinds} kinds")
+                    with CardContent():
+                        DataTable(
+                            columns=_CATALOG_TABLE_COLUMNS,
+                            rows=Rx("catalog_rows"),  # type: ignore[arg-type]
+                            paginated=True,
+                            page_size=15,
+                            search=True,
+                        )
     return prefab_app

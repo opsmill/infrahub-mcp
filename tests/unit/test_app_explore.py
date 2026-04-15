@@ -112,7 +112,8 @@ class TestExploreUI:
         custom_panels = [{"type": "bar", "field": "status", "options": {"horizontal": True}}]
         result = await explore(kind="InfraDevice", ctx=ctx, panels=custom_panels)
         assert isinstance(result, PrefabApp)
-        assert "panels_data" in result.state  # type: ignore[attr-defined]
+        assert "pie_panels" in result.state  # type: ignore[attr-defined]
+        assert "bar_panels" in result.state  # type: ignore[attr-defined]
 
     @patch("infrahub_app.explore._fetch_schema_detail", side_effect=Exception("Schema fetch failed"))
     async def test_raises_on_error(self, mock_schema: MagicMock) -> None:

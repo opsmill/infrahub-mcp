@@ -104,6 +104,10 @@ max-line-length = 150
     "PLR2004", # Magic values in comparisons (expected in assertions)
     "PLR6301", # Method could be static (standard test-class pattern)
 ]
+"src/infrahub_app/**/*.py" = [
+    "PLR0915", # Too many statements (Prefab UI trees are declarative, not complex logic)
+    "PLR1702", # Too many nested blocks (Prefab component nesting is inherent to the pattern)
+]
 
 
 [tool.uv]
