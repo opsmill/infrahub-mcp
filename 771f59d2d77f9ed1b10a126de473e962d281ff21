@@ -1,0 +1,57 @@
+pyproject.toml
+  a3449ff56516ca11 107-110
+src/infrahub_app/explore.py
+  a3449ff56516ca11 10-13,19-21,25,128-136,139-142,150-151,157-210,212-224
+tests/unit/test_app_explore.py
+  a3449ff56516ca11 115-116
+src/infrahub_app/__init__.py
+  a3449ff56516ca11 6
+src/infrahub_app/overview.py
+  a3449ff56516ca11 14-18,24-26,234-238,243-245,258-302,304-315,317-335,337-343,345-357
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "771f59d2d77f9ed1b10a126de473e962d281ff21",
+  "prompts": {
+    "246d5c10b54657f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48167231-4c98-47ae-b30f-8a2f05afdfee",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "8160925447b111fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2650cf1c-e40e-4828-b026-48922470984b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 25,
+      "overriden_lines": 0
+    },
+    "a3449ff56516ca11": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "76bf5c5c-9931-4a41-8ed0-dfc63f55d616",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 209,
+      "total_deletions": 69,
+      "accepted_lines": 563,
+      "overriden_lines": 0
+    }
+  }
+}
