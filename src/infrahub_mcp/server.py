@@ -10,6 +10,7 @@ from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from infrahub_app import app as infrahub_app
 from infrahub_mcp.auth import create_auth_provider
 from infrahub_mcp.config import ServerConfig, load_config
 from infrahub_mcp.middleware import (
@@ -223,3 +224,6 @@ mcp.mount(schema_tools_mcp)
 # Write tools — hidden in read-only mode
 if not _config.read_only:
     mcp.mount(write_mcp)
+
+# Infrahub App — generic visualization tools (FastMCPApp)
+mcp.add_provider(infrahub_app)

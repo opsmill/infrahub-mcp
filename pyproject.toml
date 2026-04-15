@@ -146,6 +146,9 @@ front-matter-title = ""
 [tool.rumdl.MD060]
 enabled = true
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/infrahub_mcp", "src/infrahub_app"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
