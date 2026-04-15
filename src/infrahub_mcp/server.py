@@ -19,6 +19,8 @@ from infrahub_mcp.middleware import (
     get_metrics,
 )
 from infrahub_mcp.prompts.prompts import mcp as prompts_mcp
+from infrahub_mcp.reports import mcp as reports_mcp
+from infrahub_mcp.reports.store import ReportStore
 from infrahub_mcp.resources.branches import mcp as branches_resources_mcp
 from infrahub_mcp.resources.schema import mcp as schema_resources_mcp
 from infrahub_mcp.tools.gql import mcp as graphql_mcp
@@ -51,7 +53,7 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: A
     """Manage the application lifecycle: validate config, create client, yield context."""
     _validate_env()
     client = InfrahubClient()
-    yield AppContext(client=client, config=_config)
+    yield AppContext(client=client, config=_config, report_store=ReportStore())
 
 
 logger = logging.getLogger(__name__)
@@ -223,3 +225,6 @@ mcp.mount(schema_tools_mcp)
 # Write tools — hidden in read-only mode
 if not _config.read_only:
     mcp.mount(write_mcp)
+
+# Analytics reports — interactive visual reports (PrefabApp)
+mcp.mount(reports_mcp)
