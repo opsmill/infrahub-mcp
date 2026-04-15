@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, NoReturn
 
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
-from infrahub_sdk.exceptions import GraphQLError
+from infrahub_sdk.exceptions import GraphQLError, NodeNotFoundError
 from infrahub_sdk.node import Attribute, InfrahubNode, RelatedNode, RelationshipManager
 
 from infrahub_mcp.auth import get_user_from_token
@@ -158,7 +158,7 @@ async def _log_and_raise_error(ctx: Context, error: str | Exception, remediation
     raise ToolError(msg)
 
 
-async def convert_node_to_dict(*, obj: InfrahubNode, branch: str | None, include_id: bool = False) -> dict[str, Any]:  # noqa: C901
+async def convert_node_to_dict(*, obj: InfrahubNode, branch: str | None, include_id: bool = False) -> dict[str, Any]:  # noqa: C901, PLR0912
     data = {}
 
     if include_id:
@@ -173,9 +173,14 @@ async def convert_node_to_dict(*, obj: InfrahubNode, branch: str | None, include
         if rel and isinstance(rel, RelatedNode):
             if not rel.initialized:
                 await rel.fetch()
+            try:
+                peer_node = rel.peer
+            except NodeNotFoundError:
+                data[rel_name] = rel.id or None
+                continue
             related_node = obj._client.store.get(  # noqa: SLF001
                 branch=branch,
-                key=rel.peer.id,
+                key=peer_node.id,
                 raise_when_missing=False,
             )
             if related_node:
@@ -184,6 +189,8 @@ async def convert_node_to_dict(*, obj: InfrahubNode, branch: str | None, include
                     if related_node.hfid
                     else related_node.id
                 )
+            else:
+                data[rel_name] = peer_node.id
         elif rel and isinstance(rel, RelationshipManager):
             peers: list[dict[str, Any]] = []
             if not rel.initialized:
@@ -198,7 +205,11 @@ async def convert_node_to_dict(*, obj: InfrahubNode, branch: str | None, include
                 )
                 if not related_node:
                     await peer.fetch()
-                    related_node = peer.peer
+                    try:
+                        related_node = peer.peer
+                    except NodeNotFoundError:
+                        peers.append(peer.id)
+                        continue
                 peers.append(
                     related_node.get_human_friendly_id_as_string(include_kind=True)
                     if related_node.hfid
