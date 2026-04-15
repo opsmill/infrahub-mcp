@@ -41,14 +41,6 @@ exclude = [
     "server_hackathon\\.py$",  # TOML's double-quoted strings require escaping backslashes
 ]
 
-[[tool.mypy.overrides]]
-module = "infrahub_mcp.reports.charts"
-disable_error_code = ["call-arg", "arg-type"]
-
-[[tool.mypy.overrides]]
-module = "infrahub_mcp.reports.reports"
-disable_error_code = ["call-arg", "call-overload"]
-
 [tool.ruff]
 line-length = 120
 
@@ -105,7 +97,13 @@ known-first-party = ["infrahub_mcp"]
 max-line-length = 150
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101"]  # Allow assert in test files
+"tests/**/*.py" = [
+    "S101",    # Allow assert in test files
+    "ARG002",  # Unused method args (required by @patch decorators)
+    "PLC2701", # Private name imports (testing internal helpers)
+    "PLR2004", # Magic values in comparisons (expected in assertions)
+    "PLR6301", # Method could be static (standard test-class pattern)
+]
 
 
 [tool.uv]
