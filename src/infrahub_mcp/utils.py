@@ -16,6 +16,8 @@ from infrahub_mcp.config import ServerConfig
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
 
+    from infrahub_mcp.reports.store import ReportStore
+
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 
 
@@ -25,6 +27,7 @@ class AppContext:
 
     client: "InfrahubClient"
     config: ServerConfig
+    report_store: "ReportStore | None" = field(default=None)
     session_branch: str | None = field(default=None)
     _session_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
