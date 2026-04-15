@@ -1,0 +1,51 @@
+src/infrahub_mcp/server.py
+  a3449ff56516ca11 54
+pyproject.toml
+  a3449ff56516ca11 100-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "3b20921bb22125ca0aeabaff5ed0d5cec772e250",
+  "prompts": {
+    "246d5c10b54657f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48167231-4c98-47ae-b30f-8a2f05afdfee",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "8160925447b111fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2650cf1c-e40e-4828-b026-48922470984b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 19,
+      "overriden_lines": 0
+    },
+    "a3449ff56516ca11": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "76bf5c5c-9931-4a41-8ed0-dfc63f55d616",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 2010,
+      "accepted_lines": 368,
+      "overriden_lines": 0
+    }
+  }
+}
