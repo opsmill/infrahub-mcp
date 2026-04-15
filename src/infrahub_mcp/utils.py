@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, NoReturn
 
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
+from infrahub_sdk.exceptions import Error as SdkError
 from infrahub_sdk.exceptions import GraphQLError, NodeNotFoundError
 from infrahub_sdk.node import Attribute, InfrahubNode, RelatedNode, RelationshipManager
 
@@ -171,12 +172,15 @@ async def convert_node_to_dict(*, obj: InfrahubNode, branch: str | None, include
     for rel_name in obj._schema.relationship_names:  # noqa: SLF001
         rel = getattr(obj, rel_name)
         if rel and isinstance(rel, RelatedNode):
+            if not rel.id:
+                data[rel_name] = None
+                continue
             if not rel.initialized:
                 await rel.fetch()
             try:
                 peer_node = rel.peer
-            except NodeNotFoundError:
-                data[rel_name] = rel.id or None
+            except (NodeNotFoundError, SdkError):
+                data[rel_name] = rel.id
                 continue
             related_node = obj._client.store.get(  # noqa: SLF001
                 branch=branch,
