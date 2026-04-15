@@ -182,20 +182,6 @@ _KIND_REPORT_TABLE_COLUMNS = [
     DataTableColumn(key="description", header="Description", sortable=True),
 ]
 
-_CHARTABLE_ATTR_KINDS = {"Dropdown", "Boolean"}
-
-
-def _detect_chartable_attributes(
-    attributes: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Return attributes likely to produce meaningful charts."""
-    return [
-        attr
-        for attr in attributes
-        if attr.get("kind") in _CHARTABLE_ATTR_KINDS
-        or attr.get("kind") == "Text"
-    ]
-
 
 def _format_distributions(
     distributions: list[dict[str, Any]],
