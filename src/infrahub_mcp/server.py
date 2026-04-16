@@ -6,6 +6,7 @@ from importlib.metadata import version
 from fastmcp import FastMCP
 from infrahub_sdk.client import InfrahubClient
 
+from infrahub_mcp.config import load_config
 from infrahub_mcp.prompts.prompts import mcp as prompts_mcp
 from infrahub_mcp.resources.branches import mcp as branches_resources_mcp
 from infrahub_mcp.resources.schema import mcp as schema_resources_mcp
@@ -36,9 +37,10 @@ def _validate_env() -> None:
 async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: ARG001, RUF029
     """Manage the application lifecycle: validate config, create client, yield context."""
     _validate_env()
+    config = load_config()
     client = InfrahubClient()
     try:
-        yield AppContext(client=client)
+        yield AppContext(client=client, config=config)
     finally:
         pass  # InfrahubClient manages its own connection lifecycle
 

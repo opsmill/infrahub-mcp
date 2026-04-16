@@ -9,6 +9,8 @@ from fastmcp import Context
 from fastmcp.exceptions import ToolError
 from infrahub_sdk.node import Attribute, InfrahubNode, RelatedNode, RelationshipManager
 
+from infrahub_mcp.config import ServerConfig
+
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
 
@@ -20,8 +22,21 @@ class AppContext:
     """Application context held for the lifetime of an MCP connection."""
 
     client: "InfrahubClient"
+    config: ServerConfig
     session_branch: str | None = field(default=None)
     _session_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+
+def get_client(ctx: Context) -> "InfrahubClient":
+    """Get the Infrahub client from the request context."""
+    app_ctx: AppContext = ctx.request_context.lifespan_context  # type: ignore[union-attr]
+    return app_ctx.client
+
+
+def get_config(ctx: Context) -> ServerConfig:
+    """Get the server configuration from the request context."""
+    app_ctx: AppContext = ctx.request_context.lifespan_context  # type: ignore[union-attr]
+    return app_ctx.config
 
 
 async def get_or_create_session_branch(ctx: Context) -> str:

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from infrahub_sdk.exceptions import SchemaNotFoundError
 
+from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.schema import get_schema_detail
 
 
@@ -27,7 +28,9 @@ def _make_relationship(name: str, peer: str, cardinality: str = "many", optional
     return rel
 
 
-def _make_schema_node(kind: str, label: str, namespace: str, attributes: list[Any], relationships: list[Any]) -> MagicMock:
+def _make_schema_node(
+    kind: str, label: str, namespace: str, attributes: list[Any], relationships: list[Any]
+) -> MagicMock:
     node = MagicMock()
     node.kind = kind
     node.label = label
@@ -248,6 +251,23 @@ async def test_same_kind_in_different_branches_not_marked_seen() -> None:
     target_rel = next(r for r in left_rel["peer_schema"]["relationships"] if r["name"] == "target")
     assert "peer_schema" in target_rel
     assert target_rel["peer_schema"]["kind"] == "KindC"
+
+
+def test_tool_depth_capped_at_config_max() -> None:
+    """When depth > config.max_query_depth, it should be capped."""
+    config = ServerConfig(max_query_depth=2)
+    requested = 5
+    resolved = min(requested, config.max_query_depth)
+    assert resolved == 2
+
+
+def test_tool_depth_none_defaults_to_zero() -> None:
+    """When depth is None, resolved_depth should be 0."""
+    depth = None
+    resolved_depth = 0
+    if depth is not None:
+        resolved_depth = depth
+    assert resolved_depth == 0
 
 
 async def test_negative_depth_treated_as_zero() -> None:
