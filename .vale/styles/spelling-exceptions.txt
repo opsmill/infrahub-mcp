@@ -108,6 +108,7 @@ openconfig
 opentelemetry
 order_by
 pg_dump
+passthrough
 Postgress
 Postgresql
 Prefetch
