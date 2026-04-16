@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
 from infrahub_mcp.constants import AUTH_MODE_OIDC
@@ -47,6 +48,23 @@ def create_auth_provider(config: ServerConfig) -> OIDCProxy | None:
         config.oidc_client_id,
     )
     return OIDCProxy(**kwargs)  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# Token passthrough — per-request ContextVar
+# ---------------------------------------------------------------------------
+
+_passthrough_token: ContextVar[str | None] = ContextVar("_passthrough_token", default=None)
+
+
+def set_passthrough_token(token: str) -> None:
+    """Store the passthrough token for the current async task."""
+    _passthrough_token.set(token)
+
+
+def get_passthrough_token() -> str | None:
+    """Read the passthrough token for the current async task."""
+    return _passthrough_token.get()
 
 
 # ---------------------------------------------------------------------------

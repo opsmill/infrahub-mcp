@@ -15,6 +15,7 @@ from fastmcp.tools.base import ToolResult
 import infrahub_mcp.middleware as middleware_module
 from mcp import McpError
 
+from infrahub_mcp.auth import _passthrough_token, set_passthrough_token
 from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.middleware import (
     AuditMiddleware,
@@ -23,6 +24,7 @@ from infrahub_mcp.middleware import (
     ReadOnlyMiddleware,
     RequestIdMiddleware,
     SafeRetryMiddleware,
+    TokenPassthroughMiddleware,
     WRITE_TAG,
     configure_middleware,
     get_caching_middleware,
@@ -1020,3 +1022,102 @@ class TestSafeRetryMiddlewareRouting:
 
         result = await mw.on_call_tool(ctx, call_next)
         assert result is sentinel
+
+
+# ---------------------------------------------------------------------------
+# TokenPassthroughMiddleware
+# ---------------------------------------------------------------------------
+
+
+class TestTokenPassthroughMiddleware:
+    @pytest.mark.anyio
+    async def test_rejects_tool_call_without_token(self) -> None:
+        middleware = TokenPassthroughMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            msg = "should not reach here"
+            raise AssertionError(msg)
+
+        _passthrough_token.set(None)
+        with pytest.raises(McpError, match="Authentication required"):
+            await middleware.on_call_tool(ctx, call_next)
+
+    @pytest.mark.anyio
+    async def test_rejects_resource_read_without_token(self) -> None:
+        middleware = TokenPassthroughMiddleware()
+        ctx = _make_resource_context("infrahub://schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> str:
+            msg = "should not reach here"
+            raise AssertionError(msg)
+
+        _passthrough_token.set(None)
+        with pytest.raises(McpError, match="Authentication required"):
+            await middleware.on_read_resource(ctx, call_next)
+
+    @pytest.mark.anyio
+    async def test_allows_tool_call_with_token(self) -> None:
+        middleware = TokenPassthroughMiddleware()
+        ctx = _make_tool_context("get_schema")
+        expected = ToolResult(content=[])
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            return expected
+
+        _passthrough_token.set(None)
+        set_passthrough_token("valid-token")
+        result = await middleware.on_call_tool(ctx, call_next)
+        assert result is expected
+        _passthrough_token.set(None)
+
+    @pytest.mark.anyio
+    async def test_allows_resource_read_with_token(self) -> None:
+        middleware = TokenPassthroughMiddleware()
+        ctx = _make_resource_context("infrahub://schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> str:
+            return "data"
+
+        _passthrough_token.set(None)
+        set_passthrough_token("valid-token")
+        result = await middleware.on_read_resource(ctx, call_next)
+        assert result == "data"
+        _passthrough_token.set(None)
+
+
+# ---------------------------------------------------------------------------
+# configure_middleware — token-passthrough mode
+# ---------------------------------------------------------------------------
+
+
+class TestConfigureMiddlewareTokenPassthrough:
+    def test_token_passthrough_middleware_enabled(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig(auth_mode="token-passthrough")
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "TokenPassthroughMiddleware" in types
+
+    def test_token_passthrough_middleware_not_in_none_mode(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig(auth_mode="none")
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "TokenPassthroughMiddleware" not in types

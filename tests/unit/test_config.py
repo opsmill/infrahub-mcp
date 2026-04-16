@@ -36,6 +36,7 @@ class TestServerConfig:
         assert config.oidc_base_url == ""
         assert config.oidc_audience == ""
         assert config.oidc_user_claim == "email"
+        assert config.token_passthrough_header == "Authorization"
 
     def test_frozen(self) -> None:
         config = ServerConfig()
@@ -363,6 +364,33 @@ class TestAuthModeConfig:
         assert config.oidc_client_secret == "secret"
         assert config.oidc_audience == "my-audience"
         assert config.oidc_user_claim == "preferred_username"
+
+    def test_auth_mode_token_passthrough_valid(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "token-passthrough",
+            "INFRAHUB_ADDRESS": "http://localhost:8000",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = load_config()
+        assert config.auth_mode == "token-passthrough"
+
+    def test_auth_mode_token_passthrough_custom_header(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "token-passthrough",
+            "INFRAHUB_ADDRESS": "http://localhost:8000",
+            "INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER": "X-Infrahub-Token",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = load_config()
+        assert config.token_passthrough_header == "X-Infrahub-Token"
+
+    def test_auth_mode_token_passthrough_missing_address(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "token-passthrough",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            with pytest.raises(ValueError, match="INFRAHUB_ADDRESS"):
+                load_config()
 
     def test_auth_mode_none_ignores_oidc_fields(self) -> None:
         env = {

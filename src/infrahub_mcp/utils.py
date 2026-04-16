@@ -1,4 +1,5 @@
 import asyncio
+import os
 import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -10,8 +11,9 @@ from fastmcp.exceptions import ToolError
 from infrahub_sdk.exceptions import GraphQLError
 from infrahub_sdk.node import Attribute, InfrahubNode, RelatedNode, RelationshipManager
 
-from infrahub_mcp.auth import get_user_from_token
+from infrahub_mcp.auth import get_passthrough_token, get_user_from_token
 from infrahub_mcp.config import ServerConfig
+from infrahub_mcp.constants import AUTH_MODE_TOKEN_PASSTHROUGH
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
@@ -23,20 +25,41 @@ CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 class AppContext:
     """Application context held for the lifetime of an MCP connection."""
 
-    client: "InfrahubClient"
+    client: "InfrahubClient | None"
     config: ServerConfig
     session_branch: str | None = field(default=None)
     _session_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    passthrough_client: "InfrahubClient | None" = field(default=None)
 
 
 def get_client(ctx: Context) -> "InfrahubClient":
     """Get the Infrahub client for the current session.
 
-    Returns the shared lifespan client (from env var credentials).
-    Designed for future extension: when OAuth is available, this will
-    try a per-session client first, then fall back to the shared client.
+    In token-passthrough mode, creates a per-session ``InfrahubClient``
+    using the token from the request header (fail-closed — raises
+    ``ToolError`` when no token is present).
+
+    In other modes, returns the shared lifespan client.
     """
+    from infrahub_sdk.client import InfrahubClient  # noqa: PLC0415
+
     app_ctx: AppContext = ctx.request_context.lifespan_context  # type: ignore[union-attr]
+
+    if app_ctx.config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH:
+        token = get_passthrough_token()
+        if token is None:
+            msg = "Authentication required: no Infrahub API token in request header."
+            raise ToolError(msg)
+        if app_ctx.passthrough_client is None:
+            app_ctx.passthrough_client = InfrahubClient(
+                address=os.environ["INFRAHUB_ADDRESS"],
+                config={"api_token": token},
+            )
+        return app_ctx.passthrough_client
+
+    if app_ctx.client is None:
+        msg = "No Infrahub client available."
+        raise ToolError(msg)
     return app_ctx.client
 
 
@@ -72,6 +95,7 @@ def _is_branch_conflict(exc: GraphQLError) -> bool:
 
 async def _create_branch_with_pattern(app_ctx: AppContext, ctx: Context) -> str:
     """Create a session branch from a pattern with placeholders, retrying on collision."""
+    client = get_client(ctx)
     pattern = app_ctx.config.branch_pattern
     max_retries = app_ctx.config.max_branch_retries
     user_claim = app_ctx.config.oidc_user_claim if app_ctx.config.auth_mode == "oidc" else None
@@ -79,7 +103,7 @@ async def _create_branch_with_pattern(app_ctx: AppContext, ctx: Context) -> str:
         branch_name = expand_branch_pattern(pattern, user_claim=user_claim)
         await ctx.info(f"Auto-creating session branch: {branch_name}")
         try:
-            await app_ctx.client.branch.create(
+            await client.branch.create(
                 branch_name=branch_name,
                 sync_with_git=False,
                 background_execution=False,
@@ -103,10 +127,11 @@ async def _create_branch_with_pattern(app_ctx: AppContext, ctx: Context) -> str:
 
 async def _create_branch_fixed(app_ctx: AppContext, ctx: Context) -> str:
     """Create a session branch with a fixed name (no placeholders)."""
+    client = get_client(ctx)
     branch_name = app_ctx.config.branch_pattern
     await ctx.info(f"Auto-creating session branch: {branch_name}")
     try:
-        await app_ctx.client.branch.create(
+        await client.branch.create(
             branch_name=branch_name,
             sync_with_git=False,
             background_execution=False,

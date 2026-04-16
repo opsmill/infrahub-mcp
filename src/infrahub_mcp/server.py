@@ -3,6 +3,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib.metadata import version
+from typing import TYPE_CHECKING
 
 from fastmcp import FastMCP
 from infrahub_sdk.client import InfrahubClient
@@ -10,8 +11,12 @@ from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from infrahub_mcp.auth import create_auth_provider
+from infrahub_mcp.auth import create_auth_provider, set_passthrough_token
 from infrahub_mcp.config import ServerConfig, load_config
+from infrahub_mcp.constants import AUTH_MODE_TOKEN_PASSTHROUGH
+
+if TYPE_CHECKING:
+    from asgiref.typing import ASGIApplication as ASGIApp
 from infrahub_mcp.middleware import (
     configure_middleware,
     get_caching_middleware,
@@ -32,6 +37,10 @@ _config: ServerConfig = load_config()
 
 def _validate_env() -> None:
     """Validate required environment variables at startup and raise with clear guidance."""
+    # Token-passthrough mode: credentials come from the client, not env vars.
+    if _config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH:
+        return
+
     address = os.environ.get("INFRAHUB_ADDRESS")
     if not address:
         msg = "INFRAHUB_ADDRESS is required. Set it to the URL of your Infrahub instance (e.g. http://localhost:8000)."
@@ -50,7 +59,7 @@ def _validate_env() -> None:
 async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: ARG001, RUF029
     """Manage the application lifecycle: validate config, create client, yield context."""
     _validate_env()
-    client = InfrahubClient()
+    client = None if _config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH else InfrahubClient()
     yield AppContext(client=client, config=_config)
 
 
@@ -223,3 +232,39 @@ mcp.mount(schema_tools_mcp)
 # Write tools — hidden in read-only mode
 if not _config.read_only:
     mcp.mount(write_mcp)
+
+
+# ---------------------------------------------------------------------------
+# Token passthrough — ASGI-level header extraction
+# ---------------------------------------------------------------------------
+
+
+class _TokenPassthroughASGI:
+    """ASGI middleware that extracts a token from an HTTP header into a ContextVar.
+
+    Supports both ``Bearer <token>`` and raw token values.  Non-HTTP scopes
+    (e.g. websocket lifespan) are passed through unchanged.
+    """
+
+    def __init__(self, app: "ASGIApp", *, header: str = "Authorization") -> None:
+        self._app = app
+        self._header = header.lower().encode("latin-1")
+
+    async def __call__(self, scope: dict, receive: object, send: object) -> None:  # type: ignore[type-arg]
+        if scope["type"] == "http":
+            headers = dict(scope.get("headers", []))
+            raw = headers.get(self._header, b"").decode("latin-1")
+            stripped = raw.strip()
+            token = stripped[len("bearer"):].strip() if stripped.lower().startswith("bearer") else stripped
+            if token:
+                set_passthrough_token(token)
+        await self._app(scope, receive, send)  # type: ignore[arg-type]
+
+
+def get_asgi_middleware() -> list[object]:
+    """Return Starlette ASGI middleware for the current auth mode."""
+    from starlette.middleware import Middleware as StarletteMiddleware  # noqa: PLC0415
+
+    if _config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH:
+        return [StarletteMiddleware(_TokenPassthroughASGI, header=_config.token_passthrough_header)]
+    return []

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from infrahub_mcp.constants import _ALLOWED_PLACEHOLDERS, _VALID_AUTH_MODES
+from infrahub_mcp.constants import _ALLOWED_PLACEHOLDERS, _VALID_AUTH_MODES, AUTH_MODE_TOKEN_PASSTHROUGH
 
 
 @dataclass(frozen=True)
@@ -39,6 +39,8 @@ class ServerConfig:
         oidc_base_url: Public URL where MCP server is accessible (required when auth_mode=oidc).
         oidc_audience: Token audience claim (optional).
         oidc_user_claim: JWT claim to use for user identity. Defaults to ``email``.
+        token_passthrough_header: HTTP header carrying the Infrahub API token when
+            ``auth_mode="token-passthrough"``. Defaults to ``Authorization``.
     """
 
     read_only: bool = False
@@ -64,6 +66,7 @@ class ServerConfig:
     oidc_base_url: str = ""
     oidc_audience: str = ""
     oidc_user_claim: str = "email"
+    token_passthrough_header: str = "Authorization"  # noqa: S105
 
 
 _MAX_BRANCH_RETRIES_LIMIT = 20
@@ -91,7 +94,8 @@ def load_config() -> ServerConfig:
         INFRAHUB_MCP_DEREFERENCE_SCHEMAS: Dereference $ref in schemas (true/false).
         INFRAHUB_MCP_PING_INTERVAL_MS: Ping interval in ms (0 = disabled).
         INFRAHUB_MCP_AUTH_SCOPES_WRITE: OAuth scopes for write ops (comma-separated).
-        INFRAHUB_MCP_AUTH_MODE: Authentication mode (``none`` or ``oidc``).
+        INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER: HTTP header for token-passthrough auth (default: Authorization).
+        INFRAHUB_MCP_AUTH_MODE: Authentication mode (``none``, ``oidc``, or ``token-passthrough``).
         INFRAHUB_MCP_OIDC_CONFIG_URL: OIDC discovery URL (required when auth_mode=oidc).
         INFRAHUB_MCP_OIDC_CLIENT_ID: OAuth client ID (required when auth_mode=oidc).
         INFRAHUB_MCP_OIDC_CLIENT_SECRET: OAuth client secret (optional, omit for PKCE).
@@ -130,6 +134,7 @@ def load_config() -> ServerConfig:
         oidc_base_url=os.environ.get("INFRAHUB_MCP_OIDC_BASE_URL", ""),
         oidc_audience=os.environ.get("INFRAHUB_MCP_OIDC_AUDIENCE", ""),
         oidc_user_claim=os.environ.get("INFRAHUB_MCP_OIDC_USER_CLAIM", "email"),
+        token_passthrough_header=os.environ.get("INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER", "Authorization"),
     )
 
 
@@ -139,6 +144,13 @@ def _validate_auth_mode() -> None:
     if mode not in _VALID_AUTH_MODES:
         msg = (
             f"INFRAHUB_MCP_AUTH_MODE must be one of {sorted(_VALID_AUTH_MODES)}, got {mode!r}."
+        )
+        raise ValueError(msg)
+
+    if mode == AUTH_MODE_TOKEN_PASSTHROUGH and not os.environ.get("INFRAHUB_ADDRESS", "").strip():
+        msg = (
+            "Token-passthrough auth mode requires INFRAHUB_ADDRESS. "
+            "Set it to the URL of your Infrahub instance (e.g. http://localhost:8000)."
         )
         raise ValueError(msg)
 

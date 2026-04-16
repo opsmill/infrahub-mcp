@@ -48,8 +48,8 @@ from fastmcp.server.middleware.timing import DetailedTimingMiddleware
 from mcp import McpError
 from mcp.types import ErrorData
 
-from infrahub_mcp.auth import get_user_from_token
-from infrahub_mcp.constants import AUTH_MODE_OIDC
+from infrahub_mcp.auth import get_passthrough_token, get_user_from_token
+from infrahub_mcp.constants import AUTH_MODE_OIDC, AUTH_MODE_TOKEN_PASSTHROUGH
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -190,6 +190,51 @@ class ReadOnlyMiddleware(Middleware):
                         "read-only mode. Write operations are "
                         "disabled on this server."
                     ),
+                )
+            )
+        return await call_next(context)
+
+
+# ---------------------------------------------------------------------------
+# Token passthrough — fail-closed gate
+# ---------------------------------------------------------------------------
+
+
+class TokenPassthroughMiddleware(Middleware):
+    """Fail-closed gate for token-passthrough auth mode.
+
+    Rejects tool calls and resource reads when no passthrough token is set
+    in the current request context.  The token itself is extracted by the
+    ASGI-level ``_TokenPassthroughASGI`` middleware and stored in a
+    ``ContextVar``; this middleware just enforces its presence.
+    """
+
+    @override
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext[mt.CallToolRequestParams],
+        call_next: CallNext[mt.CallToolRequestParams, ToolResult],
+    ) -> ToolResult:
+        if get_passthrough_token() is None:
+            raise McpError(
+                ErrorData(
+                    code=-32001,
+                    message="Authentication required: no Infrahub API token in request header.",
+                )
+            )
+        return await call_next(context)
+
+    @override
+    async def on_read_resource(
+        self,
+        context: MiddlewareContext[Any],
+        call_next: CallNext[Any, Any],
+    ) -> Any:
+        if get_passthrough_token() is None:
+            raise McpError(
+                ErrorData(
+                    code=-32001,
+                    message="Authentication required: no Infrahub API token in request header.",
                 )
             )
         return await call_next(context)
@@ -555,7 +600,12 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
             scopes,
         )
 
-    # 10. Read-only enforcement — tag-based, defense-in-depth (conditional)
+    # 10. Token passthrough — fail-closed gate (conditional)
+    if config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH:
+        mcp.add_middleware(TokenPassthroughMiddleware())
+        logger.info("token_passthrough_middleware enabled=true")
+
+    # 11. Read-only enforcement — tag-based, defense-in-depth (conditional)
     if config.read_only:
         mcp.add_middleware(ReadOnlyMiddleware())
         logger.info("read_only_mode enabled=true")

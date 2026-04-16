@@ -4,13 +4,25 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from infrahub_mcp.auth import create_auth_provider, get_user_from_token, sanitize_user_for_branch
+from infrahub_mcp.auth import (
+    _passthrough_token,
+    create_auth_provider,
+    get_passthrough_token,
+    get_user_from_token,
+    sanitize_user_for_branch,
+    set_passthrough_token,
+)
 from infrahub_mcp.config import ServerConfig
 
 
 class TestCreateAuthProvider:
     def test_mode_none_returns_none(self) -> None:
         config = ServerConfig(auth_mode="none")
+        result = create_auth_provider(config)
+        assert result is None
+
+    def test_mode_token_passthrough_returns_none(self) -> None:
+        config = ServerConfig(auth_mode="token-passthrough")
         result = create_auth_provider(config)
         assert result is None
 
@@ -51,6 +63,25 @@ class TestCreateAuthProvider:
             base_url="https://mcp.example.com",
             audience="my-api",
         )
+
+
+class TestPassthroughTokenContextVar:
+    def test_default_is_none(self) -> None:
+        _passthrough_token.set(None)
+        assert get_passthrough_token() is None
+
+    def test_set_and_get(self) -> None:
+        _passthrough_token.set(None)
+        set_passthrough_token("my-token")
+        assert get_passthrough_token() == "my-token"
+        _passthrough_token.set(None)
+
+    def test_overwrite(self) -> None:
+        _passthrough_token.set(None)
+        set_passthrough_token("first")
+        set_passthrough_token("second")
+        assert get_passthrough_token() == "second"
+        _passthrough_token.set(None)
 
 
 class TestSanitizeUserForBranch:
