@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
-from collections.abc import Sequence
+from collections.abc import Generator, Sequence
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -213,7 +214,7 @@ class TestReadOnlyMiddleware:
     async def test_blocks_known_write_tools_without_context(
         self, tool_name: str
     ) -> None:
-        """Fallback name-based check blocks all known write tools."""
+        """Fail-closed fallback blocks write tools not in the read-only allowlist."""
         middleware = ReadOnlyMiddleware()
         ctx = _make_tool_context(tool_name)
 
@@ -223,6 +224,38 @@ class TestReadOnlyMiddleware:
 
         with pytest.raises(McpError):
             await middleware.on_call_tool(ctx, call_next)
+
+    @pytest.mark.anyio
+    async def test_blocks_unknown_tool_without_context(self) -> None:
+        """Fail-closed: an unknown tool not in the read-only allowlist is blocked."""
+        middleware = ReadOnlyMiddleware()
+        ctx = _make_tool_context("some_future_write_tool")
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            msg = "should not reach here"
+            raise AssertionError(msg)
+
+        with pytest.raises(McpError, match="read-only mode"):
+            await middleware.on_call_tool(ctx, call_next)
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize(
+        "tool_name",
+        ["get_schema", "query_graphql", "get_nodes", "search_nodes"],
+    )
+    async def test_allows_known_read_tools_without_context(
+        self, tool_name: str
+    ) -> None:
+        """Fail-closed fallback permits all known read-only tools."""
+        middleware = ReadOnlyMiddleware()
+        ctx = _make_tool_context(tool_name)
+        expected = ToolResult(content=[])
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            return expected
+
+        result = await middleware.on_call_tool(ctx, call_next)
+        assert result is expected
 
 
 # ---------------------------------------------------------------------------
@@ -318,8 +351,6 @@ class TestMetricsMiddleware:
         assert snap["latency_ms"]["tools/call"] >= 0
 
     def test_snapshot_is_serializable(self) -> None:
-        import json
-
         middleware = MetricsMiddleware()
         snap = middleware.snapshot()
         # Should not raise
@@ -402,8 +433,12 @@ class TestOTelTracingMiddleware:
 
 
 @pytest.fixture(autouse=True)
-def _reset_middleware_globals() -> None:
-    """Reset module-level middleware state between tests."""
+def _reset_middleware_globals() -> Generator[None]:
+    """Reset module-level middleware state before and after each test."""
+    middleware_module._metrics = None  # noqa: SLF001
+    middleware_module._error_handling = None  # noqa: SLF001
+    middleware_module._caching_middleware = None  # noqa: SLF001
+    yield
     middleware_module._metrics = None  # noqa: SLF001
     middleware_module._error_handling = None  # noqa: SLF001
     middleware_module._caching_middleware = None  # noqa: SLF001

@@ -23,6 +23,6 @@ def main() -> None:
 
     kwargs: dict[str, object] = {"transport": args.transport, "host": args.host, "port": args.port}
     asgi_mw = get_asgi_middleware()
-    if asgi_mw:
+    if asgi_mw and args.transport == "streamable-http":
         kwargs["middleware"] = asgi_mw
     mcp.run(**kwargs)  # type: ignore[arg-type]

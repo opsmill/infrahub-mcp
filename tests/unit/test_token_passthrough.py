@@ -68,8 +68,6 @@ class TestTokenPassthroughASGI:
         _passthrough_token.set(None)
         await mw(scope, MagicMock(), MagicMock())
 
-        from infrahub_mcp.auth import get_passthrough_token
-
         assert get_passthrough_token() is None
         _passthrough_token.set(None)
 
@@ -85,8 +83,6 @@ class TestTokenPassthroughASGI:
         _passthrough_token.set(None)
         await mw(scope, MagicMock(), MagicMock())
 
-        from infrahub_mcp.auth import get_passthrough_token
-
         assert get_passthrough_token() is None
         _passthrough_token.set(None)
 
@@ -101,8 +97,6 @@ class TestTokenPassthroughASGI:
         }
         _passthrough_token.set(None)
         await mw(scope, MagicMock(), MagicMock())
-
-        from infrahub_mcp.auth import get_passthrough_token
 
         assert get_passthrough_token() is None
         _passthrough_token.set(None)

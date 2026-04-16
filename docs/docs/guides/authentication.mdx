@@ -21,7 +21,7 @@ sequenceDiagram
     participant MCP as MCP Server
     participant Infrahub as Infrahub API
 
-    Note over MCP: INFRAHUB_API_TOKEN set at startup
+    Note over MCP: Shared Infrahub credentials set at startup
     Client->>MCP: MCP request (no auth header)
     MCP->>MCP: No identity check
     MCP->>Infrahub: API call with shared token

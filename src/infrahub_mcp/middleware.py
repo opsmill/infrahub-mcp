@@ -138,9 +138,23 @@ class ReadOnlyMiddleware(Middleware):
     2. **Call rejection** — ``on_call_tool`` resolves the tool and blocks it
        if tagged ``"write"``, catching hardcoded tool names that bypass discovery.
 
+    The fallback path (when ``fastmcp_context`` is unavailable) is
+    **fail-closed**: only tools in a known read-only allowlist are
+    permitted; any unknown tool is blocked.
+
     This is defense-in-depth on top of the ``mcp.mount()`` gating in
     ``server.py``, which hides write tools at registration time.
     """
+
+    # Known read-only tools used as an allowlist when tag-based resolution
+    # is unavailable (fastmcp_context is None).  Fail-closed: any tool NOT
+    # in this set is blocked.
+    _KNOWN_READ_ONLY_TOOLS: frozenset[str] = frozenset({
+        "get_schema",
+        "query_graphql",
+        "get_nodes",
+        "search_nodes",
+    })
 
     @override
     async def on_list_tools(
@@ -173,13 +187,8 @@ class ReadOnlyMiddleware(Middleware):
             if tool is not None:
                 is_write = WRITE_TAG in (tool.tags or set())
         else:
-            # Defensive: without context, deny known write tools by name
-            is_write = tool_name in {
-                "node_upsert",
-                "node_delete",
-                "propose_changes",
-                "mutate_graphql",
-            }
+            # Fail-closed: without context, only allow known read-only tools
+            is_write = tool_name not in self._KNOWN_READ_ONLY_TOOLS
 
         if is_write:
             logger.warning("read_only_blocked tool=%s", tool_name)
