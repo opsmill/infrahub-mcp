@@ -10,7 +10,7 @@ from fastmcp.exceptions import ToolError
 
 from infrahub_mcp.auth import _passthrough_token, get_passthrough_token, set_passthrough_token
 from infrahub_mcp.config import ServerConfig
-from infrahub_mcp.server import _TokenPassthroughASGI, get_asgi_middleware
+from infrahub_mcp.server import _OAuthDiscoveryInterceptASGI, _TokenPassthroughASGI, get_asgi_middleware
 from infrahub_mcp.utils import AppContext, get_client
 
 
@@ -156,20 +156,142 @@ class TestTokenPassthroughASGI:
 
 
 # ---------------------------------------------------------------------------
+# _OAuthDiscoveryInterceptASGI — empty 404 for OAuth probes
+# ---------------------------------------------------------------------------
+
+
+class TestOAuthDiscoveryInterceptASGI:
+    @pytest.mark.anyio
+    async def test_intercepts_well_known_oauth_authorization_server(self) -> None:
+        app = AsyncMock()
+        mw = _OAuthDiscoveryInterceptASGI(app)
+
+        sent_parts: list[dict] = []
+
+        async def capture_send(message: dict) -> None:
+            sent_parts.append(message)
+
+        scope = {"type": "http", "path": "/.well-known/oauth-authorization-server"}
+        await mw(scope, AsyncMock(), capture_send)
+
+        app.assert_not_awaited()
+        start = next(m for m in sent_parts if m["type"] == "http.response.start")
+        assert start["status"] == 404
+        body = next(m for m in sent_parts if m["type"] == "http.response.body")
+        assert b'"invalid_request"' in body["body"]
+
+    @pytest.mark.anyio
+    async def test_intercepts_well_known_with_mcp_suffix(self) -> None:
+        app = AsyncMock()
+        mw = _OAuthDiscoveryInterceptASGI(app)
+
+        sent_parts: list[dict] = []
+
+        async def capture_send(message: dict) -> None:
+            sent_parts.append(message)
+
+        scope = {"type": "http", "path": "/.well-known/oauth-authorization-server/mcp"}
+        await mw(scope, AsyncMock(), capture_send)
+
+        app.assert_not_awaited()
+
+    @pytest.mark.anyio
+    async def test_intercepts_openid_configuration(self) -> None:
+        app = AsyncMock()
+        mw = _OAuthDiscoveryInterceptASGI(app)
+
+        sent_parts: list[dict] = []
+
+        async def capture_send(message: dict) -> None:
+            sent_parts.append(message)
+
+        scope = {"type": "http", "path": "/.well-known/openid-configuration"}
+        await mw(scope, AsyncMock(), capture_send)
+
+        app.assert_not_awaited()
+
+    @pytest.mark.anyio
+    async def test_intercepts_nested_well_known(self) -> None:
+        app = AsyncMock()
+        mw = _OAuthDiscoveryInterceptASGI(app)
+
+        sent_parts: list[dict] = []
+
+        async def capture_send(message: dict) -> None:
+            sent_parts.append(message)
+
+        scope = {"type": "http", "path": "/mcp/.well-known/openid-configuration"}
+        await mw(scope, AsyncMock(), capture_send)
+
+        app.assert_not_awaited()
+
+    @pytest.mark.anyio
+    async def test_intercepts_register(self) -> None:
+        app = AsyncMock()
+        mw = _OAuthDiscoveryInterceptASGI(app)
+
+        sent_parts: list[dict] = []
+
+        async def capture_send(message: dict) -> None:
+            sent_parts.append(message)
+
+        scope = {"type": "http", "path": "/register"}
+        await mw(scope, AsyncMock(), capture_send)
+
+        app.assert_not_awaited()
+
+    @pytest.mark.anyio
+    async def test_passes_through_normal_paths(self) -> None:
+        app = AsyncMock()
+        mw = _OAuthDiscoveryInterceptASGI(app)
+
+        scope = {"type": "http", "path": "/health"}
+        receive = AsyncMock()
+        send = AsyncMock()
+        await mw(scope, receive, send)
+
+        app.assert_awaited_once()
+
+    @pytest.mark.anyio
+    async def test_passes_through_mcp_endpoint(self) -> None:
+        app = AsyncMock()
+        mw = _OAuthDiscoveryInterceptASGI(app)
+
+        scope = {"type": "http", "path": "/mcp"}
+        receive = AsyncMock()
+        send = AsyncMock()
+        await mw(scope, receive, send)
+
+        app.assert_awaited_once()
+
+    @pytest.mark.anyio
+    async def test_passes_through_non_http_scope(self) -> None:
+        app = AsyncMock()
+        mw = _OAuthDiscoveryInterceptASGI(app)
+
+        scope = {"type": "websocket", "path": "/.well-known/oauth-authorization-server"}
+        receive = AsyncMock()
+        send = AsyncMock()
+        await mw(scope, receive, send)
+
+        app.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
 # get_asgi_middleware
 # ---------------------------------------------------------------------------
 
 
 class TestGetAsgiMiddleware:
-    def test_returns_middleware_in_passthrough_mode(self) -> None:
+    def test_returns_both_middlewares_in_passthrough_mode(self) -> None:
         with patch("infrahub_mcp.server._config", ServerConfig(auth_mode="token-passthrough")):
             result = get_asgi_middleware()
-        assert len(result) == 1
+        assert len(result) == 2
 
-    def test_returns_empty_in_none_mode(self) -> None:
+    def test_returns_oauth_intercept_in_none_mode(self) -> None:
         with patch("infrahub_mcp.server._config", ServerConfig(auth_mode="none")):
             result = get_asgi_middleware()
-        assert result == []
+        assert len(result) == 1
 
     def test_returns_empty_in_oidc_mode(self) -> None:
         with patch("infrahub_mcp.server._config", ServerConfig(auth_mode="oidc")):

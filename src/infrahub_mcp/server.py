@@ -266,10 +266,38 @@ class _TokenPassthroughASGI:
                 reset_passthrough_token(reset)
 
 
+class _OAuthDiscoveryInterceptASGI:
+    """ASGI middleware returning empty 404 for OAuth/OIDC discovery probes.
+
+    MCP clients probe well-known paths for OAuth support even when the server
+    doesn't use OIDC.  Without this, Starlette returns plain-text "Not Found"
+    which clients fail to parse as JSON, causing ``SyntaxError`` messages.
+    Returns a bare 404 with no body to avoid triggering OAuth error parsing.
+    """
+
+    def __init__(self, app: "ASGIApp") -> None:
+        self._app = app
+
+    async def __call__(self, scope: dict, receive: object, send: object) -> None:  # type: ignore[type-arg]
+        if scope["type"] == "http":
+            path: str = scope.get("path", "")
+            if "/.well-known/" in path or path.rstrip("/") == "/register":
+                response = JSONResponse(
+                    {"error": "invalid_request", "error_description": "OAuth is not enabled on this server."},
+                    status_code=404,
+                )
+                await response(scope, receive, send)  # type: ignore[arg-type]
+                return
+        await self._app(scope, receive, send)  # type: ignore[arg-type]
+
+
 def get_asgi_middleware() -> list[object]:
     """Return Starlette ASGI middleware for the current auth mode."""
     from starlette.middleware import Middleware as StarletteMiddleware  # noqa: PLC0415
 
+    middlewares: list[object] = []
     if _config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH:
-        return [StarletteMiddleware(_TokenPassthroughASGI, header=_config.token_passthrough_header)]
-    return []
+        middlewares.append(StarletteMiddleware(_TokenPassthroughASGI, header=_config.token_passthrough_header))
+    if _config.auth_mode != "oidc":
+        middlewares.append(StarletteMiddleware(_OAuthDiscoveryInterceptASGI))
+    return middlewares
