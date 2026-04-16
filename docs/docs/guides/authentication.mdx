@@ -1,119 +1,26 @@
 ---
-title: Authentication
+title: Set up authentication
 ---
 
-This guide explains the authentication and authorization model of the Infrahub MCP server: why it works the way it does, how the three auth modes differ, and how to configure each one for your deployment.
+This guide walks through configuring each authentication mode. For an explanation of how the auth architecture works and when to choose each mode, see [Authentication architecture](../topics/authentication.mdx).
 
-## Architecture overview
+## No authentication (default)
 
-The MCP server sits between AI clients (Claude, Cursor, VS Code Copilot) and the Infrahub API. Authentication happens at two separate layers:
-
-1. **MCP layer** — controls *who* can reach the MCP server and *what* they can do (read-only vs read-write). Configured via `INFRAHUB_MCP_AUTH_MODE`.
-2. **Infrahub layer** — controls *what* the MCP server can do in Infrahub. Configured via `INFRAHUB_API_TOKEN` or `INFRAHUB_USERNAME`/`INFRAHUB_PASSWORD` (for `none` and `oidc` modes), or via the client's own token (for `token-passthrough` mode).
-
-In `none` and `oidc` modes, the Infrahub credentials are shared across all MCP sessions — they define the ceiling of what any client can do, and the MCP auth layer narrows that ceiling per-user. In `token-passthrough` mode, each client provides their own Infrahub API token, so there are no shared credentials.
-
-### `none` — shared credentials, no identity
-
-```mermaid
-sequenceDiagram
-    participant Client as AI Client
-    participant MCP as MCP Server
-    participant Infrahub as Infrahub API
-
-    Note over MCP: Shared Infrahub credentials set at startup
-    Client->>MCP: MCP request (no auth header)
-    MCP->>MCP: No identity check
-    MCP->>Infrahub: API call with shared token
-    Infrahub-->>MCP: Response
-    MCP-->>Client: MCP response
-```
-
-### `oidc` — identity + scopes via external IdP
-
-```mermaid
-sequenceDiagram
-    participant Client as AI Client
-    participant IdP as Identity Provider
-    participant MCP as MCP Server
-    participant Infrahub as Infrahub API
-
-    Client->>IdP: OAuth authorization code flow
-    IdP-->>Client: Access token (with scopes)
-    Client->>MCP: MCP request + OIDC token
-    MCP->>MCP: Verify token, check scopes
-    alt Missing or insufficient scopes
-        MCP-->>Client: 403 Forbidden
-    else Valid token
-        MCP->>Infrahub: API call with shared token
-        Infrahub-->>MCP: Response
-        MCP-->>Client: MCP response
-    end
-```
-
-### `token-passthrough` — client's own Infrahub token
-
-```mermaid
-sequenceDiagram
-    participant Client as AI Client
-    participant MCP as MCP Server
-    participant Infrahub as Infrahub API
-
-    Note over MCP: No server-side credentials
-    Client->>MCP: MCP request + Authorization: Bearer <token>
-    MCP->>MCP: Extract token from header
-    alt No token in header
-        MCP-->>Client: Error: Authentication required
-    else Token present
-        MCP->>Infrahub: API call with client's token
-        Infrahub-->>MCP: Response
-        MCP-->>Client: MCP response
-    end
-```
-
-## Auth modes
-
-### `none` (default)
-
-No identity gate at the MCP level. Any client that can reach the server gets access using the shared Infrahub credentials. This is the right choice when:
-
-- You are running the server locally via **stdio** transport (single-user, no network exposure).
-- The server is behind a VPN or network-level access control and you trust all clients equally.
-- You want the simplest possible setup.
-
-No additional configuration is required beyond the standard Infrahub connection variables.
+No configuration needed beyond Infrahub connection variables:
 
 ```bash
-# Minimal setup — no MCP-level auth
 export INFRAHUB_ADDRESS=https://infrahub.example.com
 export INFRAHUB_API_TOKEN=your-token
-uv run fastmcp run src/infrahub_mcp/server.py:mcp
+infrahub-mcp --transport streamable-http
 ```
 
-### `oidc`
+All clients share the same Infrahub credentials. Use this for local development or behind a VPN.
 
-External Identity Provider authentication via OpenID Connect. When enabled, the MCP server delegates authentication to a provider like Google, Okta, or Microsoft Entra using FastMCP's `OIDCProxy`. This is the right choice when:
+## Token passthrough
 
-- Multiple users share a single MCP server instance over HTTP.
-- You need **audit trails** that identify who performed each action.
-- You want **role-based access control** — some users get read-only, others get read-write.
-- Compliance requires identity verification before infrastructure changes.
-
-OIDC mode requires the **Streamable HTTP transport** — it is not supported over stdio.
-
-### `token-passthrough`
-
-Each MCP client provides their own Infrahub API token in the HTTP request header. The server extracts it and creates a per-request `InfrahubClient` using that token — no shared server-side credentials needed. This is the right choice when:
-
-- Each user already has their own Infrahub API token.
-- You want **end-to-end credential isolation** — the server never stores or shares tokens between users.
-- You need a simpler setup than OIDC but still want multi-user support.
-- You want Infrahub's native RBAC to control what each user can do.
-
-Token passthrough is **fail-closed**: every request must carry a valid token. If the header is missing or empty, the request is rejected — there is no silent fallback to server-side credentials.
+Each client sends their own Infrahub API token. No shared server-side credentials required.
 
 ```bash
-# Token passthrough — each client sends their own Infrahub token
 export INFRAHUB_ADDRESS=https://infrahub.example.com
 export INFRAHUB_MCP_AUTH_MODE=token-passthrough
 
@@ -121,27 +28,29 @@ export INFRAHUB_MCP_AUTH_MODE=token-passthrough
 infrahub-mcp --transport streamable-http
 ```
 
-Clients send their token in the `Authorization` header (default) with a `Bearer` prefix:
+Clients include their token in the request header:
 
 ```text
 Authorization: Bearer <infrahub-api-token>
 ```
 
-The header name is configurable via `INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER` if your setup requires a different header (for example, `X-Infrahub-Token`).
+To use a different header (for example, `X-Infrahub-Token`), set:
 
-Token passthrough requires the **Streamable HTTP transport** — it is not supported over stdio (no HTTP headers available). The server rejects this combination at startup.
+```bash
+export INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER=X-Infrahub-Token
+```
 
-## Setting up OIDC authentication
+:::note
+Token passthrough requires Streamable HTTP transport. The server rejects `--transport stdio` at startup since stdio has no HTTP headers.
+:::
 
-### Prerequisites
-
-- An OIDC-compatible Identity Provider (Google, Okta, Microsoft Entra, Keycloak, Authentik)
-- An OAuth client registered with your IdP, configured for the authorization code flow
-- The MCP server deployed with a public URL accessible to users' browsers (for the OAuth redirect)
+## OIDC
 
 <!-- vale Infrahub.sentence-case = NO -->
 
 ### Step 1: Register an OAuth client
+
+<!-- vale Infrahub.sentence-case = YES -->
 
 In your Identity Provider, create an OAuth/OIDC client application:
 
@@ -151,11 +60,7 @@ In your Identity Provider, create an OAuth/OIDC client application:
 
 Record the **client ID**, **client secret** (if not using PKCE), and the **OIDC discovery URL**.
 
-<!-- vale Infrahub.sentence-case = YES -->
-
 ### Step 2: Configure the MCP server
-
-Set the required environment variables:
 
 ```bash
 export INFRAHUB_MCP_AUTH_MODE=oidc
@@ -198,7 +103,10 @@ INFO  oidc_auth enabled=true config_url=https://accounts.google.com/... client_i
 INFO  auth_middleware enabled=true auth_mode=oidc write_scopes=['infrahub:write']
 ```
 
-## Provider-specific examples
+## Provider examples
+
+<!-- vale Infrahub.spelling = NO -->
+<!-- vale Infrahub.sentence-case = NO -->
 
 ### Google
 
@@ -209,9 +117,6 @@ INFRAHUB_MCP_OIDC_CLIENT_ID=123456789.apps.googleusercontent.com
 INFRAHUB_MCP_OIDC_CLIENT_SECRET=GOCSPX-...
 INFRAHUB_MCP_OIDC_BASE_URL=https://mcp.example.com
 ```
-
-<!-- vale Infrahub.spelling = NO -->
-<!-- vale Infrahub.sentence-case = NO -->
 
 ### Okta
 
@@ -245,56 +150,6 @@ INFRAHUB_MCP_AUTH_SCOPES_WRITE=write
 
 <!-- vale Infrahub.spelling = YES -->
 <!-- vale Infrahub.sentence-case = YES -->
-
-## User identity and branch naming
-
-When OIDC is enabled, the authenticated user identity flows into two features:
-
-### Audit logs
-
-Every tool call and resource read includes the user identity in structured log output:
-
-```text
-INFO  tool_call tool=get_nodes user=alice@example.com
-INFO  resource_read uri=infrahub://schema user=alice@example.com
-```
-
-The claim used for identity is configurable via `INFRAHUB_MCP_OIDC_USER_CLAIM` (default: `email`). Common alternatives include `sub` (subject ID) or `preferred_username`.
-
-### Branch placeholder
-
-The `{user}` placeholder in `INFRAHUB_MCP_BRANCH_PATTERN` resolves to the authenticated user's identity, sanitized for git ref compatibility:
-
-```bash
-INFRAHUB_MCP_BRANCH_PATTERN=mcp/{user}/{date}-{hex}
-# Produces: mcp/alice-example.com/20260409-a1b2c3d4
-```
-
-The sanitization follows `git check-ref-format` rules: characters in the set `[a-zA-Z0-9._/-]` (letters, digits, dot, underscore, slash, and dash) are preserved — all others are replaced with hyphens. For example, `alice@example.com` becomes `alice-example.com` because the `@` is replaced while the dot is preserved. Additionally, `..` sequences are collapsed to a single dot, `//` to a single slash, `/.` components are stripped (no component may start with a dot), and a trailing `.lock` suffix is removed. Leading/trailing dots, slashes, and hyphens are trimmed. If no user is available, `anonymous` is used.
-
-## Read-only mode
-
-Independent of auth mode, the server supports a hard read-only mode:
-
-```bash
-INFRAHUB_MCP_READ_ONLY=true
-```
-
-This provides two layers of protection:
-
-1. **Registration time** — write tools are not mounted on the FastMCP server, so they do not appear in `tools/list`.
-2. **Middleware time** — `ReadOnlyMiddleware` filters any tool tagged `write` from discovery and rejects calls, catching hardcoded tool names that bypass discovery.
-
-The `infrahub_agent` system prompt dynamically reflects the access mode, telling the AI agent that write operations are unavailable.
-
-Read-only mode and OIDC scope-based authorization can be combined. Use read-only mode for server-wide enforcement (for example, a monitoring-only deployment) and scopes for per-user access control.
-
-## How auth modes interact with transports
-
-| Transport | `none` | `oidc` | `token-passthrough` |
-| --- | --- | --- | --- |
-| **stdio** | Full access via shared credentials. | Not supported — no HTTP headers. | Not supported — no HTTP headers. |
-| **Streamable HTTP** | Full access via shared credentials. No identity tracking. | Full OIDC flow. Identity in audit logs. Scope-based write gating. | Per-request token. Each client uses their own Infrahub credentials. |
 
 ## Configuration reference
 
