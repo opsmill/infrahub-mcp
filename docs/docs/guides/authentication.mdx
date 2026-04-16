@@ -2,22 +2,73 @@
 title: Authentication
 ---
 
-This guide explains the authentication and authorization model of the Infrahub MCP server: why it works the way it does, how the two auth modes differ, and how to configure each one for your deployment.
+This guide explains the authentication and authorization model of the Infrahub MCP server: why it works the way it does, how the three auth modes differ, and how to configure each one for your deployment.
 
 ## Architecture overview
 
 The MCP server sits between AI clients (Claude, Cursor, VS Code Copilot) and the Infrahub API. Authentication happens at two separate layers:
 
 1. **MCP layer** — controls *who* can reach the MCP server and *what* they can do (read-only vs read-write). Configured via `INFRAHUB_MCP_AUTH_MODE`.
-2. **Infrahub layer** — controls *what* the MCP server can do in Infrahub. Configured via `INFRAHUB_API_TOKEN` or `INFRAHUB_USERNAME`/`INFRAHUB_PASSWORD`.
+2. **Infrahub layer** — controls *what* the MCP server can do in Infrahub. Configured via `INFRAHUB_API_TOKEN` or `INFRAHUB_USERNAME`/`INFRAHUB_PASSWORD` (for `none` and `oidc` modes), or via the client's own token (for `token-passthrough` mode).
 
-These two layers are intentionally independent. The Infrahub credentials are shared across all MCP sessions — they define the ceiling of what any client can do. The MCP auth layer narrows that ceiling per-user.
+In `none` and `oidc` modes, the Infrahub credentials are shared across all MCP sessions — they define the ceiling of what any client can do, and the MCP auth layer narrows that ceiling per-user. In `token-passthrough` mode, each client provides their own Infrahub API token, so there are no shared credentials.
 
-```text
-┌──────────────┐     OIDC token      ┌──────────────┐   API token    ┌──────────────┐
-│  AI Client   │ ──────────────────> │  MCP Server  │ ────────────> │   Infrahub   │
-│ (Claude, etc)│   (identity +       │  (auth gate) │  (shared       │   (API)      │
-└──────────────┘    scopes)          └──────────────┘   credential)  └──────────────┘
+### `none` — shared credentials, no identity
+
+```mermaid
+sequenceDiagram
+    participant Client as AI Client
+    participant MCP as MCP Server
+    participant Infrahub as Infrahub API
+
+    Note over MCP: INFRAHUB_API_TOKEN set at startup
+    Client->>MCP: MCP request (no auth header)
+    MCP->>MCP: No identity check
+    MCP->>Infrahub: API call with shared token
+    Infrahub-->>MCP: Response
+    MCP-->>Client: MCP response
+```
+
+### `oidc` — identity + scopes via external IdP
+
+```mermaid
+sequenceDiagram
+    participant Client as AI Client
+    participant IdP as Identity Provider
+    participant MCP as MCP Server
+    participant Infrahub as Infrahub API
+
+    Client->>IdP: OAuth authorization code flow
+    IdP-->>Client: Access token (with scopes)
+    Client->>MCP: MCP request + OIDC token
+    MCP->>MCP: Verify token, check scopes
+    alt Missing or insufficient scopes
+        MCP-->>Client: 403 Forbidden
+    else Valid token
+        MCP->>Infrahub: API call with shared token
+        Infrahub-->>MCP: Response
+        MCP-->>Client: MCP response
+    end
+```
+
+### `token-passthrough` — client's own Infrahub token
+
+```mermaid
+sequenceDiagram
+    participant Client as AI Client
+    participant MCP as MCP Server
+    participant Infrahub as Infrahub API
+
+    Note over MCP: No server-side credentials
+    Client->>MCP: MCP request + Authorization: Bearer <token>
+    MCP->>MCP: Extract token from header
+    alt No token in header
+        MCP-->>Client: Error: Authentication required
+    else Token present
+        MCP->>Infrahub: API call with client's token
+        Infrahub-->>MCP: Response
+        MCP-->>Client: MCP response
+    end
 ```
 
 ## Auth modes
@@ -48,7 +99,37 @@ External Identity Provider authentication via OpenID Connect. When enabled, the 
 - You want **role-based access control** — some users get read-only, others get read-write.
 - Compliance requires identity verification before infrastructure changes.
 
-OIDC mode requires the **HTTP transport** — it is not supported over stdio.
+OIDC mode requires the **Streamable HTTP transport** — it is not supported over stdio.
+
+### `token-passthrough`
+
+Each MCP client provides their own Infrahub API token in the HTTP request header. The server extracts it and creates a per-request `InfrahubClient` using that token — no shared server-side credentials needed. This is the right choice when:
+
+- Each user already has their own Infrahub API token.
+- You want **end-to-end credential isolation** — the server never stores or shares tokens between users.
+- You need a simpler setup than OIDC but still want multi-user support.
+- You want Infrahub's native RBAC to control what each user can do.
+
+Token passthrough is **fail-closed**: every request must carry a valid token. If the header is missing or empty, the request is rejected — there is no silent fallback to server-side credentials.
+
+```bash
+# Token passthrough — each client sends their own Infrahub token
+export INFRAHUB_ADDRESS=https://infrahub.example.com
+export INFRAHUB_MCP_AUTH_MODE=token-passthrough
+
+# No INFRAHUB_API_TOKEN needed — credentials come from the client
+infrahub-mcp --transport streamable-http
+```
+
+Clients send their token in the `Authorization` header (default) with a `Bearer` prefix:
+
+```text
+Authorization: Bearer <infrahub-api-token>
+```
+
+The header name is configurable via `INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER` if your setup requires a different header (for example, `X-Infrahub-Token`).
+
+Token passthrough requires the **Streamable HTTP transport** — it is not supported over stdio (no HTTP headers available). The server rejects this combination at startup.
 
 ## Setting up OIDC authentication
 
@@ -210,22 +291,23 @@ Read-only mode and OIDC scope-based authorization can be combined. Use read-only
 
 ## How auth modes interact with transports
 
-| Transport | `none` | `oidc` |
-| --- | --- | --- |
-| **stdio** | Full access via shared credentials. | Not supported — no browser redirect available for OAuth flow. |
-| **HTTP** | Full access via shared credentials. No identity tracking. | Full OIDC flow. Identity in audit logs. Scope-based write gating. |
+| Transport | `none` | `oidc` | `token-passthrough` |
+| --- | --- | --- | --- |
+| **stdio** | Full access via shared credentials. | Not supported — no HTTP headers. | Not supported — no HTTP headers. |
+| **Streamable HTTP** | Full access via shared credentials. No identity tracking. | Full OIDC flow. Identity in audit logs. Scope-based write gating. | Per-request token. Each client uses their own Infrahub credentials. |
 
 ## Configuration reference
 
 For the complete list of environment variables, see the [Configuration reference](../references/configuration.mdx#authentication-and-authorization).
 
-| Variable                          | Required   | Default | Description                                            |
-| --------------------------------- | ---------- | ------- | ------------------------------------------------------ |
-| `INFRAHUB_MCP_AUTH_MODE`          | No         | `none`  | Authentication mode (`none` or `oidc`)                 |
-| `INFRAHUB_MCP_OIDC_CONFIG_URL`    | Yes (oidc) |         | OIDC discovery endpoint URL                            |
-| `INFRAHUB_MCP_OIDC_CLIENT_ID`     | Yes (oidc) |         | OAuth client ID registered with the IdP                |
-| `INFRAHUB_MCP_OIDC_CLIENT_SECRET` | No         |         | OAuth client secret (omit for PKCE flow)               |
-| `INFRAHUB_MCP_OIDC_BASE_URL`      | Yes (oidc) |         | Public URL where the MCP server is accessible          |
-| `INFRAHUB_MCP_OIDC_AUDIENCE`      | No         |         | Token audience claim                                   |
-| `INFRAHUB_MCP_OIDC_USER_CLAIM`    | No         | `email` | JWT claim used for user identity                       |
-| `INFRAHUB_MCP_AUTH_SCOPES_WRITE`  | No         | `write` | Scopes required for write operations (comma-separated) |
+| Variable                                | Required   | Default         | Description                                                          |
+| --------------------------------------- | ---------- | --------------- | -------------------------------------------------------------------- |
+| `INFRAHUB_MCP_AUTH_MODE`                | No         | `none`          | Authentication mode (`none`, `oidc`, or `token-passthrough`)         |
+| `INFRAHUB_MCP_OIDC_CONFIG_URL`          | Yes (oidc) |                 | OIDC discovery endpoint URL                                          |
+| `INFRAHUB_MCP_OIDC_CLIENT_ID`           | Yes (oidc) |                 | OAuth client ID registered with the IdP                              |
+| `INFRAHUB_MCP_OIDC_CLIENT_SECRET`       | No         |                 | OAuth client secret (omit for PKCE flow)                             |
+| `INFRAHUB_MCP_OIDC_BASE_URL`            | Yes (oidc) |                 | Public URL where the MCP server is accessible                        |
+| `INFRAHUB_MCP_OIDC_AUDIENCE`            | No         |                 | Token audience claim                                                 |
+| `INFRAHUB_MCP_OIDC_USER_CLAIM`          | No         | `email`         | JWT claim used for user identity                                     |
+| `INFRAHUB_MCP_AUTH_SCOPES_WRITE`        | No         | `write`         | Scopes required for write operations (comma-separated)               |
+| `INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER` | No         | `Authorization` | HTTP header carrying the Infrahub API token (token-passthrough mode) |
