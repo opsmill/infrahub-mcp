@@ -9,15 +9,15 @@ from infrahub_mcp.server import _config, get_asgi_middleware, mcp
 def main() -> None:
     """Entry point for the infrahub-mcp CLI command."""
     parser = argparse.ArgumentParser(description="Infrahub MCP Server")
-    parser.add_argument("--transport", default="stdio", choices=["stdio", "streamable-http", "sse"])
+    parser.add_argument("--transport", default="stdio", choices=["stdio", "streamable-http"])
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8001)
     args = parser.parse_args()
 
     if _config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH and args.transport == "stdio":
         msg = (
-            "Token-passthrough auth mode requires an HTTP transport "
-            "(streamable-http or sse). Stdio has no HTTP headers."
+            "Token-passthrough auth mode requires streamable-http transport. "
+            "Stdio has no HTTP headers."
         )
         raise SystemExit(msg)
 
