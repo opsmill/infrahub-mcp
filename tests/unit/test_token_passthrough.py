@@ -207,7 +207,7 @@ class TestGetClientPassthrough:
         _passthrough_token.set(None)
         set_passthrough_token("test-api-token")
         with patch.dict(os.environ, {"INFRAHUB_ADDRESS": "http://localhost:8000"}):
-            with patch("infrahub_sdk.client.InfrahubClient") as mock_cls:
+            with patch("infrahub_mcp.utils.InfrahubClient") as mock_cls:
                 mock_client = MagicMock()
                 mock_cls.return_value = mock_client
                 result = get_client(ctx)
@@ -229,7 +229,7 @@ class TestGetClientPassthrough:
         _passthrough_token.set(None)
         set_passthrough_token("token-a")
         with patch.dict(os.environ, {"INFRAHUB_ADDRESS": "http://localhost:8000"}):
-            with patch("infrahub_sdk.client.InfrahubClient") as mock_cls:
+            with patch("infrahub_mcp.utils.InfrahubClient") as mock_cls:
                 client_a = MagicMock()
                 client_b = MagicMock()
                 mock_cls.side_effect = [client_a, client_b]

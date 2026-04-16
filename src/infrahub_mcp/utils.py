@@ -4,19 +4,17 @@ import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NoReturn
+from typing import Any, NoReturn
 
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
+from infrahub_sdk.client import InfrahubClient
 from infrahub_sdk.exceptions import GraphQLError
 from infrahub_sdk.node import Attribute, InfrahubNode, RelatedNode, RelationshipManager
 
 from infrahub_mcp.auth import get_passthrough_token, get_user_from_token
 from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.constants import AUTH_MODE_TOKEN_PASSTHROUGH
-
-if TYPE_CHECKING:
-    from infrahub_sdk.client import InfrahubClient
 
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 
@@ -25,13 +23,13 @@ CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 class AppContext:
     """Application context held for the lifetime of an MCP connection."""
 
-    client: "InfrahubClient | None"
+    client: InfrahubClient | None
     config: ServerConfig
     session_branch: str | None = field(default=None)
     _session_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
-def get_client(ctx: Context) -> "InfrahubClient":
+def get_client(ctx: Context) -> InfrahubClient:
     """Get the Infrahub client for the current request.
 
     In token-passthrough mode, creates a **fresh** ``InfrahubClient``
@@ -42,8 +40,6 @@ def get_client(ctx: Context) -> "InfrahubClient":
 
     In other modes, returns the shared lifespan client.
     """
-    from infrahub_sdk.client import InfrahubClient  # noqa: PLC0415
-
     app_ctx: AppContext = ctx.request_context.lifespan_context  # type: ignore[union-attr]
 
     if app_ctx.config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH:

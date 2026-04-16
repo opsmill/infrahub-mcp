@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Literal, cast
 
 from infrahub_mcp.constants import _ALLOWED_PLACEHOLDERS, _VALID_AUTH_MODES, AUTH_MODE_TOKEN_PASSTHROUGH
+
+AuthMode = Literal["none", "oidc", "token-passthrough"]
 
 
 @dataclass(frozen=True)
@@ -31,8 +34,7 @@ class ServerConfig:
         dereference_schemas: Dereference $ref in JSON schemas for client compatibility.
         ping_interval_ms: Ping interval in milliseconds for HTTP sessions (0 = disabled).
         auth_scopes_write: OAuth scopes required for write operations (comma-separated).
-        auth_mode: Authentication mode. ``none`` = env var credentials only,
-            ``oidc`` = external IdP via OIDCProxy for identity + role gating.
+        auth_mode: Authentication mode (``none``, ``oidc``, or ``token-passthrough``).
         oidc_config_url: OIDC discovery URL (required when auth_mode=oidc).
         oidc_client_id: OAuth client ID registered with the IdP (required when auth_mode=oidc).
         oidc_client_secret: OAuth client secret (optional, omit for PKCE flow).
@@ -59,7 +61,7 @@ class ServerConfig:
     dereference_schemas: bool = False
     ping_interval_ms: int = 0
     auth_scopes_write: str = ""
-    auth_mode: str = "none"
+    auth_mode: AuthMode = "none"
     oidc_config_url: str = ""
     oidc_client_id: str = ""
     oidc_client_secret: str = ""
@@ -127,7 +129,7 @@ def load_config() -> ServerConfig:
         dereference_schemas=_parse_bool("INFRAHUB_MCP_DEREFERENCE_SCHEMAS"),
         ping_interval_ms=_parse_int("INFRAHUB_MCP_PING_INTERVAL_MS", default=0),
         auth_scopes_write=os.environ.get("INFRAHUB_MCP_AUTH_SCOPES_WRITE", ""),
-        auth_mode=os.environ.get("INFRAHUB_MCP_AUTH_MODE", "none").strip().lower(),
+        auth_mode=cast("AuthMode", os.environ.get("INFRAHUB_MCP_AUTH_MODE", "none").strip().lower()),
         oidc_config_url=os.environ.get("INFRAHUB_MCP_OIDC_CONFIG_URL", ""),
         oidc_client_id=os.environ.get("INFRAHUB_MCP_OIDC_CLIENT_ID", ""),
         oidc_client_secret=os.environ.get("INFRAHUB_MCP_OIDC_CLIENT_SECRET", ""),

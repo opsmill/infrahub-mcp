@@ -494,40 +494,41 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
     Middleware executes in registration order (first registered = outermost).
     The stack is ordered for optimal observability and safety:
 
-    1. **RequestIdMiddleware** — correlation ID (outermost)
-    2. **MetricsMiddleware** — request/error/latency counters
-    3. **OTelTracingMiddleware** — OpenTelemetry spans (conditional)
-    4. **ErrorHandlingMiddleware** — exception → MCP error mapping
-    5. **RetryMiddleware** — exponential backoff for transient failures (conditional)
-    6. **RateLimitingMiddleware** — token bucket rate limiting (conditional)
-    7. **StructuredLoggingMiddleware** — JSON logs with token estimates
-    8. **DetailedTimingMiddleware** — per-operation timing breakdown
-    9. **AuthMiddleware** — scope-based authorization for HTTP transport (conditional)
-    10. **ReadOnlyMiddleware** — tag-based write tool blocking (conditional)
-    11. **AuditMiddleware** — structured audit trail
-    12. **ResponseCachingMiddleware** — TTL-based response caching (conditional)
-    13. **DereferenceRefsMiddleware** — inline $ref in JSON schemas (conditional)
-    14. **PingMiddleware** — periodic keepalive pings for HTTP sessions (conditional)
-    15. **ResponseLimitingMiddleware** — truncates oversized responses (innermost)
+    - **RequestIdMiddleware** — correlation ID (outermost)
+    - **MetricsMiddleware** — request/error/latency counters
+    - **OTelTracingMiddleware** — OpenTelemetry spans (conditional)
+    - **ErrorHandlingMiddleware** — exception → MCP error mapping
+    - **RetryMiddleware** — exponential backoff for transient failures (conditional)
+    - **RateLimitingMiddleware** — token bucket rate limiting (conditional)
+    - **StructuredLoggingMiddleware** — JSON logs with token estimates
+    - **DetailedTimingMiddleware** — per-operation timing breakdown
+    - **AuthMiddleware** — scope-based authorization for HTTP transport (conditional)
+    - **TokenPassthroughMiddleware** — fail-closed gate for token-passthrough mode (conditional)
+    - **ReadOnlyMiddleware** — tag-based write tool blocking (conditional)
+    - **AuditMiddleware** — structured audit trail
+    - **ResponseCachingMiddleware** — TTL-based response caching (conditional)
+    - **DereferenceRefsMiddleware** — inline $ref in JSON schemas (conditional)
+    - **PingMiddleware** — periodic keepalive pings for HTTP sessions (conditional)
+    - **ResponseLimitingMiddleware** — truncates oversized responses (innermost)
     """
     global _metrics, _error_handling, _caching_middleware  # noqa: PLW0603
 
     # Reset module-level references so reconfiguration is clean
     _caching_middleware = None
 
-    # 1. Request ID correlation — outermost wrapper
+    # Request ID correlation — outermost wrapper
     mcp.add_middleware(RequestIdMiddleware())
 
-    # 2. Metrics — counts and latency for /metrics endpoint
+    # Metrics — counts and latency for /metrics endpoint
     _metrics = MetricsMiddleware()
     mcp.add_middleware(_metrics)
 
-    # 3. OpenTelemetry tracing — spans for every request (conditional)
+    # OpenTelemetry tracing — spans for every request (conditional)
     if config.otel_enabled:
         mcp.add_middleware(OTelTracingMiddleware())
         logger.info("otel_tracing enabled=true")
 
-    # 4. Error handling — catches everything below
+    # Error handling — catches everything below
     _error_handling = ErrorHandlingMiddleware(
         logger=logging.getLogger("infrahub_mcp.errors"),
         include_traceback=config.log_level_debug,
@@ -535,8 +536,8 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
     )
     mcp.add_middleware(_error_handling)
 
-    # 5. Retry — exponential backoff for transient failures (conditional)
-    #    Uses SafeRetryMiddleware to skip retries for non-idempotent tool calls.
+    # Retry — exponential backoff for transient failures (conditional)
+    # Uses SafeRetryMiddleware to skip retries for non-idempotent tool calls.
     if config.retry_max_attempts > 0:
         mcp.add_middleware(
             SafeRetryMiddleware(
@@ -552,7 +553,7 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
             config.retry_base_delay,
         )
 
-    # 6. Rate limiting — token bucket (conditional)
+    # Rate limiting — token bucket (conditional)
     if config.rate_limit_rps > 0:
         burst = config.rate_limit_burst if config.rate_limit_burst > 0 else int(config.rate_limit_rps * 2)
         mcp.add_middleware(
@@ -568,7 +569,7 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
             burst,
         )
 
-    # 7. Structured logging — JSON log lines with token estimates
+    # Structured logging — JSON log lines with token estimates
     mcp.add_middleware(
         StructuredLoggingMiddleware(
             logger=logging.getLogger("infrahub_mcp.requests"),
@@ -578,16 +579,16 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
         )
     )
 
-    # 8. Detailed timing — per-operation breakdown
+    # Detailed timing — per-operation breakdown
     mcp.add_middleware(
         DetailedTimingMiddleware(
             logger=logging.getLogger("infrahub_mcp.timing"),
         )
     )
 
-    # 9. Auth middleware — scope-based authorization for OIDC transport (conditional)
-    #    Only enabled in OIDC mode where an auth provider supplies tokens with scopes.
-    #    In none mode (incl. stdio): no token provider exists, so scope checks are skipped.
+    # Auth middleware — scope-based authorization for OIDC transport (conditional)
+    # Only enabled in OIDC mode where an auth provider supplies tokens with scopes.
+    # In none mode (incl. stdio): no token provider exists, so scope checks are skipped.
     if config.auth_mode == AUTH_MODE_OIDC:
         scopes_raw = config.auth_scopes_write or "write"
         scopes = [s.strip() for s in scopes_raw.split(",") if s.strip()]
@@ -600,21 +601,21 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
             scopes,
         )
 
-    # 10. Token passthrough — fail-closed gate (conditional)
+    # Token passthrough — fail-closed gate (conditional)
     if config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH:
         mcp.add_middleware(TokenPassthroughMiddleware())
         logger.info("token_passthrough_middleware enabled=true")
 
-    # 11. Read-only enforcement — tag-based, defense-in-depth (conditional)
+    # Read-only enforcement — tag-based, defense-in-depth (conditional)
     if config.read_only:
         mcp.add_middleware(ReadOnlyMiddleware())
         logger.info("read_only_mode enabled=true")
 
-    # 11. Audit trail — structured tool/resource access log
+    # Audit trail — structured tool/resource access log
     audit_claim = config.oidc_user_claim if config.auth_mode == AUTH_MODE_OIDC else None
     mcp.add_middleware(AuditMiddleware(user_claim=audit_claim))
 
-    # 12. Response caching — TTL-based for schema/list operations (conditional)
+    # Response caching — TTL-based for schema/list operations (conditional)
     if config.cache_enabled:
         _caching_middleware = ResponseCachingMiddleware(
             list_tools_settings=ListToolsSettings(ttl=config.cache_list_ttl),
@@ -633,17 +634,17 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
             config.cache_read_ttl,
         )
 
-    # 13. Dereference $ref in JSON schemas for client compatibility (conditional)
+    # Dereference $ref in JSON schemas for client compatibility (conditional)
     if config.dereference_schemas:
         mcp.add_middleware(DereferenceRefsMiddleware())
         logger.info("dereference_schemas enabled=true")
 
-    # 14. Ping — periodic keepalive for HTTP sessions (conditional)
+    # Ping — periodic keepalive for HTTP sessions (conditional)
     if config.ping_interval_ms > 0:
         mcp.add_middleware(PingMiddleware(interval_ms=config.ping_interval_ms))
         logger.info("ping_middleware enabled=true interval_ms=%d", config.ping_interval_ms)
 
-    # 15. Response size limiting — innermost
+    # Response size limiting — innermost
     mcp.add_middleware(
         ResponseLimitingMiddleware(
             max_size=_MAX_RESPONSE_BYTES,
