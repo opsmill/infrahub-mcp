@@ -33,16 +33,91 @@ async def get_schema_catalog(client: "InfrahubClient", branch: str | None = None
     }
 
 
-async def get_schema_detail(client: "InfrahubClient", kind: str, branch: str | None = None) -> dict[str, Any]:
+def _peer_rel_filters(
+    relationships: Any,
+    peer_schemas: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Build filter entries contributed by peer-schema attributes.
+
+    Args:
+        relationships: Iterable of relationship objects.
+        peer_schemas: Mapping of peer kind to its raw schema node.
+
+    Returns:
+        List of filter dicts (``{"filter": ..., "type": ...}``).
+    """
+    result: list[dict[str, str]] = []
+    for rel in relationships:
+        rel_schema = peer_schemas.get(rel.peer)
+        if rel_schema is None:
+            continue
+        result.extend(
+            {
+                "filter": f"{rel.name}__{attr.name}__value",
+                "type": schema_attribute_type_mapping.get(attr.kind, "String"),
+            }
+            for attr in rel_schema.attributes
+        )
+    return result
+
+
+async def _expand_peer_schemas(
+    client: "InfrahubClient",
+    relationships: Any,
+    visited: set[str],
+    branch: str | None,
+    depth: int,
+) -> dict[str, dict[str, Any]]:
+    """Fetch expanded schema details for all unvisited peer kinds in parallel.
+
+    Args:
+        client: Infrahub SDK client.
+        relationships: Iterable of relationship objects with a ``.peer`` attribute.
+        visited: Kinds already on the current traversal path.
+        branch: Optional branch to query.
+        depth: Remaining expansion depth (already decremented by caller).
+
+    Returns:
+        Mapping of peer kind to its expanded schema detail dict.
+    """
+    expandable_peers: list[str] = list(
+        dict.fromkeys(rel.peer for rel in relationships if rel.peer not in visited)
+    )
+
+    async def _expand_one(peer_kind: str) -> tuple[str, dict[str, Any]]:
+        return peer_kind, await get_schema_detail(
+            client, kind=peer_kind, branch=branch, depth=depth, _visited=set(visited),
+        )
+
+    expanded = await asyncio.gather(*[_expand_one(pk) for pk in expandable_peers])
+    return dict(expanded)
+
+
+async def get_schema_detail(
+    client: "InfrahubClient",
+    kind: str,
+    branch: str | None = None,
+    depth: int = 0,
+    _visited: set[str] | None = None,
+) -> dict[str, Any]:
     """Return full schema detail for a specific kind.
 
     Includes attributes, relationships, and the complete filter map
     (with filters derived from related peer schemas fetched in parallel).
 
+    When ``depth`` > 0, each relationship includes a ``peer_schema`` key
+    containing the full schema of the related kind, recursively expanded
+    up to ``depth`` levels. Cycles are detected per traversal path and
+    marked with ``"_seen": True`` instead of ``peer_schema``.
+
     Args:
         client: Infrahub SDK client.
         kind: Schema kind to retrieve.
         branch: Optional branch to query.
+        depth: Relationship traversal depth (0 = no expansion). Negative
+            values are normalized to 0.
+        _visited: Kinds already expanded in the current traversal path.
+            Callers should not set this — it is managed by recursion.
 
     Returns:
         Dict with keys: kind, label, namespace, attributes, relationships, filters.
@@ -50,6 +125,10 @@ async def get_schema_detail(client: "InfrahubClient", kind: str, branch: str | N
     Raises:
         SchemaNotFoundError: If the kind does not exist.
     """
+    depth = max(depth, 0)
+    if _visited is None:
+        _visited = set()
+
     schema = await client.schema.get(kind=kind, branch=branch)
 
     filter_list: list[dict[str, str]] = [
@@ -71,27 +150,39 @@ async def get_schema_detail(client: "InfrahubClient", kind: str, branch: str | N
     peer_results = await asyncio.gather(*[_fetch_peer(pk) for pk in unique_peer_kinds])
     peer_schemas: dict[str, Any] = {pk: s for pk, s in peer_results if s is not None}
 
-    for rel in schema.relationships:
-        rel_schema = peer_schemas.get(rel.peer)
-        if rel_schema is None:
-            continue
-        filter_list.extend(
-            {
-                "filter": f"{rel.name}__{attr.name}__value",
-                "type": schema_attribute_type_mapping.get(attr.kind, "String"),
-            }
-            for attr in rel_schema.attributes
+    filter_list.extend(_peer_rel_filters(schema.relationships, peer_schemas))
+
+    # Build relationship dicts with optional depth expansion
+    _visited.add(kind)
+    peer_detail_map: dict[str, dict[str, Any]] = {}
+    if depth > 0:
+        peer_detail_map = await _expand_peer_schemas(
+            client, schema.relationships, _visited, branch, depth - 1
         )
+
+    relationships: list[dict[str, Any]] = []
+    for rel in schema.relationships:
+        rel_dict: dict[str, Any] = {
+            "name": rel.name,
+            "peer": rel.peer,
+            "cardinality": rel.cardinality,
+            "optional": rel.optional,
+        }
+        if depth > 0:
+            if rel.peer in _visited:
+                rel_dict["_seen"] = True
+            elif rel.peer in peer_detail_map:
+                rel_dict["peer_schema"] = peer_detail_map[rel.peer]
+        relationships.append(rel_dict)
+
+    _visited.discard(kind)
 
     return {
         "kind": schema.kind,
         "label": schema.label,
         "namespace": schema.namespace,
         "attributes": [{"name": a.name, "kind": a.kind, "optional": a.optional} for a in schema.attributes],
-        "relationships": [
-            {"name": r.name, "peer": r.peer, "cardinality": r.cardinality, "optional": r.optional}
-            for r in schema.relationships
-        ],
+        "relationships": relationships,
         "filters": filter_list,
     }
 
