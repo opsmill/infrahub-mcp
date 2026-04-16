@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import mcp.types as mt
 import pytest
 from fastmcp.server.middleware.middleware import MiddlewareContext
+from fastmcp.server.middleware.error_handling import RetryMiddleware
 from fastmcp.tools.base import ToolResult
 
 import infrahub_mcp.middleware as middleware_module
@@ -432,7 +433,7 @@ class TestOTelTracingMiddleware:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture()
 def _reset_middleware_globals() -> Generator[None]:
     """Reset module-level middleware state before and after each test."""
     middleware_module._metrics = None  # noqa: SLF001
@@ -444,6 +445,7 @@ def _reset_middleware_globals() -> Generator[None]:
     middleware_module._caching_middleware = None  # noqa: SLF001
 
 
+@pytest.mark.usefixtures("_reset_middleware_globals")
 class TestConfigureMiddleware:
     def test_registers_middleware_read_write_mode(self) -> None:
         mock_mcp = MagicMock()
@@ -783,6 +785,7 @@ class TestConfigureMiddleware:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("_reset_middleware_globals")
 class TestModuleLevelGetters:
     def test_get_metrics_after_configure(self) -> None:
         mock_mcp = MagicMock()
@@ -1004,7 +1007,7 @@ class TestSafeRetryMiddlewareRouting:
             return ToolResult(content=[])
 
         with patch.object(
-            type(mw).__mro__[1], "on_call_tool", return_value=ToolResult(content=[])
+            RetryMiddleware, "on_call_tool", return_value=ToolResult(content=[])
         ) as mock_super:
             await mw.on_call_tool(ctx, call_next)
             assert mock_super.called, "Should delegate to parent retry logic"
@@ -1021,7 +1024,7 @@ class TestSafeRetryMiddlewareRouting:
         mw = SafeRetryMiddleware(max_retries=2, base_delay=0)
 
         with patch.object(
-            type(mw).__mro__[1], "on_call_tool", return_value=ToolResult(content=[])
+            RetryMiddleware, "on_call_tool", return_value=ToolResult(content=[])
         ) as mock_super:
             await mw.on_call_tool(ctx, call_next=MagicMock())
             assert mock_super.called
@@ -1068,6 +1071,12 @@ class TestSafeRetryMiddlewareRouting:
 
 
 class TestTokenPassthroughMiddleware:
+    @pytest.fixture(autouse=True)
+    def _clean_passthrough_token(self) -> Generator[None]:
+        token = _passthrough_token.set(None)
+        yield
+        _passthrough_token.reset(token)
+
     @pytest.mark.anyio
     async def test_rejects_tool_call_without_token(self) -> None:
         middleware = TokenPassthroughMiddleware()
@@ -1077,7 +1086,6 @@ class TestTokenPassthroughMiddleware:
             msg = "should not reach here"
             raise AssertionError(msg)
 
-        _passthrough_token.set(None)
         with pytest.raises(McpError, match="Authentication required"):
             await middleware.on_call_tool(ctx, call_next)
 
@@ -1090,7 +1098,6 @@ class TestTokenPassthroughMiddleware:
             msg = "should not reach here"
             raise AssertionError(msg)
 
-        _passthrough_token.set(None)
         with pytest.raises(McpError, match="Authentication required"):
             await middleware.on_read_resource(ctx, call_next)
 
@@ -1103,11 +1110,9 @@ class TestTokenPassthroughMiddleware:
         async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
             return expected
 
-        _passthrough_token.set(None)
         set_passthrough_token("valid-token")
         result = await middleware.on_call_tool(ctx, call_next)
         assert result is expected
-        _passthrough_token.set(None)
 
     @pytest.mark.anyio
     async def test_allows_resource_read_with_token(self) -> None:
@@ -1117,11 +1122,9 @@ class TestTokenPassthroughMiddleware:
         async def call_next(c: MiddlewareContext[Any]) -> str:
             return "data"
 
-        _passthrough_token.set(None)
         set_passthrough_token("valid-token")
         result = await middleware.on_read_resource(ctx, call_next)
         assert result == "data"
-        _passthrough_token.set(None)
 
 
 # ---------------------------------------------------------------------------

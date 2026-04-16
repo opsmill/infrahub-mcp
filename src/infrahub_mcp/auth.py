@@ -26,6 +26,9 @@ def create_auth_provider(config: ServerConfig) -> OIDCProxy | None:
 
     The OIDC token is for MCP-level access control only — Infrahub API calls
     still use the shared env var credentials.
+
+    Returns:
+        OIDCProxy when auth_mode is ``oidc``, otherwise ``None``.
     """
     if config.auth_mode != AUTH_MODE_OIDC:
         return None
@@ -102,6 +105,9 @@ def sanitize_user_for_branch(raw: str) -> str:
     - Strip a trailing ``.lock`` suffix.
     - Strip leading/trailing dots, slashes, and hyphens.
     - Collapse runs of hyphens.
+
+    Returns:
+        Sanitized string safe for branch names, or ``"anonymous"`` if empty.
     """
     cleaned = _BRANCH_UNSAFE.sub("-", raw)
     cleaned = _DOUBLE_DOT.sub(".", cleaned)
@@ -121,6 +127,9 @@ def get_user_from_token(claim: str = "email") -> str:
 
     Args:
         claim: JWT claim to use for identity (default: ``email``).
+
+    Returns:
+        Sanitized user identity string, or ``"anonymous"`` when unavailable.
     """
     try:
         from fastmcp.server.middleware.authorization import get_access_token  # noqa: PLC0415
@@ -130,6 +139,6 @@ def get_user_from_token(claim: str = "email") -> str:
             value = token.claims.get(claim) or token.claims.get("sub")
             if value:
                 return sanitize_user_for_branch(str(value))
-    except Exception:
+    except (ImportError, AttributeError, KeyError, TypeError):
         logger.debug("Failed to extract user from OIDC token", exc_info=True)
     return "anonymous"

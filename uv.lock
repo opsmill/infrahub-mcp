@@ -505,7 +505,7 @@ dev = [
     { name = "pytest", specifier = ">=8.4.1" },
     { name = "pytest-asyncio", specifier = ">=1.1.0" },
     { name = "ruff", specifier = ">=0.15.5" },
-    { name = "rumdl" },
+    { name = "rumdl", specifier = ">=0.1.68" },
     { name = "yamllint", specifier = ">=1.37.1" },
 ]
 

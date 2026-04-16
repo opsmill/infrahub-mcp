@@ -15,7 +15,7 @@ infrahub-mcp = "infrahub_mcp:main"
 
 [dependency-groups]
 dev = [
-    "rumdl",
+    "rumdl>=0.1.68",
     "invoke>=2.2.0",
     "mypy>=1.17.0",
     "pytest>=8.4.1",

@@ -13,7 +13,7 @@ from starlette.responses import JSONResponse, Response
 
 from infrahub_mcp.auth import create_auth_provider, reset_passthrough_token, set_passthrough_token
 from infrahub_mcp.config import ServerConfig, load_config
-from infrahub_mcp.constants import AUTH_MODE_TOKEN_PASSTHROUGH
+from infrahub_mcp.constants import AUTH_MODE_OIDC, AUTH_MODE_TOKEN_PASSTHROUGH
 
 if TYPE_CHECKING:
     from asgiref.typing import ASGIApplication as ASGIApp
@@ -266,22 +266,37 @@ class _TokenPassthroughASGI:
                 reset_passthrough_token(reset)
 
 
+_OAUTH_DISCOVERY_SEGMENTS = (
+    "/.well-known/oauth-authorization-server",
+    "/.well-known/oauth-protected-resource",
+    "/.well-known/openid-configuration",
+)
+
+
 class _OAuthDiscoveryInterceptASGI:
-    """ASGI middleware returning empty 404 for OAuth/OIDC discovery probes.
+    """ASGI middleware returning RFC 6749 JSON 404 for OAuth/OIDC discovery probes.
 
     MCP clients probe well-known paths for OAuth support even when the server
     doesn't use OIDC.  Without this, Starlette returns plain-text "Not Found"
     which clients fail to parse as JSON, causing ``SyntaxError`` messages.
-    Returns a bare 404 with no body to avoid triggering OAuth error parsing.
+    Only intercepts the specific OAuth/OIDC discovery endpoints (including
+    path-suffixed variants like ``/mcp``) and ``/register``.
     """
 
     def __init__(self, app: "ASGIApp") -> None:
         self._app = app
 
+    @staticmethod
+    def _is_oauth_probe(path: str) -> bool:
+        normalized = path.rstrip("/")
+        if normalized == "/register":
+            return True
+        return any(segment in normalized for segment in _OAUTH_DISCOVERY_SEGMENTS)
+
     async def __call__(self, scope: dict, receive: object, send: object) -> None:  # type: ignore[type-arg]
         if scope["type"] == "http":
             path: str = scope.get("path", "")
-            if "/.well-known/" in path or path.rstrip("/") == "/register":
+            if self._is_oauth_probe(path):
                 response = JSONResponse(
                     {"error": "invalid_request", "error_description": "OAuth is not enabled on this server."},
                     status_code=404,
@@ -298,6 +313,6 @@ def get_asgi_middleware() -> list[object]:
     middlewares: list[object] = []
     if _config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH:
         middlewares.append(StarletteMiddleware(_TokenPassthroughASGI, header=_config.token_passthrough_header))
-    if _config.auth_mode != "oidc":
+    if _config.auth_mode != AUTH_MODE_OIDC:
         middlewares.append(StarletteMiddleware(_OAuthDiscoveryInterceptASGI))
     return middlewares

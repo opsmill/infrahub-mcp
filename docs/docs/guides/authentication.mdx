@@ -270,7 +270,7 @@ INFRAHUB_MCP_BRANCH_PATTERN=mcp/{user}/{date}-{hex}
 # Produces: mcp/alice-example.com/20260409-a1b2c3d4
 ```
 
-The sanitization follows `git check-ref-format` rules: characters outside `[a-zA-Z0-9._/-]` are replaced with hyphens, and sequences like `..`, `//`, `/.`, and trailing `.lock` are cleaned up. If no user is available, `anonymous` is used.
+The sanitization follows `git check-ref-format` rules: characters in the set `[a-zA-Z0-9._/-]` (letters, digits, dot, underscore, slash, and dash) are preserved — all others are replaced with hyphens. For example, `alice@example.com` becomes `alice-example.com` because the `@` is replaced while the dot is preserved. Additionally, `..` sequences are collapsed to a single dot, `//` to a single slash, `/.` components are stripped (no component may start with a dot), and a trailing `.lock` suffix is removed. Leading/trailing dots, slashes, and hyphens are trimmed. If no user is available, `anonymous` is used.
 
 ## Read-only mode
 

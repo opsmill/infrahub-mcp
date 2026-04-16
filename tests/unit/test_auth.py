@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from infrahub_mcp.auth import (
     _passthrough_token,
@@ -67,25 +70,25 @@ class TestCreateAuthProvider:
 
 
 class TestPassthroughTokenContextVar:
+    @pytest.fixture(autouse=True)
+    def _clean_passthrough_token(self) -> Generator[None]:
+        token = _passthrough_token.set(None)
+        yield
+        _passthrough_token.reset(token)
+
     def test_default_is_none(self) -> None:
-        _passthrough_token.set(None)
         assert get_passthrough_token() is None
 
     def test_set_and_get(self) -> None:
-        _passthrough_token.set(None)
         set_passthrough_token("my-token")
         assert get_passthrough_token() == "my-token"
-        _passthrough_token.set(None)
 
     def test_overwrite(self) -> None:
-        _passthrough_token.set(None)
         set_passthrough_token("first")
         set_passthrough_token("second")
         assert get_passthrough_token() == "second"
-        _passthrough_token.set(None)
 
     def test_reset_restores_previous_value(self) -> None:
-        _passthrough_token.set(None)
         token = set_passthrough_token("temporary")
         assert get_passthrough_token() == "temporary"
         reset_passthrough_token(token)
@@ -93,50 +96,28 @@ class TestPassthroughTokenContextVar:
 
 
 class TestSanitizeUserForBranch:
-    def test_email_address(self) -> None:
-        assert sanitize_user_for_branch("alice@example.com") == "alice-example.com"
-
-    def test_plain_username(self) -> None:
-        assert sanitize_user_for_branch("alice") == "alice"
-
-    def test_spaces_and_special_chars(self) -> None:
-        assert sanitize_user_for_branch("Alice B. Carol!") == "Alice-B.-Carol"
-
-    def test_empty_string(self) -> None:
-        assert sanitize_user_for_branch("") == "anonymous"
-
-    def test_only_special_chars(self) -> None:
-        assert sanitize_user_for_branch("@@@") == "anonymous"
-
-    def test_slashes_preserved(self) -> None:
-        assert sanitize_user_for_branch("org/team/alice") == "org/team/alice"
-
-    def test_consecutive_hyphens_collapsed(self) -> None:
-        assert sanitize_user_for_branch("a@@b") == "a-b"
-
-    def test_double_dot_collapsed(self) -> None:
-        assert sanitize_user_for_branch("a..b") == "a.b"
-
-    def test_path_traversal(self) -> None:
-        assert sanitize_user_for_branch("../alice") == "alice"
-
-    def test_double_slash_collapsed(self) -> None:
-        assert sanitize_user_for_branch("team//alice") == "team/alice"
-
-    def test_slash_dot_cleaned(self) -> None:
-        assert sanitize_user_for_branch("team/.alice") == "team/alice"
-
-    def test_dot_lock_suffix_stripped(self) -> None:
-        assert sanitize_user_for_branch("alice.lock") == "alice"
-
-    def test_leading_dot_stripped(self) -> None:
-        assert sanitize_user_for_branch(".alice") == "alice"
-
-    def test_trailing_slash_stripped(self) -> None:
-        assert sanitize_user_for_branch("alice/") == "alice"
-
-    def test_complex_oidc_claim(self) -> None:
-        assert sanitize_user_for_branch("../team//alice.lock") == "team/alice"
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("alice@example.com", "alice-example.com"),
+            ("alice", "alice"),
+            ("Alice B. Carol!", "Alice-B.-Carol"),
+            ("", "anonymous"),
+            ("@@@", "anonymous"),
+            ("org/team/alice", "org/team/alice"),
+            ("a@@b", "a-b"),
+            ("a..b", "a.b"),
+            ("../alice", "alice"),
+            ("team//alice", "team/alice"),
+            ("team/.alice", "team/alice"),
+            ("alice.lock", "alice"),
+            (".alice", "alice"),
+            ("alice/", "alice"),
+            ("../team//alice.lock", "team/alice"),
+        ],
+    )
+    def test_sanitize(self, raw: str, expected: str) -> None:
+        assert sanitize_user_for_branch(raw) == expected
 
 
 class TestGetUserFromToken:

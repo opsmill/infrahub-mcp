@@ -184,8 +184,11 @@ class ReadOnlyMiddleware(Middleware):
             tool = await context.fastmcp_context.fastmcp.get_tool(
                 tool_name
             )
-            if tool is not None:
-                is_write = WRITE_TAG in (tool.tags or set())
+            is_write = (
+                WRITE_TAG in (tool.tags or set())
+                if tool is not None
+                else tool_name not in self._KNOWN_READ_ONLY_TOOLS
+            )
         else:
             # Fail-closed: without context, only allow known read-only tools
             is_write = tool_name not in self._KNOWN_READ_ONLY_TOOLS

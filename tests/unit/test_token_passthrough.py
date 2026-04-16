@@ -3,15 +3,25 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastmcp.exceptions import ToolError
+from starlette.middleware import Middleware as StarletteMiddleware
 
 from infrahub_mcp.auth import _passthrough_token, get_passthrough_token, set_passthrough_token
 from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.server import _OAuthDiscoveryInterceptASGI, _TokenPassthroughASGI, get_asgi_middleware
 from infrahub_mcp.utils import AppContext, get_client
+
+
+@pytest.fixture(autouse=True)
+def _clean_passthrough_token() -> Generator[None]:
+    """Isolate ContextVar between tests so failures don't leak."""
+    token = _passthrough_token.set(None)
+    yield
+    _passthrough_token.reset(token)
 
 
 # ---------------------------------------------------------------------------
@@ -33,7 +43,6 @@ class TestTokenPassthroughASGI:
             "type": "http",
             "headers": [(b"authorization", b"Bearer my-secret-token")],
         }
-        _passthrough_token.set(None)
         await mw(scope, MagicMock(), MagicMock())
 
         assert captured == ["my-secret-token"]
@@ -51,7 +60,6 @@ class TestTokenPassthroughASGI:
             "type": "http",
             "headers": [(b"x-infrahub-token", b"raw-api-key-123")],
         }
-        _passthrough_token.set(None)
         await mw(scope, MagicMock(), MagicMock())
 
         assert captured == ["raw-api-key-123"]
@@ -65,11 +73,9 @@ class TestTokenPassthroughASGI:
             "type": "http",
             "headers": [],
         }
-        _passthrough_token.set(None)
         await mw(scope, MagicMock(), MagicMock())
 
         assert get_passthrough_token() is None
-        _passthrough_token.set(None)
 
     @pytest.mark.anyio
     async def test_empty_bearer_leaves_contextvar_none(self) -> None:
@@ -80,11 +86,9 @@ class TestTokenPassthroughASGI:
             "type": "http",
             "headers": [(b"authorization", b"Bearer ")],
         }
-        _passthrough_token.set(None)
         await mw(scope, MagicMock(), MagicMock())
 
         assert get_passthrough_token() is None
-        _passthrough_token.set(None)
 
     @pytest.mark.anyio
     async def test_non_http_scope_skipped(self) -> None:
@@ -95,11 +99,9 @@ class TestTokenPassthroughASGI:
             "type": "websocket",
             "headers": [(b"authorization", b"Bearer ws-token")],
         }
-        _passthrough_token.set(None)
         await mw(scope, MagicMock(), MagicMock())
 
         assert get_passthrough_token() is None
-        _passthrough_token.set(None)
 
     @pytest.mark.anyio
     async def test_calls_inner_app(self) -> None:
@@ -122,7 +124,6 @@ class TestTokenPassthroughASGI:
             "type": "http",
             "headers": [(b"authorization", b"Bearer request-token")],
         }
-        _passthrough_token.set(None)
         await mw(scope, MagicMock(), MagicMock())
 
         # After the request completes, ContextVar should be reset to None
@@ -142,7 +143,6 @@ class TestTokenPassthroughASGI:
             "type": "http",
             "headers": [(b"authorization", b"Bearer error-token")],
         }
-        _passthrough_token.set(None)
         with pytest.raises(RuntimeError, match="boom"):
             await mw(scope, MagicMock(), MagicMock())
 
@@ -281,11 +281,16 @@ class TestGetAsgiMiddleware:
         with patch("infrahub_mcp.server._config", ServerConfig(auth_mode="token-passthrough")):
             result = get_asgi_middleware()
         assert len(result) == 2
+        assert all(isinstance(m, StarletteMiddleware) for m in result)
+        assert result[0].cls is _TokenPassthroughASGI  # type: ignore[attr-defined]
+        assert result[1].cls is _OAuthDiscoveryInterceptASGI  # type: ignore[attr-defined]
 
     def test_returns_oauth_intercept_in_none_mode(self) -> None:
         with patch("infrahub_mcp.server._config", ServerConfig(auth_mode="none")):
             result = get_asgi_middleware()
         assert len(result) == 1
+        assert isinstance(result[0], StarletteMiddleware)
+        assert result[0].cls is _OAuthDiscoveryInterceptASGI  # type: ignore[attr-defined]
 
     def test_returns_empty_in_oidc_mode(self) -> None:
         with patch("infrahub_mcp.server._config", ServerConfig(auth_mode="oidc")):
@@ -311,7 +316,6 @@ class TestGetClientPassthrough:
         app_ctx = AppContext(client=None, config=config)
         ctx = _make_ctx(app_ctx)
 
-        _passthrough_token.set(None)
         with pytest.raises(ToolError, match="Authentication required"):
             get_client(ctx)
 
@@ -320,7 +324,6 @@ class TestGetClientPassthrough:
         app_ctx = AppContext(client=None, config=config)
         ctx = _make_ctx(app_ctx)
 
-        _passthrough_token.set(None)
         set_passthrough_token("test-api-token")
         with patch.dict(os.environ, {"INFRAHUB_ADDRESS": "http://localhost:8000"}):
             with patch("infrahub_mcp.utils.InfrahubClient") as mock_cls:
@@ -333,7 +336,6 @@ class TestGetClientPassthrough:
             address="http://localhost:8000",
             config={"api_token": "test-api-token"},
         )
-        _passthrough_token.set(None)
 
     def test_creates_fresh_client_per_call(self) -> None:
         """Each get_client() call creates a new InfrahubClient so different
@@ -342,7 +344,6 @@ class TestGetClientPassthrough:
         app_ctx = AppContext(client=None, config=config)
         ctx = _make_ctx(app_ctx)
 
-        _passthrough_token.set(None)
         set_passthrough_token("token-a")
         with patch.dict(os.environ, {"INFRAHUB_ADDRESS": "http://localhost:8000"}):
             with patch("infrahub_mcp.utils.InfrahubClient") as mock_cls:
@@ -354,7 +355,6 @@ class TestGetClientPassthrough:
 
         assert first is not second
         assert mock_cls.call_count == 2
-        _passthrough_token.set(None)
 
     def test_shared_client_in_non_passthrough_mode(self) -> None:
         config = ServerConfig(auth_mode="none")

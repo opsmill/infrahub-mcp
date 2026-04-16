@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import string
 from dataclasses import dataclass
 from typing import Literal, cast
 
@@ -74,6 +75,7 @@ class ServerConfig:
 _MAX_BRANCH_RETRIES_LIMIT = 20
 _MAX_RATE_LIMIT_RPS = 10000.0
 _MAX_PING_INTERVAL_MS = 300_000
+_VALID_LOG_LEVELS = {"debug", "info", "warning", "error"}
 
 
 def load_config() -> ServerConfig:
@@ -108,6 +110,7 @@ def load_config() -> ServerConfig:
     _validate_auth_mode()
     _validate_branch_retries()
     _validate_branch_pattern()
+    _validate_log_level()
     _validate_rate_limit()
     _validate_retry()
     _validate_ping_interval()
@@ -178,6 +181,14 @@ def _validate_branch_retries() -> None:
         raise ValueError(msg)
 
 
+def _validate_log_level() -> None:
+    """Validate INFRAHUB_MCP_LOG_LEVEL against known levels."""
+    level = os.environ.get("INFRAHUB_MCP_LOG_LEVEL", "info").strip().lower()
+    if level not in _VALID_LOG_LEVELS:
+        msg = f"INFRAHUB_MCP_LOG_LEVEL must be one of {sorted(_VALID_LOG_LEVELS)}, got {level!r}."
+        raise ValueError(msg)
+
+
 def _validate_branch_pattern() -> None:
     """Validate INFRAHUB_MCP_BRANCH_PATTERN at startup.
 
@@ -185,21 +196,24 @@ def _validate_branch_pattern() -> None:
     by performing a trial expansion with sample values.
     """
     pattern = os.environ.get("INFRAHUB_MCP_BRANCH_PATTERN", "mcp/session-{date}-{hex}")
-    sample = dict.fromkeys(_ALLOWED_PLACEHOLDERS, "sample")
     try:
-        expanded = pattern.format(**sample)
-    except (KeyError, ValueError, IndexError) as exc:
+        fields = [
+            field_name
+            for _, field_name, _, _ in string.Formatter().parse(pattern)
+            if field_name is not None
+        ]
+    except (ValueError, IndexError) as exc:
         msg = (
             f"INFRAHUB_MCP_BRANCH_PATTERN has invalid syntax: {pattern!r}. "
             f"Allowed placeholders are {{date}}, {{hex}}, {{user}}. Error: {exc}"
         )
         raise ValueError(msg) from exc
 
-    # Check for leftover braces that indicate unknown placeholders
-    if "{" in expanded or "}" in expanded:
+    bad = sorted(set(fields) - _ALLOWED_PLACEHOLDERS)
+    if bad:
         msg = (
             f"INFRAHUB_MCP_BRANCH_PATTERN contains unsupported placeholders: {pattern!r}. "
-            f"Allowed placeholders are {{date}}, {{hex}}, {{user}}."
+            f"Unknown: {bad}. Allowed placeholders are {{date}}, {{hex}}, {{user}}."
         )
         raise ValueError(msg)
 

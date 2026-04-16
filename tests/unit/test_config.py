@@ -113,6 +113,11 @@ class TestLoadConfig:
             config = load_config()
         assert config.log_level_debug is False
 
+    def test_log_level_invalid(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_LOG_LEVEL": "verbose"}, clear=True):
+            with pytest.raises(ValueError, match="INFRAHUB_MCP_LOG_LEVEL must be one of"):
+                load_config()
+
     # --- Rate limiting ---
 
     def test_rate_limit_rps(self) -> None:
