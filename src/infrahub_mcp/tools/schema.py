@@ -84,7 +84,10 @@ async def get_schema(
         await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",
-            remediation=f"{valid}\nCall get_schema() for the full catalog, or get_schema(kind='<kind>') for details.",
+            remediation=(
+                f"{valid}\nCall get_schema() for the full catalog, "
+                f"or get_schema(kind='<kind>') for details."
+            ),
         )
 
     return toon.encode(detail)
