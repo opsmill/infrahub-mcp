@@ -159,18 +159,19 @@ The server applies middleware in registration order. The full stack when all fea
 | 2 | **MetricsMiddleware** — request/error/latency counters for `/metrics` | yes |
 | 3 | **OTelTracingMiddleware** — OpenTelemetry spans | no |
 | 4 | **ErrorHandlingMiddleware** — exception-to-MCP-error mapping with error tracking | yes |
-| 5 | **RetryMiddleware** — exponential backoff for transient failures | no |
-| 6 | **RateLimitingMiddleware** — token bucket rate limiting | no |
-| 7 | **StructuredLoggingMiddleware** — JSON logs with token estimates | yes |
-| 8 | **DetailedTimingMiddleware** — per-operation timing breakdown | yes |
-| 9 | **AuthMiddleware** — scope-based write tool authorization (HTTP only) | no |
-| 10 | **TokenPassthroughMiddleware** — fail-closed gate for token-passthrough mode | no |
-| 11 | **ReadOnlyMiddleware** — tag-based write tool blocking | no |
-| 12 | **AuditMiddleware** — structured audit trail for tool/resource access | yes |
-| 13 | **ResponseCachingMiddleware** — TTL-based response caching | no |
-| 14 | **DereferenceRefsMiddleware** — inline `$ref` in JSON schemas | no |
-| 15 | **PingMiddleware** — periodic keepalive pings | no |
-| 16 | **ResponseLimitingMiddleware** — truncates responses over 500 KB | yes |
+| 5 | **InfrahubConnectionMiddleware** — friendly errors for unreachable/unresponsive Infrahub | yes |
+| 6 | **RetryMiddleware** — exponential backoff for transient failures | no |
+| 7 | **RateLimitingMiddleware** — token bucket rate limiting | no |
+| 8 | **StructuredLoggingMiddleware** — JSON logs with token estimates | yes |
+| 9 | **DetailedTimingMiddleware** — per-operation timing breakdown | yes |
+| 10 | **AuthMiddleware** — scope-based write tool authorization (HTTP only) | no |
+| 11 | **TokenPassthroughMiddleware** — fail-closed gate for token-passthrough mode | no |
+| 12 | **ReadOnlyMiddleware** — tag-based write tool blocking | no |
+| 13 | **AuditMiddleware** — structured audit trail for tool/resource access | yes |
+| 14 | **ResponseCachingMiddleware** — TTL-based response caching | no |
+| 15 | **DereferenceRefsMiddleware** — inline `$ref` in JSON schemas | no |
+| 16 | **PingMiddleware** — periodic keepalive pings | no |
+| 17 | **ResponseLimitingMiddleware** — truncates responses over 500 KB | yes |
 
 <!-- vale on -->
 
@@ -181,3 +182,4 @@ The server applies middleware in registration order. The full stack when all fea
 | `/mcp` | POST | MCP Streamable HTTP transport |
 | `/health` | GET | Health check — returns `{"status": "healthy"}` or 503 |
 | `/metrics` | GET | Request counts, error counts, latency (JSON or Prometheus format) |
+| `/.well-known/*` | GET | OAuth discovery — returns RFC 6749 JSON 404 when OIDC is not enabled |
