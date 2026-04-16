@@ -31,7 +31,7 @@ from prefab_ui.components.charts import BarChart, ChartSeries, PieChart
 from prefab_ui.components.mermaid import Mermaid
 from prefab_ui.rx import Rx
 
-from infrahub_app.app import app, get_client
+from infrahub_app.app import Filters, app, get_client
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
@@ -177,7 +177,7 @@ async def fetch_overview_data(
     ctx: Context,
     branch: str | None = None,
     group_by: str = "namespace",  # noqa: ARG001
-    filters: dict[str, Any] | None = None,
+    filters: Filters = None,
 ) -> dict[str, Any]:
     """Fetch data for the overview. Called on filter/group_by changes via CallTool."""
     client = get_client(ctx)
@@ -206,7 +206,7 @@ async def overview(
     ctx: Context,
     branch: str | None = None,
     group_by: str = "namespace",  # noqa: ARG001
-    filters: dict[str, Any] | None = None,
+    filters: Filters = None,
     panels: list[dict[str, Any]] | None = None,  # noqa: ARG001
 ) -> PrefabApp:
     """Instance-level summary — namespace breakdown, schema coverage, complexity."""

@@ -26,7 +26,7 @@ from prefab_ui.components.charts import BarChart, ChartSeries, PieChart
 from prefab_ui.components.control_flow.foreach import ForEach
 from prefab_ui.rx import Rx
 
-from infrahub_app.app import app, get_client
+from infrahub_app.app import Filters, app, get_client
 from infrahub_app.panels import PanelConfig, auto_detect_panels, compute_distribution
 from infrahub_mcp.utils import convert_node_to_dict
 
@@ -91,7 +91,7 @@ async def fetch_explore_data(
     kind: str,
     ctx: Context,
     branch: str | None = None,
-    filters: dict[str, Any] | None = None,
+    filters: Filters = None,
 ) -> dict[str, Any]:
     """Fetch data for the explore view. Called on filter changes via CallTool."""
     client = get_client(ctx)
@@ -112,7 +112,7 @@ async def explore(
     kind: str,
     ctx: Context,
     branch: str | None = None,
-    filters: dict[str, Any] | None = None,
+    filters: Filters = None,
     panels: list[dict[str, Any]] | None = None,
 ) -> PrefabApp:
     """Visualize nodes of a single kind with auto-detected or custom charts."""
