@@ -47,11 +47,32 @@ def _validate_env() -> None:
         raise RuntimeError(msg)
 
 
+def _inject_kind_enum(kinds: list[str]) -> None:
+    """Inject available kinds as enum into explore tool schemas for dev UI dropdowns."""
+    for tool_name in ("explore", "fetch_explore_data"):
+        tool = infrahub_app._local._components.get(f"tool:{tool_name}")  # noqa: SLF001
+        if tool is None:
+            continue
+        params = getattr(tool, "parameters", None)
+        if isinstance(params, dict):
+            props = params.get("properties", {})
+            if "kind" in props:
+                props["kind"]["enum"] = kinds
+
+
 @asynccontextmanager
-async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: ARG001, RUF029
+async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: ARG001
     """Manage the application lifecycle: validate config, create client, yield context."""
     _validate_env()
     client = InfrahubClient()
+
+    # Populate kind dropdowns in the dev UI with available schema kinds
+    try:
+        all_schemas = await client.schema.all()
+        _inject_kind_enum(sorted(all_schemas.keys()))
+    except Exception:
+        logger.debug("Could not fetch schema for kind enum injection", exc_info=True)
+
     yield AppContext(client=client, config=_config)
 
 
