@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from prefab_ui.components.charts import BarChart, PieChart
 
-from infrahub_app.panels import PanelConfig, auto_detect_panels, build_panel, compute_distribution
+from infrahub_app.panels import PanelConfig, auto_detect_panels, build_panel, compute_distribution, refine_chart_type
 
 
 class TestPanelConfig:
@@ -129,6 +129,28 @@ class TestAutoDetectPanels:
         tags_panels = [p for p in panels if p.field == "tags"]
         assert len(tags_panels) == 1
         assert tags_panels[0].type == "bar"
+
+
+class TestRefineChartType:
+    def test_pie_stays_pie_for_few_values(self) -> None:
+        dist = [{"name": "active", "count": 8}, {"name": "down", "count": 2}]
+        assert refine_chart_type("pie", dist, total_nodes=10) == "pie"
+
+    def test_pie_becomes_bar_when_too_many_slices(self) -> None:
+        dist = [{"name": f"val-{i}", "count": 1} for i in range(15)]
+        assert refine_chart_type("pie", dist, total_nodes=15) == "bar"
+
+    def test_pie_becomes_bar_when_high_uniqueness(self) -> None:
+        # 6 unique values out of 10 nodes = 60% uniqueness > 50% threshold
+        dist = [{"name": f"val-{i}", "count": 1} for i in range(6)]
+        assert refine_chart_type("pie", dist, total_nodes=10) == "bar"
+
+    def test_bar_stays_bar(self) -> None:
+        dist = [{"name": "a", "count": 5}]
+        assert refine_chart_type("bar", dist, total_nodes=5) == "bar"
+
+    def test_empty_distribution_returns_original(self) -> None:
+        assert refine_chart_type("pie", [], total_nodes=0) == "pie"
 
 
 class TestBuildPanel:

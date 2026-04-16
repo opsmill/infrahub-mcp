@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastmcp import Context
 from fastmcp.apps import FastMCPApp
+from fastmcp.exceptions import ToolError
 from prefab_ui.app import PrefabApp
 
 from infrahub_app import app
@@ -48,11 +49,25 @@ _FAKE_NODES = [
 _FAKE_COLUMNS = ["name", "status", "platform"]
 
 
+def _patch_all():
+    """Patch _validate_kind, _fetch_schema_detail, and _fetch_nodes_for_kind."""
+
+    def decorator(func):
+        @patch("infrahub_app.explore._fetch_nodes_for_kind", return_value=(_FAKE_NODES, _FAKE_COLUMNS))
+        @patch("infrahub_app.explore._fetch_schema_detail", return_value=_FAKE_SCHEMA_DETAIL)
+        @patch("infrahub_app.explore._validate_kind", return_value="InfraDevice")
+        async def wrapper(self, mock_validate, mock_schema, mock_nodes):
+            return await func(self, mock_validate, mock_schema, mock_nodes)
+
+        return wrapper
+
+    return decorator
+
+
 class TestFetchExploreData:
-    @patch("infrahub_app.explore._fetch_nodes_for_kind", return_value=(_FAKE_NODES, _FAKE_COLUMNS))
-    @patch("infrahub_app.explore._fetch_schema_detail", return_value=_FAKE_SCHEMA_DETAIL)
+    @_patch_all()
     async def test_returns_expected_keys(
-        self, mock_schema: MagicMock, mock_nodes: MagicMock,
+        self, mock_validate: MagicMock, mock_schema: MagicMock, mock_nodes: MagicMock,
     ) -> None:
         ctx = _make_ctx()
         result = await fetch_explore_data(kind="InfraDevice", ctx=ctx)
@@ -61,41 +76,38 @@ class TestFetchExploreData:
         assert "schema" in result
         assert "distributions" in result
 
-    @patch("infrahub_app.explore._fetch_nodes_for_kind", return_value=(_FAKE_NODES, _FAKE_COLUMNS))
-    @patch("infrahub_app.explore._fetch_schema_detail", return_value=_FAKE_SCHEMA_DETAIL)
+    @_patch_all()
     async def test_distributions_computed_for_chartable_fields(
-        self, mock_schema: MagicMock, mock_nodes: MagicMock,
+        self, mock_validate: MagicMock, mock_schema: MagicMock, mock_nodes: MagicMock,
     ) -> None:
         ctx = _make_ctx()
         result = await fetch_explore_data(kind="InfraDevice", ctx=ctx)
         dist_fields = {d["field"] for d in result["distributions"]}
+        # Relationship labels include peer kind: "platform (InfraPlatform)"
         assert "status" in dist_fields
-        assert "platform" in dist_fields
+        assert "platform (InfraPlatform)" in dist_fields
 
 
 class TestExploreUI:
-    @patch("infrahub_app.explore._fetch_nodes_for_kind", return_value=(_FAKE_NODES, _FAKE_COLUMNS))
-    @patch("infrahub_app.explore._fetch_schema_detail", return_value=_FAKE_SCHEMA_DETAIL)
+    @_patch_all()
     async def test_returns_prefab_app(
-        self, mock_schema: MagicMock, mock_nodes: MagicMock,
+        self, mock_validate: MagicMock, mock_schema: MagicMock, mock_nodes: MagicMock,
     ) -> None:
         ctx = _make_ctx()
         result = await explore(kind="InfraDevice", ctx=ctx)
         assert isinstance(result, PrefabApp)
 
-    @patch("infrahub_app.explore._fetch_nodes_for_kind", return_value=(_FAKE_NODES, _FAKE_COLUMNS))
-    @patch("infrahub_app.explore._fetch_schema_detail", return_value=_FAKE_SCHEMA_DETAIL)
+    @_patch_all()
     async def test_has_correct_title(
-        self, mock_schema: MagicMock, mock_nodes: MagicMock,
+        self, mock_validate: MagicMock, mock_schema: MagicMock, mock_nodes: MagicMock,
     ) -> None:
         ctx = _make_ctx()
         result = await explore(kind="InfraDevice", ctx=ctx)
         assert result.title == "Explore: InfraDevice"  # type: ignore[attr-defined]
 
-    @patch("infrahub_app.explore._fetch_nodes_for_kind", return_value=(_FAKE_NODES, _FAKE_COLUMNS))
-    @patch("infrahub_app.explore._fetch_schema_detail", return_value=_FAKE_SCHEMA_DETAIL)
+    @_patch_all()
     async def test_state_has_node_count(
-        self, mock_schema: MagicMock, mock_nodes: MagicMock,
+        self, mock_validate: MagicMock, mock_schema: MagicMock, mock_nodes: MagicMock,
     ) -> None:
         ctx = _make_ctx()
         result = await explore(kind="InfraDevice", ctx=ctx)
@@ -103,10 +115,9 @@ class TestExploreUI:
         assert result.state["attr_count"] == 2  # type: ignore[attr-defined]
         assert result.state["rel_count"] == 1  # type: ignore[attr-defined]
 
-    @patch("infrahub_app.explore._fetch_nodes_for_kind", return_value=(_FAKE_NODES, _FAKE_COLUMNS))
-    @patch("infrahub_app.explore._fetch_schema_detail", return_value=_FAKE_SCHEMA_DETAIL)
+    @_patch_all()
     async def test_custom_panels_used(
-        self, mock_schema: MagicMock, mock_nodes: MagicMock,
+        self, mock_validate: MagicMock, mock_schema: MagicMock, mock_nodes: MagicMock,
     ) -> None:
         ctx = _make_ctx()
         custom_panels = [{"type": "bar", "field": "status", "options": {"horizontal": True}}]
@@ -115,8 +126,8 @@ class TestExploreUI:
         assert "pie_panels" in result.state  # type: ignore[attr-defined]
         assert "bar_panels" in result.state  # type: ignore[attr-defined]
 
-    @patch("infrahub_app.explore._fetch_schema_detail", side_effect=Exception("Schema fetch failed"))
-    async def test_raises_on_error(self, mock_schema: MagicMock) -> None:
+    @patch("infrahub_app.explore._validate_kind", side_effect=ToolError("Kind 'BadKind' not found."))
+    async def test_raises_on_invalid_kind(self, mock_validate: MagicMock) -> None:
         ctx = _make_ctx()
-        with pytest.raises(Exception, match="Schema fetch failed"):
+        with pytest.raises(ToolError, match="Kind 'BadKind' not found"):
             await explore(kind="BadKind", ctx=ctx)

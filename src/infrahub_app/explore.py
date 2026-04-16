@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from fastmcp import Context  # noqa: TC002
+from fastmcp.exceptions import ToolError
+from infrahub_sdk.exceptions import SchemaNotFoundError
 from prefab_ui.app import PrefabApp
 from prefab_ui.components import (
     Card,
@@ -27,17 +30,34 @@ from prefab_ui.components.control_flow.foreach import ForEach
 from prefab_ui.rx import Rx
 
 from infrahub_app.app import Filters, app, get_client
-from infrahub_app.panels import PanelConfig, auto_detect_panels, compute_distribution
+from infrahub_app.panels import PanelConfig, auto_detect_panels, compute_distribution, refine_chart_type
 from infrahub_mcp.utils import convert_node_to_dict
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
 
+logger = logging.getLogger(__name__)
+
+
+async def _validate_kind(client: InfrahubClient, kind: str, branch: str | None = None) -> str:
+    """Validate that a kind exists and return its canonical name.
+
+    Raises ToolError with a list of valid kinds when the kind is not found.
+    """
+    try:
+        schema = await client.schema.get(kind=kind, branch=branch)
+        return schema.kind
+    except SchemaNotFoundError:
+        all_schemas = await client.schema.all(branch=branch)
+        valid = ", ".join(sorted(all_schemas.keys()))
+        msg = f"Kind '{kind}' not found.\n\nValid kinds: {valid}"
+        raise ToolError(msg) from None
+
 
 async def _fetch_schema_detail(
     client: InfrahubClient, kind: str, branch: str | None = None,
 ) -> dict[str, Any]:
-    """Fetch detailed schema for a kind."""
+    """Fetch detailed schema for a kind, including peer kind for relationships."""
     schema = await client.schema.get(kind=kind, branch=branch)
     return {
         "kind": schema.kind,
@@ -64,25 +84,45 @@ async def _fetch_nodes_for_kind(
     column_names: list[str] = [attr.name for attr in schema.attributes] + [
         rel.name for rel in schema.relationships
     ]
-    nodes = await client.all(kind=kind, branch=branch, limit=limit, **(filters or {}))
+    if filters:
+        nodes = await client.filters(
+            kind=kind, branch=branch, limit=limit, populate_store=True, **filters,
+        )
+    else:
+        nodes = await client.all(kind=kind, branch=branch, limit=limit, populate_store=True)
     rows: list[dict[str, Any]] = []
     for node in nodes:
-        row = await convert_node_to_dict(obj=node, branch=branch)
+        row = await convert_node_to_dict(obj=node, branch=branch, hfid_include_kind=False)
         rows.append(row)
     return rows, column_names
+
+
+def _build_rel_label_map(schema: dict[str, Any]) -> dict[str, str]:
+    """Build a mapping from relationship name to a display label including peer kind.
+
+    Example: "member_of_groups" with peer "CoreStandardGroup" → "member_of_groups (CoreStandardGroup)"
+    """
+    return {
+        rel["name"]: f"{rel['name']} ({rel['peer']})"
+        for rel in schema.get("relationships", [])
+    }
 
 
 def _compute_distributions(
     nodes: list[dict[str, Any]],
     panels: list[PanelConfig],
+    rel_labels: dict[str, str],
 ) -> list[dict[str, Any]]:
-    """Compute distribution data for each panel's field."""
+    """Compute distribution data for each panel's field, refining chart types based on data."""
+    total_nodes = len(nodes)
     result: list[dict[str, Any]] = []
     for panel in panels:
         limit = panel.options.get("limit", 20)
         dist = compute_distribution(nodes, panel.field, limit=limit)
         if dist:
-            result.append({"field": panel.field, "type": panel.type, "data": dist})
+            chart_type = refine_chart_type(panel.type, dist, total_nodes)
+            label = rel_labels.get(panel.field, panel.field)
+            result.append({"field": label, "type": chart_type, "data": dist})
     return result
 
 
@@ -95,10 +135,12 @@ async def fetch_explore_data(
 ) -> dict[str, Any]:
     """Fetch data for the explore view. Called on filter changes via CallTool."""
     client = get_client(ctx)
+    kind = await _validate_kind(client, kind, branch)
     schema = await _fetch_schema_detail(client, kind, branch)
     nodes, columns = await _fetch_nodes_for_kind(client, kind, branch, filters)
     panels = auto_detect_panels(schema)
-    distributions = _compute_distributions(nodes, panels)
+    rel_labels = _build_rel_label_map(schema)
+    distributions = _compute_distributions(nodes, panels, rel_labels)
     return {
         "nodes": nodes,
         "columns": columns,
@@ -118,13 +160,15 @@ async def explore(
     """Visualize nodes of a single kind with auto-detected or custom charts."""
     client = get_client(ctx)
 
+    kind = await _validate_kind(client, kind, branch)
     schema = await _fetch_schema_detail(client, kind, branch)
     nodes, columns = await _fetch_nodes_for_kind(client, kind, branch, filters)
 
     # Resolve panels: use custom if provided, otherwise auto-detect
     panel_configs = [PanelConfig.from_dict(p) for p in panels] if panels else auto_detect_panels(schema)
 
-    distributions = _compute_distributions(nodes, panel_configs)
+    rel_labels = _build_rel_label_map(schema)
+    distributions = _compute_distributions(nodes, panel_configs, rel_labels)
 
     # Split distributions by chart type for proper rendering
     pie_panels = [d for d in distributions if d["type"] == "pie"]

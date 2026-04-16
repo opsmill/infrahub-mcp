@@ -95,6 +95,29 @@ def auto_detect_panels(schema: dict[str, Any]) -> list[PanelConfig]:
     return panels
 
 
+_PIE_MAX_SLICES = 10
+_PIE_UNIQUENESS_THRESHOLD = 0.5
+
+
+def refine_chart_type(
+    chart_type: str,
+    distribution: list[dict[str, Any]],
+    total_nodes: int,
+) -> str:
+    """Refine a chart type based on the actual data distribution.
+
+    Switches pie → bar when the distribution has too many unique values
+    (e.g., every node has a different peer for a one-cardinality relationship).
+    A pie chart with many single-count slices is unreadable.
+    """
+    if chart_type != "pie" or not distribution or total_nodes == 0:
+        return chart_type
+    unique_count = len(distribution)
+    if unique_count > _PIE_MAX_SLICES or unique_count / total_nodes > _PIE_UNIQUENESS_THRESHOLD:
+        return "bar"
+    return chart_type
+
+
 def build_panel(panel: PanelConfig, data: list[dict[str, Any]]) -> Component:
     """Build a Prefab chart component from a panel config and distribution data.
 

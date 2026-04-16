@@ -17,8 +17,6 @@ from infrahub_mcp.config import ServerConfig
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
 
-    from infrahub_mcp.reports.store import ReportStore
-
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 
 
@@ -28,7 +26,6 @@ class AppContext:
 
     client: "InfrahubClient"
     config: ServerConfig
-    report_store: "ReportStore | None" = field(default=None)
     session_branch: str | None = field(default=None)
     _session_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -159,7 +156,25 @@ async def _log_and_raise_error(ctx: Context, error: str | Exception, remediation
     raise ToolError(msg)
 
 
-async def convert_node_to_dict(*, obj: InfrahubNode, branch: str | None, include_id: bool = False) -> dict[str, Any]:  # noqa: C901, PLR0912
+def _node_label(node: InfrahubNode, *, include_kind: bool = True) -> str:
+    """Return the best human-readable label for a node.
+
+    Preference order: display_label > HFID > node ID (UUID).
+    """
+    if node.display_label:
+        return str(node.display_label)
+    if node.hfid:
+        return node.get_human_friendly_id_as_string(include_kind=include_kind)
+    return node.id or "unknown"
+
+
+async def convert_node_to_dict(  # noqa: C901
+    *,
+    obj: InfrahubNode,
+    branch: str | None,
+    include_id: bool = False,
+    hfid_include_kind: bool = True,
+) -> dict[str, Any]:
     data = {}
 
     if include_id:
@@ -187,16 +202,11 @@ async def convert_node_to_dict(*, obj: InfrahubNode, branch: str | None, include
                 key=peer_node.id,
                 raise_when_missing=False,
             )
-            if related_node:
-                data[rel_name] = (
-                    related_node.get_human_friendly_id_as_string(include_kind=True)
-                    if related_node.hfid
-                    else related_node.id
-                )
-            else:
-                data[rel_name] = peer_node.id
+            data[rel_name] = _node_label(
+                related_node or peer_node, include_kind=hfid_include_kind,
+            )
         elif rel and isinstance(rel, RelationshipManager):
-            peers: list[dict[str, Any]] = []
+            peers: list[str] = []
             if not rel.initialized:
                 await rel.fetch()
             for peer in rel.peers:
@@ -214,10 +224,6 @@ async def convert_node_to_dict(*, obj: InfrahubNode, branch: str | None, include
                     except NodeNotFoundError:
                         peers.append(peer.id)
                         continue
-                peers.append(
-                    related_node.get_human_friendly_id_as_string(include_kind=True)
-                    if related_node.hfid
-                    else related_node.id,
-                )
+                peers.append(_node_label(related_node, include_kind=hfid_include_kind))
             data[rel_name] = peers
     return data
