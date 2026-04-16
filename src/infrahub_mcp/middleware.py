@@ -45,6 +45,7 @@ from fastmcp.server.middleware.response_limiting import (
     ResponseLimitingMiddleware,
 )
 from fastmcp.server.middleware.timing import DetailedTimingMiddleware
+from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
 from mcp import McpError
 from mcp.types import ErrorData
 
@@ -238,6 +239,53 @@ class TokenPassthroughMiddleware(Middleware):
                 )
             )
         return await call_next(context)
+
+
+# ---------------------------------------------------------------------------
+# Infrahub connection errors — friendly messages
+# ---------------------------------------------------------------------------
+
+
+class InfrahubConnectionMiddleware(Middleware):
+    """Catch Infrahub SDK connection errors and return clean MCP errors.
+
+    Converts ``ServerNotReachableError``, ``ServerNotResponsiveError``, and
+    ``AuthenticationError`` into actionable ``McpError`` messages instead of
+    leaking raw stack traces to the client.
+    """
+
+    @override
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext[mt.CallToolRequestParams],
+        call_next: CallNext[mt.CallToolRequestParams, ToolResult],
+    ) -> ToolResult:
+        return await self._wrap(call_next, context)
+
+    @override
+    async def on_read_resource(
+        self,
+        context: MiddlewareContext[Any],
+        call_next: CallNext[Any, Any],
+    ) -> Any:
+        return await self._wrap(call_next, context)
+
+    @staticmethod
+    async def _wrap(call_next: CallNext[Any, Any], context: MiddlewareContext[Any]) -> Any:
+        try:
+            return await call_next(context)
+        except ServerNotReachableError as exc:
+            raise McpError(
+                ErrorData(code=-32002, message=f"Infrahub is unreachable at {exc}. Check that the instance is running.")
+            ) from exc
+        except ServerNotResponsiveError as exc:
+            raise McpError(
+                ErrorData(code=-32002, message=f"Infrahub is not responding: {exc}")
+            ) from exc
+        except AuthenticationError as exc:
+            raise McpError(
+                ErrorData(code=-32001, message=f"Infrahub authentication failed: {exc}")
+            ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -498,6 +546,7 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
     - **MetricsMiddleware** — request/error/latency counters
     - **OTelTracingMiddleware** — OpenTelemetry spans (conditional)
     - **ErrorHandlingMiddleware** — exception → MCP error mapping
+    - **InfrahubConnectionMiddleware** — friendly Infrahub SDK error messages
     - **RetryMiddleware** — exponential backoff for transient failures (conditional)
     - **RateLimitingMiddleware** — token bucket rate limiting (conditional)
     - **StructuredLoggingMiddleware** — JSON logs with token estimates
@@ -535,6 +584,9 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
         transform_errors=True,
     )
     mcp.add_middleware(_error_handling)
+
+    # Infrahub connection errors — friendly messages instead of raw stack traces
+    mcp.add_middleware(InfrahubConnectionMiddleware())
 
     # Retry — exponential backoff for transient failures (conditional)
     # Uses SafeRetryMiddleware to skip retries for non-idempotent tool calls.

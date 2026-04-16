@@ -17,8 +17,11 @@ from mcp import McpError
 
 from infrahub_mcp.auth import _passthrough_token, set_passthrough_token
 from infrahub_mcp.config import ServerConfig
+from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
+
 from infrahub_mcp.middleware import (
     AuditMiddleware,
+    InfrahubConnectionMiddleware,
     MetricsMiddleware,
     OTelTracingMiddleware,
     ReadOnlyMiddleware,
@@ -1121,3 +1124,89 @@ class TestConfigureMiddlewareTokenPassthrough:
 
         types = [type(m).__name__ for m in mock_mcp.middleware]
         assert "TokenPassthroughMiddleware" not in types
+
+
+# ---------------------------------------------------------------------------
+# InfrahubConnectionMiddleware
+# ---------------------------------------------------------------------------
+
+
+class TestInfrahubConnectionMiddleware:
+    @pytest.mark.anyio
+    async def test_catches_server_not_reachable_on_tool_call(self) -> None:
+        middleware = InfrahubConnectionMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            raise ServerNotReachableError(address="http://infrahub:8000")
+
+        with pytest.raises(McpError, match="Infrahub is unreachable"):
+            await middleware.on_call_tool(ctx, call_next)
+
+    @pytest.mark.anyio
+    async def test_catches_server_not_reachable_on_resource_read(self) -> None:
+        middleware = InfrahubConnectionMiddleware()
+        ctx = _make_resource_context("infrahub://schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> str:
+            raise ServerNotReachableError(address="http://infrahub:8000")
+
+        with pytest.raises(McpError, match="Infrahub is unreachable"):
+            await middleware.on_read_resource(ctx, call_next)
+
+    @pytest.mark.anyio
+    async def test_catches_server_not_responsive(self) -> None:
+        middleware = InfrahubConnectionMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            raise ServerNotResponsiveError(url="http://infrahub:8000/api/schema")
+
+        with pytest.raises(McpError, match="Infrahub is not responding"):
+            await middleware.on_call_tool(ctx, call_next)
+
+    @pytest.mark.anyio
+    async def test_catches_authentication_error(self) -> None:
+        middleware = InfrahubConnectionMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            raise AuthenticationError("Invalid API token")
+
+        with pytest.raises(McpError, match="Infrahub authentication failed"):
+            await middleware.on_call_tool(ctx, call_next)
+
+    @pytest.mark.anyio
+    async def test_passes_through_on_success(self) -> None:
+        middleware = InfrahubConnectionMiddleware()
+        ctx = _make_tool_context("get_schema")
+        expected = ToolResult(content=[])
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            return expected
+
+        result = await middleware.on_call_tool(ctx, call_next)
+        assert result is expected
+
+    @pytest.mark.anyio
+    async def test_does_not_catch_other_exceptions(self) -> None:
+        middleware = InfrahubConnectionMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            msg = "some other error"
+            raise ValueError(msg)
+
+        with pytest.raises(ValueError, match="some other error"):
+            await middleware.on_call_tool(ctx, call_next)
+
+    def test_always_in_middleware_stack(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+        mock_mcp.add_middleware.side_effect = lambda mw: mock_mcp.middleware.append(mw)
+
+        config = ServerConfig()
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "InfrahubConnectionMiddleware" in types
