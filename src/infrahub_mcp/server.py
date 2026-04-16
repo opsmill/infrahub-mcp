@@ -11,7 +11,7 @@ from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from infrahub_mcp.auth import create_auth_provider, set_passthrough_token
+from infrahub_mcp.auth import create_auth_provider, reset_passthrough_token, set_passthrough_token
 from infrahub_mcp.config import ServerConfig, load_config
 from infrahub_mcp.constants import AUTH_MODE_TOKEN_PASSTHROUGH
 
@@ -251,14 +251,19 @@ class _TokenPassthroughASGI:
         self._header = header.lower().encode("latin-1")
 
     async def __call__(self, scope: dict, receive: object, send: object) -> None:  # type: ignore[type-arg]
+        reset = None
         if scope["type"] == "http":
             headers = dict(scope.get("headers", []))
             raw = headers.get(self._header, b"").decode("latin-1")
             stripped = raw.strip()
             token = stripped[len("bearer"):].strip() if stripped.lower().startswith("bearer") else stripped
             if token:
-                set_passthrough_token(token)
-        await self._app(scope, receive, send)  # type: ignore[arg-type]
+                reset = set_passthrough_token(token)
+        try:
+            await self._app(scope, receive, send)  # type: ignore[arg-type]
+        finally:
+            if reset is not None:
+                reset_passthrough_token(reset)
 
 
 def get_asgi_middleware() -> list[object]:

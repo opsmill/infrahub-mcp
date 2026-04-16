@@ -29,15 +29,16 @@ class AppContext:
     config: ServerConfig
     session_branch: str | None = field(default=None)
     _session_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    passthrough_client: "InfrahubClient | None" = field(default=None)
 
 
 def get_client(ctx: Context) -> "InfrahubClient":
-    """Get the Infrahub client for the current session.
+    """Get the Infrahub client for the current request.
 
-    In token-passthrough mode, creates a per-session ``InfrahubClient``
-    using the token from the request header (fail-closed — raises
-    ``ToolError`` when no token is present).
+    In token-passthrough mode, creates a **fresh** ``InfrahubClient``
+    for every call using the token from the current request's ContextVar
+    (fail-closed — raises ``ToolError`` when no token is present).
+    No caching: each request's token is used exactly once so that
+    different callers never share credentials.
 
     In other modes, returns the shared lifespan client.
     """
@@ -50,12 +51,10 @@ def get_client(ctx: Context) -> "InfrahubClient":
         if token is None:
             msg = "Authentication required: no Infrahub API token in request header."
             raise ToolError(msg)
-        if app_ctx.passthrough_client is None:
-            app_ctx.passthrough_client = InfrahubClient(
-                address=os.environ["INFRAHUB_ADDRESS"],
-                config={"api_token": token},
-            )
-        return app_ctx.passthrough_client
+        return InfrahubClient(
+            address=os.environ["INFRAHUB_ADDRESS"],
+            config={"api_token": token},
+        )
 
     if app_ctx.client is None:
         msg = "No Infrahub client available."

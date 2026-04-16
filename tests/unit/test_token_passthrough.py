@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastmcp.exceptions import ToolError
 
-from infrahub_mcp.auth import _passthrough_token, set_passthrough_token
+from infrahub_mcp.auth import _passthrough_token, get_passthrough_token, set_passthrough_token
 from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.server import _TokenPassthroughASGI, get_asgi_middleware
 from infrahub_mcp.utils import AppContext, get_client
@@ -22,8 +22,12 @@ from infrahub_mcp.utils import AppContext, get_client
 class TestTokenPassthroughASGI:
     @pytest.mark.anyio
     async def test_extracts_bearer_token(self) -> None:
-        app = AsyncMock()
-        mw = _TokenPassthroughASGI(app, header="Authorization")
+        captured: list[str | None] = []
+
+        async def capture_app(scope: dict, receive: object, send: object) -> None:
+            captured.append(get_passthrough_token())
+
+        mw = _TokenPassthroughASGI(capture_app, header="Authorization")
 
         scope = {
             "type": "http",
@@ -32,15 +36,16 @@ class TestTokenPassthroughASGI:
         _passthrough_token.set(None)
         await mw(scope, MagicMock(), MagicMock())
 
-        from infrahub_mcp.auth import get_passthrough_token
-
-        assert get_passthrough_token() == "my-secret-token"
-        _passthrough_token.set(None)
+        assert captured == ["my-secret-token"]
 
     @pytest.mark.anyio
     async def test_extracts_raw_token_without_bearer_prefix(self) -> None:
-        app = AsyncMock()
-        mw = _TokenPassthroughASGI(app, header="X-Infrahub-Token")
+        captured: list[str | None] = []
+
+        async def capture_app(scope: dict, receive: object, send: object) -> None:
+            captured.append(get_passthrough_token())
+
+        mw = _TokenPassthroughASGI(capture_app, header="X-Infrahub-Token")
 
         scope = {
             "type": "http",
@@ -49,10 +54,7 @@ class TestTokenPassthroughASGI:
         _passthrough_token.set(None)
         await mw(scope, MagicMock(), MagicMock())
 
-        from infrahub_mcp.auth import get_passthrough_token
-
-        assert get_passthrough_token() == "raw-api-key-123"
-        _passthrough_token.set(None)
+        assert captured == ["raw-api-key-123"]
 
     @pytest.mark.anyio
     async def test_no_token_header_leaves_contextvar_none(self) -> None:
@@ -115,6 +117,42 @@ class TestTokenPassthroughASGI:
         send = MagicMock()
         await mw(scope, receive, send)
         app.assert_awaited_once_with(scope, receive, send)
+
+    @pytest.mark.anyio
+    async def test_resets_contextvar_after_request(self) -> None:
+        """Token must not leak to subsequent requests."""
+        app = AsyncMock()
+        mw = _TokenPassthroughASGI(app, header="Authorization")
+
+        scope = {
+            "type": "http",
+            "headers": [(b"authorization", b"Bearer request-token")],
+        }
+        _passthrough_token.set(None)
+        await mw(scope, MagicMock(), MagicMock())
+
+        # After the request completes, ContextVar should be reset to None
+        assert get_passthrough_token() is None
+
+    @pytest.mark.anyio
+    async def test_resets_contextvar_on_inner_app_error(self) -> None:
+        """Token must be cleared even when the inner app raises."""
+
+        async def failing_app(scope: dict, receive: object, send: object) -> None:
+            msg = "boom"
+            raise RuntimeError(msg)
+
+        mw = _TokenPassthroughASGI(failing_app, header="Authorization")
+
+        scope = {
+            "type": "http",
+            "headers": [(b"authorization", b"Bearer error-token")],
+        }
+        _passthrough_token.set(None)
+        with pytest.raises(RuntimeError, match="boom"):
+            await mw(scope, MagicMock(), MagicMock())
+
+        assert get_passthrough_token() is None
 
 
 # ---------------------------------------------------------------------------
@@ -181,22 +219,25 @@ class TestGetClientPassthrough:
         )
         _passthrough_token.set(None)
 
-    def test_caches_client_in_app_context(self) -> None:
+    def test_creates_fresh_client_per_call(self) -> None:
+        """Each get_client() call creates a new InfrahubClient so different
+        tokens are never mixed across requests."""
         config = ServerConfig(auth_mode="token-passthrough")
         app_ctx = AppContext(client=None, config=config)
         ctx = _make_ctx(app_ctx)
 
         _passthrough_token.set(None)
-        set_passthrough_token("test-api-token")
+        set_passthrough_token("token-a")
         with patch.dict(os.environ, {"INFRAHUB_ADDRESS": "http://localhost:8000"}):
             with patch("infrahub_sdk.client.InfrahubClient") as mock_cls:
-                mock_client = MagicMock()
-                mock_cls.return_value = mock_client
+                client_a = MagicMock()
+                client_b = MagicMock()
+                mock_cls.side_effect = [client_a, client_b]
                 first = get_client(ctx)
                 second = get_client(ctx)
 
-        assert first is second
-        mock_cls.assert_called_once()  # Only created once
+        assert first is not second
+        assert mock_cls.call_count == 2
         _passthrough_token.set(None)
 
     def test_shared_client_in_non_passthrough_mode(self) -> None:

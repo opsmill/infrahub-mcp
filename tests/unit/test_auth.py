@@ -9,6 +9,7 @@ from infrahub_mcp.auth import (
     create_auth_provider,
     get_passthrough_token,
     get_user_from_token,
+    reset_passthrough_token,
     sanitize_user_for_branch,
     set_passthrough_token,
 )
@@ -82,6 +83,13 @@ class TestPassthroughTokenContextVar:
         set_passthrough_token("second")
         assert get_passthrough_token() == "second"
         _passthrough_token.set(None)
+
+    def test_reset_restores_previous_value(self) -> None:
+        _passthrough_token.set(None)
+        token = set_passthrough_token("temporary")
+        assert get_passthrough_token() == "temporary"
+        reset_passthrough_token(token)
+        assert get_passthrough_token() is None
 
 
 class TestSanitizeUserForBranch:

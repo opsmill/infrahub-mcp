@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from typing import TYPE_CHECKING
 
 from infrahub_mcp.constants import AUTH_MODE_OIDC
@@ -57,9 +57,20 @@ def create_auth_provider(config: ServerConfig) -> OIDCProxy | None:
 _passthrough_token: ContextVar[str | None] = ContextVar("_passthrough_token", default=None)
 
 
-def set_passthrough_token(token: str) -> None:
-    """Store the passthrough token for the current async task."""
-    _passthrough_token.set(token)
+def set_passthrough_token(token: str) -> Token[str | None]:
+    """Store the passthrough token for the current async task.
+
+    Returns a :class:`contextvars.Token` that **must** be passed to
+    :func:`reset_passthrough_token` when the request is done so that
+    the value does not leak to subsequent requests sharing the same
+    async context.
+    """
+    return _passthrough_token.set(token)
+
+
+def reset_passthrough_token(token: Token[str | None]) -> None:
+    """Restore the passthrough ContextVar to its previous value."""
+    _passthrough_token.reset(token)
 
 
 def get_passthrough_token() -> str | None:
