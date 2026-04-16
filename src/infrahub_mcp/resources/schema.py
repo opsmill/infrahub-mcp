@@ -8,6 +8,7 @@ from fastmcp import Context, FastMCP
 from infrahub_sdk.exceptions import BranchNotFoundError, SchemaNotFoundError
 
 from infrahub_mcp.schema import get_schema_catalog, get_schema_detail
+from infrahub_mcp.utils import get_client, get_config
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
@@ -27,7 +28,7 @@ mcp: FastMCP = FastMCP(name="Infrahub Schema Resources")
 )
 async def schema_catalog(ctx: Context) -> str:
     """Return the complete non-internal schema kind catalog."""
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
 
     try:
         result = await get_schema_catalog(client)
@@ -43,7 +44,8 @@ async def schema_catalog(ctx: Context) -> str:
     description=(
         "Full schema definition for a specific node kind: attributes, relationships, "
         "and the complete set of filters accepted by get_nodes. "
-        "Fetch this before filtering nodes of an unfamiliar kind. "
+        "Relationships include nested peer schemas up to the server's configured "
+        "INFRAHUB_MCP_MAX_QUERY_DEPTH (default 2). "
         "Arrays are encoded in TOON tabular format: "
         "header declares fields once, each row is one entry."
     ),
@@ -51,10 +53,11 @@ async def schema_catalog(ctx: Context) -> str:
 )
 async def schema_kind_detail(kind: str, ctx: Context) -> str:
     """Return full schema definition and available filters for *kind* encoded as TOON."""
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
+    config = get_config(ctx)
 
     try:
-        payload = await get_schema_detail(client, kind=kind)
+        payload = await get_schema_detail(client, kind=kind, depth=config.max_query_depth)
     except SchemaNotFoundError:
         return json.dumps(
             {
@@ -78,7 +81,7 @@ async def schema_kind_detail(kind: str, ctx: Context) -> str:
 )
 async def graphql_schema(ctx: Context) -> str:
     """Return the raw GraphQL SDL from Infrahub."""
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
     # infrahub_sdk has no public API to fetch the raw GraphQL SDL;
     # using private _get() as a workaround.
     # TODO: open an issue with infrahub_sdk maintainers requesting a public schema-retrieval method.
