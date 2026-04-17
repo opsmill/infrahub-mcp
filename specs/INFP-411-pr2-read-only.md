@@ -18,8 +18,6 @@ Operators cannot confidently expose the MCP server to AI agents until they can g
 
 ## What ships in this PR
 
-*TBD — fill in at PR open. Expected surface:*
-
 - `INFRAHUB_MCP_READ_ONLY=true` env var (already declared in `ServerConfig` in PR 1) becomes load-bearing
 - Split `query_graphql` (read) and `mutate_graphql` (write) tools in `src/infrahub_mcp/tools/gql.py` / `tools/write.py`
 - Write tools tagged `write` via FastMCP tag metadata
@@ -39,7 +37,7 @@ Operators cannot confidently expose the MCP server to AI agents until they can g
 
 ## Open questions / follow-ups
 
-*TBD at PR open.*
+*None identified at this time.*
 
 ## Links
 

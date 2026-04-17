@@ -49,7 +49,7 @@ _config: ServerConfig = load_config()
 
 mcp: FastMCP = FastMCP(name="Infrahub MCP Server", version=version("infrahub-mcp"), lifespan=app_lifespan)
 
-# Middleware scaffold — no-op today, populated by follow-up PRs (see docs/specs/INFP-411.md).
+# Middleware scaffold — no-op today, populated by follow-up PRs (see specs/INFP-411.md).
 configure_middleware(mcp, _config)
 
 

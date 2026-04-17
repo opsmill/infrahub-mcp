@@ -2,7 +2,7 @@
 
 Scaffold registered from ``server.py`` via :func:`configure_middleware`. Each
 section below is populated incrementally by the follow-up PRs that make up
-the middleware rollout (see ``docs/specs/INFP-411.md``). Shipping the scaffold
+the middleware rollout (see ``specs/INFP-411.md``). Shipping the scaffold
 first lets later slices add their middleware without restructuring server.py.
 """
 
