@@ -1,0 +1,82 @@
+---
+title: Install the Infrahub MCP server
+---
+
+This guide gets you from a fresh checkout to a running Infrahub MCP server in a few minutes. Once it's running, continue with [Authentication](./authentication.mdx) to pick a credential model, then [Your first agent run](./first-agent-run.mdx) to connect an LLM.
+
+For a containerized deployment (Docker Compose, sidecar alongside Infrahub), see the [Docker Compose guide](../guides/docker-compose.mdx).
+
+## Prerequisites
+
+<!-- vale off -->
+
+- Python 3.13 or newer
+- [uv](https://docs.astral.sh/uv/) for dependency management
+- An Infrahub instance you can reach over HTTP
+- An Infrahub API token (create one from **Admin → API tokens** in the Infrahub UI)
+
+<!-- vale on -->
+
+## Install
+
+```bash
+git clone https://github.com/opsmill/infrahub-mcp.git
+cd infrahub-mcp
+uv sync
+```
+
+`uv sync` installs `fastmcp`, `infrahub-sdk`, `toonify`, and the rest of the runtime dependencies into an isolated virtual environment.
+
+## Configure the connection
+
+The server reads its configuration from environment variables. At minimum, set the Infrahub URL and an API token:
+
+```bash
+export INFRAHUB_ADDRESS=http://localhost:8000
+export INFRAHUB_API_TOKEN=06438eb2-8019-4776-878c-0941b1f1d1ec
+```
+
+For the complete list of variables (rate limiting, caching, observability, auth), see the [Configuration reference](../references/configuration.mdx).
+
+## Run the server
+
+### Stdio transport (local clients)
+
+Stdio is the default transport for MCP clients that spawn the server as a subprocess (Claude Desktop, Claude Code with `.mcp.json`):
+
+```bash
+uv run fastmcp run src/infrahub_mcp/server.py:mcp
+```
+
+### Streamable HTTP transport (remote clients, Docker)
+
+HTTP is required for token pass-through, OIDC, or any client connecting over the network:
+
+```bash
+uv run infrahub-mcp --transport streamable-http --host 0.0.0.0 --port 8001
+```
+
+The server exposes three endpoints on the configured port:
+
+| Path | Description |
+| --- | --- |
+| `/mcp` | MCP Streamable HTTP transport |
+| `/health` | Health probe — returns `{"status": "healthy"}` or HTTP 503 |
+| `/metrics` | Request counts, errors, latency (JSON or Prometheus format) |
+
+## Verify it is running
+
+With the HTTP transport:
+
+```bash
+curl -s http://localhost:8001/health
+# {"status":"healthy"}
+```
+
+Or inspect the server logs — you should see a line confirming the Infrahub connection and the middleware stack that is active.
+
+## Next steps
+
+- [Set up authentication](./authentication.mdx) — choose between a shared API token, per-client token pass-through, or OIDC.
+- [Your first agent run](./first-agent-run.mdx) — connect Claude Desktop and ask Infrahub a read-only question end-to-end.
+- [Make a change through an agent](./make-a-change.mdx) — walk the session-branch + `propose_changes` workflow.

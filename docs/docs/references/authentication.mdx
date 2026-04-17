@@ -2,10 +2,12 @@
 title: Authentication architecture
 ---
 
+For the step-by-step configuration recipes, see [Set up authentication](../getting-started/authentication.mdx). This page explains *how* each mode works end-to-end.
+
 The MCP server sits between AI clients (Claude, Cursor, VS Code Copilot) and the Infrahub API. Authentication happens at two separate layers:
 
 1. **MCP layer** — controls *who* can reach the MCP server and *what* they can do (read-only vs read-write). Configured via `INFRAHUB_MCP_AUTH_MODE`.
-2. **Infrahub layer** — controls *what* the MCP server can do in Infrahub. Configured via `INFRAHUB_API_TOKEN` or `INFRAHUB_USERNAME`/`INFRAHUB_PASSWORD` (for `none` and `oidc` modes), or via the client's own token (for `token-passthrough` mode).
+2. **Infrahub layer** — controls *what* the MCP server can do in Infrahub. Configured via `INFRAHUB_API_TOKEN` (for `none` and `oidc` modes) or via the client's own token (for `token-passthrough` mode). Username/password authentication is not supported; use OIDC when you need external identity.
 
 In `none` and `oidc` modes, the Infrahub credentials are shared across all MCP sessions — they define the ceiling of what any client can do, and the MCP auth layer narrows that ceiling per-user. In `token-passthrough` mode, each client provides their own Infrahub API token, so there are no shared credentials.
 
