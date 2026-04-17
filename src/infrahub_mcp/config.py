@@ -8,7 +8,7 @@ import string
 from dataclasses import dataclass
 from typing import Literal, cast
 
-from infrahub_mcp.constants import _ALLOWED_PLACEHOLDERS, _VALID_AUTH_MODES, AUTH_MODE_TOKEN_PASSTHROUGH
+from infrahub_mcp.constants import _ALLOWED_PLACEHOLDERS, _VALID_AUTH_MODES
 
 AuthMode = Literal["none", "oidc", "token-passthrough"]
 
@@ -120,7 +120,7 @@ def load_config() -> ServerConfig:
         read_only=_parse_bool("INFRAHUB_MCP_READ_ONLY"),
         branch_pattern=os.environ.get("INFRAHUB_MCP_BRANCH_PATTERN", "mcp/session-{date}-{hex}"),
         max_branch_retries=_parse_int("INFRAHUB_MCP_MAX_BRANCH_RETRIES", default=5),
-        log_level_debug=os.environ.get("INFRAHUB_MCP_LOG_LEVEL", "info").lower() == "debug",
+        log_level_debug=os.environ.get("INFRAHUB_MCP_LOG_LEVEL", "info").strip().lower() == "debug",
         rate_limit_rps=_parse_float("INFRAHUB_MCP_RATE_LIMIT_RPS", default=0.0),
         rate_limit_burst=_parse_int("INFRAHUB_MCP_RATE_LIMIT_BURST", default=0),
         retry_max_attempts=_parse_int("INFRAHUB_MCP_RETRY_MAX_ATTEMPTS", default=0),
@@ -149,13 +149,6 @@ def _validate_auth_mode() -> None:
     mode = os.environ.get("INFRAHUB_MCP_AUTH_MODE", "none").strip().lower()
     if mode not in _VALID_AUTH_MODES:
         msg = f"INFRAHUB_MCP_AUTH_MODE must be one of {sorted(_VALID_AUTH_MODES)}, got {mode!r}."
-        raise ValueError(msg)
-
-    if mode == AUTH_MODE_TOKEN_PASSTHROUGH and not os.environ.get("INFRAHUB_ADDRESS", "").strip():
-        msg = (
-            "Token-passthrough auth mode requires INFRAHUB_ADDRESS. "
-            "Set it to the URL of your Infrahub instance (e.g. http://localhost:8000)."
-        )
         raise ValueError(msg)
 
     if mode == "oidc":

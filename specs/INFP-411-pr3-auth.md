@@ -18,8 +18,6 @@ Operators running a shared HTTP MCP server cannot distinguish which user made wh
 
 ## What ships in this PR
 
-*TBD — fill in at PR open. Expected surface:*
-
 - Three auth modes via `INFRAHUB_MCP_AUTH_MODE`: `none` (default, stdio + single-user HTTP), `oidc` (external IdP), `token-passthrough` (per-request Infrahub token in HTTP header)
 - `src/infrahub_mcp/auth.py` — OIDC provider construction, passthrough token extraction, user-identity resolution
 - `AuthMiddleware` + `restrict_tag` wiring so `write`-tagged tools require the configured write scopes
@@ -51,7 +49,7 @@ All env vars above are already parsed into `ServerConfig` in PR 1; this slice li
 
 ## Open questions / follow-ups
 
-*TBD at PR open.*
+*None identified at this time.*
 
 ## Links
 

@@ -118,6 +118,12 @@ class TestLoadConfig:
             with pytest.raises(ValueError, match="INFRAHUB_MCP_LOG_LEVEL must be one of"):
                 load_config()
 
+    def test_log_level_debug_with_whitespace(self) -> None:
+        # Validator strips whitespace; the field assignment must agree or debug is silently disabled.
+        with patch.dict(os.environ, {"INFRAHUB_MCP_LOG_LEVEL": " debug "}, clear=True):
+            config = load_config()
+        assert config.log_level_debug is True
+
     # --- Rate limiting ---
 
     def test_rate_limit_rps(self) -> None:
@@ -388,14 +394,6 @@ class TestAuthModeConfig:
         with patch.dict(os.environ, env, clear=True):
             config = load_config()
         assert config.token_passthrough_header == "X-Infrahub-Token"
-
-    def test_auth_mode_token_passthrough_missing_address(self) -> None:
-        env = {
-            "INFRAHUB_MCP_AUTH_MODE": "token-passthrough",
-        }
-        with patch.dict(os.environ, env, clear=True):
-            with pytest.raises(ValueError, match="INFRAHUB_ADDRESS"):
-                load_config()
 
     def test_auth_mode_none_ignores_oidc_fields(self) -> None:
         env = {

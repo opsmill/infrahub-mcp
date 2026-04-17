@@ -20,8 +20,6 @@ Client-compat issues (VS Code Copilot failing to parse schemas with `$ref`, long
 
 ## What ships in this PR
 
-*TBD — fill in at PR open. Expected surface:*
-
 - Branch-per-session logic in `src/infrahub_mcp/utils.py`: `get_or_create_session_branch` honors `INFRAHUB_MCP_BRANCH_PATTERN` with `{date}`, `{hex}`, `{user}` placeholders
 - Collision retry up to `INFRAHUB_MCP_MAX_BRANCH_RETRIES` attempts if the generated name already exists
 - `DereferenceRefsMiddleware` — inlines `$ref` in JSON schemas when `INFRAHUB_MCP_DEREFERENCE_SCHEMAS=true`
@@ -47,7 +45,7 @@ All env vars above are already parsed into `ServerConfig` in PR 1.
 
 ## Open questions / follow-ups
 
-*TBD at PR open. Resolve INFP-411 open question #4 by documenting the chosen default (`mcp/session-{date}-{hex}`) and the placeholder grammar in this spec.*
+- Resolve INFP-411 open question #4 by documenting the chosen default (`mcp/session-{date}-{hex}`) and the placeholder grammar in this spec when the PR opens.
 
 ## Links
 

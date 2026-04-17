@@ -16,8 +16,6 @@ Operators deploying the MCP server in HTTP mode need the same signals they expec
 
 ## What ships in this PR
 
-*TBD — fill in at PR open. Expected surface:*
-
 - `RequestIdMiddleware` — injects a correlation ID into a `ContextVar` and all log records for the request
 - `StructuredLoggingMiddleware` — JSON-formatted logs with request ID, tool name, user (when PR 3 is merged), latency
 - `DetailedTimingMiddleware` — records per-tool latency histogram
@@ -44,7 +42,7 @@ All env vars above are already parsed into `ServerConfig` in PR 1.
 
 ## Open questions / follow-ups
 
-*TBD at PR open. The AuditMiddleware's user-aware behavior depends on PR 3 landing first — if PR 5 merges before PR 3, ship with anonymous audit logs and revisit.*
+- The `AuditMiddleware`'s user-aware behavior depends on PR 3 landing first. If PR 5 merges before PR 3, ship with anonymous audit logs and revisit once auth is available.
 
 ## Links
 

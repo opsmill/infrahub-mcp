@@ -16,8 +16,6 @@ Without rate limiting, a misconfigured agent can exhaust Infrahub's request budg
 
 ## What ships in this PR
 
-*TBD — fill in at PR open. Expected surface:*
-
 - `RateLimitingMiddleware` — token-bucket with configurable RPS + burst
 - `ResponseCachingMiddleware` — TTL-based caching for schema / list operations
 - `RetryMiddleware` — exponential backoff for transient Infrahub failures
@@ -47,7 +45,7 @@ All env vars above are already parsed into `ServerConfig` in PR 1; this slice li
 
 ## Open questions / follow-ups
 
-*TBD at PR open.*
+*None identified at this time.*
 
 ## Links
 
