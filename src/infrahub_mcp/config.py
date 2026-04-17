@@ -148,9 +148,7 @@ def _validate_auth_mode() -> None:
     """Validate INFRAHUB_MCP_AUTH_MODE and OIDC-required fields."""
     mode = os.environ.get("INFRAHUB_MCP_AUTH_MODE", "none").strip().lower()
     if mode not in _VALID_AUTH_MODES:
-        msg = (
-            f"INFRAHUB_MCP_AUTH_MODE must be one of {sorted(_VALID_AUTH_MODES)}, got {mode!r}."
-        )
+        msg = f"INFRAHUB_MCP_AUTH_MODE must be one of {sorted(_VALID_AUTH_MODES)}, got {mode!r}."
         raise ValueError(msg)
 
     if mode == AUTH_MODE_TOKEN_PASSTHROUGH and not os.environ.get("INFRAHUB_ADDRESS", "").strip():
@@ -282,9 +280,7 @@ def _parse_bool(env_var: str) -> bool:
         return True
     if raw in _BOOL_FALSE:
         return False
-    msg = (
-        f"{env_var} must be a boolean (true/false/1/0/yes/no), got {raw!r}."
-    )
+    msg = f"{env_var} must be a boolean (true/false/1/0/yes/no), got {raw!r}."
     raise ValueError(msg)
 
 

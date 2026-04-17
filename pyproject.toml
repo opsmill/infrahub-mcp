@@ -94,7 +94,14 @@ known-first-party = ["infrahub_mcp"]
 max-line-length = 150
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101"]  # Allow assert in test files
+"tests/**/*.py" = [
+    "S101",    # Allow assert in test files
+    "S105",    # Tests use dummy/fixture tokens, not real passwords
+    "PLR2004", # Magic-number comparisons are normal in assertions
+    "PLR6301", # Test methods don't need to be static
+    "PLR0904", # Test classes often have many methods
+    "PLC1901", # Comparing to empty string is common in test assertions
+]
 
 
 [tool.uv]
