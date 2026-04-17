@@ -395,14 +395,6 @@ class TestAuthModeConfig:
             config = load_config()
         assert config.token_passthrough_header == "X-Infrahub-Token"
 
-    def test_auth_mode_token_passthrough_missing_address(self) -> None:
-        env = {
-            "INFRAHUB_MCP_AUTH_MODE": "token-passthrough",
-        }
-        with patch.dict(os.environ, env, clear=True):
-            with pytest.raises(ValueError, match="INFRAHUB_ADDRESS"):
-                load_config()
-
     def test_auth_mode_none_ignores_oidc_fields(self) -> None:
         env = {
             "INFRAHUB_MCP_AUTH_MODE": "none",

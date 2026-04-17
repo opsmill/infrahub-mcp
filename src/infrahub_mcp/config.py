@@ -8,7 +8,7 @@ import string
 from dataclasses import dataclass
 from typing import Literal, cast
 
-from infrahub_mcp.constants import _ALLOWED_PLACEHOLDERS, _VALID_AUTH_MODES, AUTH_MODE_TOKEN_PASSTHROUGH
+from infrahub_mcp.constants import _ALLOWED_PLACEHOLDERS, _VALID_AUTH_MODES
 
 AuthMode = Literal["none", "oidc", "token-passthrough"]
 
@@ -149,13 +149,6 @@ def _validate_auth_mode() -> None:
     mode = os.environ.get("INFRAHUB_MCP_AUTH_MODE", "none").strip().lower()
     if mode not in _VALID_AUTH_MODES:
         msg = f"INFRAHUB_MCP_AUTH_MODE must be one of {sorted(_VALID_AUTH_MODES)}, got {mode!r}."
-        raise ValueError(msg)
-
-    if mode == AUTH_MODE_TOKEN_PASSTHROUGH and not os.environ.get("INFRAHUB_ADDRESS", "").strip():
-        msg = (
-            "Token-passthrough auth mode requires INFRAHUB_ADDRESS. "
-            "Set it to the URL of your Infrahub instance (e.g. http://localhost:8000)."
-        )
         raise ValueError(msg)
 
     if mode == "oidc":
