@@ -120,7 +120,7 @@ def load_config() -> ServerConfig:
         read_only=_parse_bool("INFRAHUB_MCP_READ_ONLY"),
         branch_pattern=os.environ.get("INFRAHUB_MCP_BRANCH_PATTERN", "mcp/session-{date}-{hex}"),
         max_branch_retries=_parse_int("INFRAHUB_MCP_MAX_BRANCH_RETRIES", default=5),
-        log_level_debug=os.environ.get("INFRAHUB_MCP_LOG_LEVEL", "info").lower() == "debug",
+        log_level_debug=os.environ.get("INFRAHUB_MCP_LOG_LEVEL", "info").strip().lower() == "debug",
         rate_limit_rps=_parse_float("INFRAHUB_MCP_RATE_LIMIT_RPS", default=0.0),
         rate_limit_burst=_parse_int("INFRAHUB_MCP_RATE_LIMIT_BURST", default=0),
         retry_max_attempts=_parse_int("INFRAHUB_MCP_RETRY_MAX_ATTEMPTS", default=0),
