@@ -95,7 +95,11 @@ class ReadOnlyMiddleware(Middleware):
 
         is_write = False
         if context.fastmcp_context is not None:
-            tool = await context.fastmcp_context.fastmcp.get_tool(tool_name)
+            try:
+                tool = await context.fastmcp_context.fastmcp.get_tool(tool_name)
+            except Exception:  # fail-closed on any lookup failure
+                logger.debug("read_only_lookup_failed tool=%s", tool_name, exc_info=True)
+                tool = None
             is_write = (
                 WRITE_TAG in (tool.tags or set()) if tool is not None else tool_name not in self._KNOWN_READ_ONLY_TOOLS
             )

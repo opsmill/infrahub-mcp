@@ -155,3 +155,35 @@ class TestReadOnlyMiddleware:
 
         result = await middleware.on_call_tool(ctx, call_next)
         assert result is expected
+
+    @pytest.mark.anyio
+    async def test_tool_lookup_that_raises_falls_back_to_allowlist(self) -> None:
+        """If fastmcp.get_tool() raises, fall through to the fail-closed allowlist.
+
+        A malformed or stale tool name must not escape as an unhandled server
+        error — the middleware should still make a policy decision.
+        """
+
+        class _RaisingFastMCP:
+            async def get_tool(self, name: str) -> Any:
+                msg = f"tool not found: {name}"
+                raise RuntimeError(msg)
+
+        class _FakeFastMCPContext:
+            def __init__(self) -> None:
+                self.fastmcp = _RaisingFastMCP()
+
+        middleware = ReadOnlyMiddleware()
+        params = mt.CallToolRequestParams(name="node_upsert", arguments={})
+        ctx = MiddlewareContext(
+            message=params,
+            method="tools/call",
+            fastmcp_context=_FakeFastMCPContext(),  # type: ignore[arg-type]
+        )
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            msg = "should not reach here"
+            raise AssertionError(msg)
+
+        with pytest.raises(McpError, match="read-only mode"):
+            await middleware.on_call_tool(ctx, call_next)
