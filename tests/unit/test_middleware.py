@@ -10,18 +10,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import mcp.types as mt
 import pytest
-from fastmcp.server.middleware.middleware import MiddlewareContext
+from fastmcp.exceptions import ToolError
 from fastmcp.server.middleware.error_handling import RetryMiddleware
+from fastmcp.server.middleware.middleware import MiddlewareContext
 from fastmcp.tools.base import ToolResult
+from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
+from mcp import McpError
+from mcp.types import TextContent
 
 import infrahub_mcp.middleware as middleware_module
-from mcp import McpError
-
 from infrahub_mcp.auth import _passthrough_token, set_passthrough_token
 from infrahub_mcp.config import ServerConfig
-from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
-
 from infrahub_mcp.middleware import (
+    WRITE_TAG,
     AuditMiddleware,
     InfrahubConnectionMiddleware,
     MetricsMiddleware,
@@ -29,14 +30,13 @@ from infrahub_mcp.middleware import (
     ReadOnlyMiddleware,
     RequestIdMiddleware,
     SafeRetryMiddleware,
+    StrictResponseLimitingMiddleware,
     TokenPassthroughMiddleware,
-    WRITE_TAG,
     configure_middleware,
     get_caching_middleware,
     get_error_handling,
     get_metrics,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -100,9 +100,7 @@ def _make_tool(name: str, *, tags: set[str] | None = None) -> Any:
 
 class TestRequestIdMiddleware:
     @pytest.mark.anyio
-    async def test_injects_request_id_in_logs(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_injects_request_id_in_logs(self, caplog: pytest.LogCaptureFixture) -> None:
         middleware = RequestIdMiddleware()
         ctx = _make_tool_context("get_schema")
 
@@ -118,9 +116,7 @@ class TestRequestIdMiddleware:
         assert any("request_id=" in r.message for r in caplog.records)
 
     @pytest.mark.anyio
-    async def test_logs_error_status_on_failure(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_logs_error_status_on_failure(self, caplog: pytest.LogCaptureFixture) -> None:
         middleware = RequestIdMiddleware()
         ctx = _make_tool_context("get_schema")
 
@@ -212,9 +208,7 @@ class TestReadOnlyMiddleware:
         "tool_name",
         ["node_upsert", "node_delete", "propose_changes", "mutate_graphql"],
     )
-    async def test_blocks_known_write_tools_without_context(
-        self, tool_name: str
-    ) -> None:
+    async def test_blocks_known_write_tools_without_context(self, tool_name: str) -> None:
         """Fail-closed fallback blocks write tools not in the read-only allowlist."""
         middleware = ReadOnlyMiddleware()
         ctx = _make_tool_context(tool_name)
@@ -244,9 +238,7 @@ class TestReadOnlyMiddleware:
         "tool_name",
         ["get_schema", "query_graphql", "get_nodes", "search_nodes"],
     )
-    async def test_allows_known_read_tools_without_context(
-        self, tool_name: str
-    ) -> None:
+    async def test_allows_known_read_tools_without_context(self, tool_name: str) -> None:
         """Fail-closed fallback permits all known read-only tools."""
         middleware = ReadOnlyMiddleware()
         ctx = _make_tool_context(tool_name)
@@ -266,9 +258,7 @@ class TestReadOnlyMiddleware:
 
 class TestAuditMiddleware:
     @pytest.mark.anyio
-    async def test_logs_tool_call(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_logs_tool_call(self, caplog: pytest.LogCaptureFixture) -> None:
         middleware = AuditMiddleware()
         ctx = _make_tool_context("get_nodes")
         expected = ToolResult(content=[])
@@ -284,9 +274,7 @@ class TestAuditMiddleware:
         assert any("tool=get_nodes" in r.message for r in caplog.records)
 
     @pytest.mark.anyio
-    async def test_logs_resource_read(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_logs_resource_read(self, caplog: pytest.LogCaptureFixture) -> None:
         middleware = AuditMiddleware()
         ctx = _make_resource_context("infrahub://schema")
 
@@ -433,7 +421,7 @@ class TestOTelTracingMiddleware:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def _reset_middleware_globals() -> Generator[None]:
     """Reset module-level middleware state before and after each test."""
     middleware_module._metrics = None  # noqa: SLF001
@@ -493,11 +481,7 @@ class TestConfigureMiddleware:
         config = ServerConfig(log_level_debug=True)
         configure_middleware(mock_mcp, config)
 
-        error_mw = next(
-            m
-            for m in mock_mcp.middleware
-            if type(m).__name__ == "ErrorHandlingMiddleware"
-        )
+        error_mw = next(m for m in mock_mcp.middleware if type(m).__name__ == "ErrorHandlingMiddleware")
         assert error_mw.include_traceback is True
 
     def test_rate_limiting_enabled(self) -> None:
@@ -774,9 +758,7 @@ class TestConfigureMiddleware:
         config = ServerConfig(rate_limit_rps=10.0, rate_limit_burst=0)
         configure_middleware(mock_mcp, config)
 
-        rate_limiter = next(
-            m for m in mock_mcp.middleware if type(m).__name__ == "RateLimitingMiddleware"
-        )
+        rate_limiter = next(m for m in mock_mcp.middleware if type(m).__name__ == "RateLimitingMiddleware")
         assert rate_limiter.burst_capacity == 20  # type: ignore[attr-defined]
 
 
@@ -849,9 +831,7 @@ class TestAuditMiddlewareUser:
         with patch("infrahub_mcp.middleware.get_user_from_token", return_value="alice-example.com"):
             with patch("infrahub_mcp.middleware.logger") as mock_logger:
                 result = await middleware.on_call_tool(ctx, fake_call_next)
-                mock_logger.info.assert_called_once_with(
-                    "tool_call tool=%s user=%s", "get_nodes", "alice-example.com"
-                )
+                mock_logger.info.assert_called_once_with("tool_call tool=%s user=%s", "get_nodes", "alice-example.com")
 
         assert result is expected
 
@@ -903,9 +883,7 @@ class TestAuditMiddlewareUser:
             with patch("infrahub_mcp.middleware.logger") as mock_logger:
                 await middleware.on_call_tool(ctx, fake_call_next)
                 mock_get_user.assert_not_called()
-                mock_logger.info.assert_called_once_with(
-                    "tool_call tool=%s user=%s", "get_nodes", "anonymous"
-                )
+                mock_logger.info.assert_called_once_with("tool_call tool=%s user=%s", "get_nodes", "anonymous")
 
 
 # ---------------------------------------------------------------------------
@@ -1006,9 +984,7 @@ class TestSafeRetryMiddlewareRouting:
             call_next_called = True
             return ToolResult(content=[])
 
-        with patch.object(
-            RetryMiddleware, "on_call_tool", return_value=ToolResult(content=[])
-        ) as mock_super:
+        with patch.object(RetryMiddleware, "on_call_tool", return_value=ToolResult(content=[])) as mock_super:
             await mw.on_call_tool(ctx, call_next)
             assert mock_super.called, "Should delegate to parent retry logic"
             assert not call_next_called, "Should NOT call call_next directly"
@@ -1023,9 +999,7 @@ class TestSafeRetryMiddlewareRouting:
         ctx = _make_retry_tool_context("some_idempotent_tool", tool)
         mw = SafeRetryMiddleware(max_retries=2, base_delay=0)
 
-        with patch.object(
-            RetryMiddleware, "on_call_tool", return_value=ToolResult(content=[])
-        ) as mock_super:
+        with patch.object(RetryMiddleware, "on_call_tool", return_value=ToolResult(content=[])) as mock_super:
             await mw.on_call_tool(ctx, call_next=MagicMock())
             assert mock_super.called
 
@@ -1034,9 +1008,7 @@ class TestSafeRetryMiddlewareRouting:
         """Mutating tools (not read-only, not idempotent) bypass retry logic."""
         tool = _FakeTool(
             "node_upsert",
-            annotations=mt.ToolAnnotations(
-                readOnlyHint=False, idempotentHint=False, destructiveHint=False
-            ),
+            annotations=mt.ToolAnnotations(readOnlyHint=False, idempotentHint=False, destructiveHint=False),
         )
         ctx = _make_retry_tool_context("node_upsert", tool)
         mw = SafeRetryMiddleware(max_retries=2, base_delay=0)
@@ -1248,3 +1220,70 @@ class TestInfrahubConnectionMiddleware:
 
         types = [type(m).__name__ for m in mock_mcp.middleware]
         assert "InfrahubConnectionMiddleware" in types
+
+
+# ---------------------------------------------------------------------------
+# StrictResponseLimitingMiddleware
+# ---------------------------------------------------------------------------
+
+
+class TestStrictResponseLimitingMiddleware:
+    @pytest.mark.anyio
+    async def test_passes_through_when_under_limit(self) -> None:
+        middleware = StrictResponseLimitingMiddleware(max_size=10_000)
+        ctx = _make_tool_context("get_nodes")
+        expected = ToolResult(content=[TextContent(type="text", text="small")])
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            return expected
+
+        result = await middleware.on_call_tool(ctx, call_next)
+        assert result is expected
+
+    @pytest.mark.anyio
+    async def test_raises_tool_error_when_over_limit(self) -> None:
+        middleware = StrictResponseLimitingMiddleware(max_size=200)
+        ctx = _make_tool_context("get_nodes")
+        big_text = "x" * 5_000
+        oversized = ToolResult(content=[TextContent(type="text", text=big_text)])
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            return oversized
+
+        with pytest.raises(ToolError) as excinfo:
+            await middleware.on_call_tool(ctx, call_next)
+
+        msg = str(excinfo.value)
+        assert "get_nodes" in msg
+        assert "Remediation:" in msg
+        assert "filters" in msg
+        assert "limit" in msg
+
+    @pytest.mark.anyio
+    async def test_respects_tools_allowlist(self) -> None:
+        """When ``tools`` is set, untracked tools bypass the size check."""
+        middleware = StrictResponseLimitingMiddleware(
+            max_size=200,
+            tools=["other_tool"],
+        )
+        ctx = _make_tool_context("get_nodes")
+        big_text = "x" * 5_000
+        oversized = ToolResult(content=[TextContent(type="text", text=big_text)])
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            return oversized
+
+        result = await middleware.on_call_tool(ctx, call_next)
+        assert result is oversized
+
+    def test_registered_in_middleware_stack(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+        mock_mcp.add_middleware.side_effect = lambda mw: mock_mcp.middleware.append(mw)
+
+        config = ServerConfig()
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "StrictResponseLimitingMiddleware" in types
+        assert "ResponseLimitingMiddleware" not in [t for t in types if t != "StrictResponseLimitingMiddleware"]
