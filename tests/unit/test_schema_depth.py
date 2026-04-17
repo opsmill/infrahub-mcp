@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 from infrahub_sdk.exceptions import SchemaNotFoundError
 
-from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.schema import get_schema_detail
 
 
@@ -256,21 +255,25 @@ async def test_same_kind_deduped_across_branches() -> None:
     assert ref_count == 1
 
 
-def test_tool_depth_capped_at_config_max() -> None:
-    """When depth > config.max_query_depth, it should be capped."""
-    config = ServerConfig(max_query_depth=2)
-    requested = 5
-    resolved = min(requested, config.max_query_depth)
-    assert resolved == 2
+async def test_missing_peer_kind_skipped() -> None:
+    """When a relationship references a non-existent peer kind, it is kept but without peer_schema."""
+    schema_a = _make_schema_node(
+        kind="KindA",
+        label="Kind A",
+        namespace="Test",
+        attributes=[_make_attribute("name")],
+        relationships=[_make_relationship("broken", "NonExistent")],
+    )
+    client = _make_client({"KindA": schema_a})
 
+    result = await get_schema_detail(client, kind="KindA", depth=1)
 
-def test_tool_depth_none_defaults_to_zero() -> None:
-    """When depth is None, resolved_depth should be 0."""
-    depth = None
-    resolved_depth = 0
-    if depth is not None:
-        resolved_depth = depth
-    assert resolved_depth == 0
+    broken_rel = next(r for r in result["relationships"] if r["name"] == "broken")
+    assert broken_rel["peer"] == "NonExistent"
+    assert broken_rel["cardinality"] == "many"
+    assert broken_rel["optional"] is False
+    assert "peer_schema" not in broken_rel
+    assert "_seen" not in broken_rel
 
 
 async def test_negative_depth_treated_as_zero() -> None:

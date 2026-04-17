@@ -88,15 +88,18 @@ async def _expand_peer_schemas(  # noqa: PLR0913, PLR0917
     async def _expand_one(peer_kind: str) -> tuple[str, dict[str, Any] | None]:
         if peer_kind in seen_kinds:
             return peer_kind, None
-        return peer_kind, await get_schema_detail(
-            client,
-            kind=peer_kind,
-            branch=branch,
-            depth=depth,
-            _visited=set(visited),
-            _include_filters=False,
-            _seen_kinds=seen_kinds,
-        )
+        try:
+            return peer_kind, await get_schema_detail(
+                client,
+                kind=peer_kind,
+                branch=branch,
+                depth=depth,
+                _visited=set(visited),
+                _include_filters=False,
+                _seen_kinds=seen_kinds,
+            )
+        except SchemaNotFoundError:
+            return peer_kind, None
 
     expanded = await asyncio.gather(*[_expand_one(pk) for pk in expandable_peers])
     return {pk: detail for pk, detail in expanded if detail is not None}
