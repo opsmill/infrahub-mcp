@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import string
 from dataclasses import dataclass
@@ -197,17 +198,25 @@ def _validate_branch_pattern() -> None:
     """
     pattern = os.environ.get("INFRAHUB_MCP_BRANCH_PATTERN", "mcp/session-{date}-{hex}")
     try:
-        fields = [
-            field_name
-            for _, field_name, _, _ in string.Formatter().parse(pattern)
-            if field_name is not None
-        ]
+        parsed = list(string.Formatter().parse(pattern))
     except (ValueError, IndexError) as exc:
         msg = (
             f"INFRAHUB_MCP_BRANCH_PATTERN has invalid syntax: {pattern!r}. "
             f"Allowed placeholders are {{date}}, {{hex}}, {{user}}. Error: {exc}"
         )
         raise ValueError(msg) from exc
+
+    fields: list[str] = []
+    for _, field_name, format_spec, conversion in parsed:
+        if field_name is None:
+            continue
+        if format_spec or conversion is not None:
+            msg = (
+                f"INFRAHUB_MCP_BRANCH_PATTERN must not use format specifiers or conversions: {pattern!r}. "
+                f"Allowed placeholders are {{date}}, {{hex}}, {{user}} (no :spec, !conversion)."
+            )
+            raise ValueError(msg)
+        fields.append(field_name)
 
     bad = sorted(set(fields) - _ALLOWED_PLACEHOLDERS)
     if bad:
@@ -292,12 +301,19 @@ def _parse_int(env_var: str, *, default: int) -> int:
 
 
 def _parse_float(env_var: str, *, default: float) -> float:
-    """Parse a float environment variable with a default."""
+    """Parse a float environment variable with a default.
+
+    Rejects ``nan`` and ``inf`` so downstream range checks remain meaningful.
+    """
     raw = os.environ.get(env_var)
     if raw is None:
         return default
     try:
-        return float(raw)
+        value = float(raw)
     except ValueError as exc:
         msg = f"{env_var} must be a number."
         raise ValueError(msg) from exc
+    if not math.isfinite(value):
+        msg = f"{env_var} must be a finite number, got {raw!r}."
+        raise ValueError(msg)
+    return value

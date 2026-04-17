@@ -100,8 +100,9 @@ def sanitize_user_for_branch(raw: str) -> str:
     Applies the rules from ``git check-ref-format``:
     - Replace characters not in ``[a-zA-Z0-9._/-]`` with hyphens.
     - Replace ``..`` sequences (forbidden in refs) with a single dot.
-    - Replace ``//`` sequences with a single slash.
     - Replace ``/.`` sequences with ``/`` (refs cannot have components starting with ``.``).
+    - Replace ``//`` sequences with a single slash (runs after ``/.`` removal
+      so collapsed slashes can't be reintroduced).
     - Strip a trailing ``.lock`` suffix.
     - Strip leading/trailing dots, slashes, and hyphens.
     - Collapse runs of hyphens.
@@ -111,8 +112,8 @@ def sanitize_user_for_branch(raw: str) -> str:
     """
     cleaned = _BRANCH_UNSAFE.sub("-", raw)
     cleaned = _DOUBLE_DOT.sub(".", cleaned)
-    cleaned = _DOUBLE_SLASH.sub("/", cleaned)
     cleaned = _SLASH_DOT.sub("/", cleaned)
+    cleaned = _DOUBLE_SLASH.sub("/", cleaned)
     cleaned = _DOT_LOCK_END.sub("", cleaned)
     cleaned = _COLLAPSE_HYPHENS.sub("-", cleaned)
     return cleaned.strip("-./") or "anonymous"

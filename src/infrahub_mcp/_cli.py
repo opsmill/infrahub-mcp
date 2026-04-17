@@ -2,8 +2,10 @@
 
 import argparse
 
-from infrahub_mcp.constants import AUTH_MODE_TOKEN_PASSTHROUGH
+from infrahub_mcp.constants import AUTH_MODE_OIDC, AUTH_MODE_TOKEN_PASSTHROUGH
 from infrahub_mcp.server import _config, get_asgi_middleware, mcp
+
+_HTTP_ONLY_AUTH_MODES = {AUTH_MODE_OIDC, AUTH_MODE_TOKEN_PASSTHROUGH}
 
 
 def main() -> None:
@@ -14,9 +16,9 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8001)
     args = parser.parse_args()
 
-    if _config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH and args.transport == "stdio":
+    if _config.auth_mode in _HTTP_ONLY_AUTH_MODES and args.transport == "stdio":
         msg = (
-            "Token-passthrough auth mode requires streamable-http transport. "
+            f"Auth mode {_config.auth_mode!r} requires streamable-http transport. "
             "Stdio has no HTTP headers."
         )
         raise SystemExit(msg)

@@ -256,7 +256,7 @@ class _TokenPassthroughASGI:
             headers = dict(scope.get("headers", []))
             raw = headers.get(self._header, b"").decode("latin-1")
             stripped = raw.strip()
-            token = stripped[len("bearer"):].strip() if stripped.lower().startswith("bearer") else stripped
+            token = stripped[len("bearer "):].strip() if stripped[:7].lower() == "bearer " else stripped
             if token:
                 reset = set_passthrough_token(token)
         try:

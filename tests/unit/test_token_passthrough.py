@@ -65,6 +65,25 @@ class TestTokenPassthroughASGI:
         assert captured == ["raw-api-key-123"]
 
     @pytest.mark.anyio
+    async def test_raw_token_starting_with_bearer_is_not_stripped(self) -> None:
+        """Tokens whose first 6 chars happen to be 'bearer' without a trailing
+        space must NOT have the scheme stripped — that would corrupt them."""
+        captured: list[str | None] = []
+
+        async def capture_app(scope: dict, receive: object, send: object) -> None:
+            captured.append(get_passthrough_token())
+
+        mw = _TokenPassthroughASGI(capture_app, header="Authorization")
+
+        scope = {
+            "type": "http",
+            "headers": [(b"authorization", b"bearertoken-xyz")],
+        }
+        await mw(scope, MagicMock(), MagicMock())
+
+        assert captured == ["bearertoken-xyz"]
+
+    @pytest.mark.anyio
     async def test_no_token_header_leaves_contextvar_none(self) -> None:
         app = AsyncMock()
         mw = _TokenPassthroughASGI(app, header="Authorization")
