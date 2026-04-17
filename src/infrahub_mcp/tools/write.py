@@ -289,3 +289,59 @@ async def propose_changes(
         "source_branch": session_branch,
         "destination_branch": destination_branch,
     }
+
+
+@mcp.tool(
+    tags={"graphql", "write"},
+    annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False, destructiveHint=True),
+)
+async def mutate_graphql(
+    ctx: Context,
+    query: Annotated[str, Field(description="GraphQL mutation to execute.")],
+    branch: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "Branch to execute the mutation against. "
+                "Defaults to the auto-created session branch (recommended). "
+                "Override only when targeting a specific non-default branch."
+            ),
+        ),
+    ] = None,
+) -> dict[str, Any]:
+    """Execute a GraphQL mutation against Infrahub on the active session branch.
+
+    Use this tool for GraphQL mutations (creating, updating, or deleting data).
+    For read-only queries, use ``query_graphql`` instead.
+
+    The mutation targets the session branch by default, which is auto-created on
+    the first write of the session. Prefer ``node_upsert`` / ``node_delete`` for
+    simple attribute changes — use this tool for complex mutations only.
+
+    Parameters:
+        query: GraphQL mutation to execute.
+        branch: Branch to execute against. Defaults to the session branch.
+
+    Returns:
+        The result of the mutation.
+    """
+    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+
+    if branch is None:
+        branch = await get_or_create_session_branch(ctx)
+
+    try:
+        data = await client.execute_graphql(query=query, branch_name=branch)
+    except GraphQLError as exc:
+        await _log_and_raise_error(
+            ctx,
+            exc,
+            remediation=(
+                "Call get_schema() to list valid kinds, or "
+                "get_schema(kind='...') to see attributes and filters. "
+                "Read infrahub://graphql-schema for the full GraphQL SDL."
+            ),
+        )
+
+    return data

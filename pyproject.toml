@@ -101,6 +101,8 @@ max-line-length = 150
     "PLR6301", # Test methods don't need to be static
     "PLR0904", # Test classes often have many methods
     "PLC1901", # Comparing to empty string is common in test assertions
+    "ARG001",  # Test doubles need to match signatures, some args go unused
+    "RUF029",  # `async` test doubles must match the async protocol
 ]
 
 
