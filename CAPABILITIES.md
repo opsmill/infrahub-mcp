@@ -1,4 +1,4 @@
-## Infrahub MCP Server 1.0.1
+## Infrahub MCP Server 1.0.2
 
 | ✔ Tools (7) | ✔ Prompts (4) | ✔ Resources (3) | ✔ Logging | ~~<span style="opacity:0.6" class="error">✘ Completions</span>~~ | ~~<span style="opacity:0.6" class="error">✘ Tasks</span>~~ |
 | --- | --- | --- | --- | --- | --- |

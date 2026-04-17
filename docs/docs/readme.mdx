@@ -26,7 +26,7 @@ All writes are branch-isolated and require human approval before merging — age
 - **Tools (write)** — `node_upsert` creates or updates nodes, `node_delete` removes nodes, `propose_changes` opens a Proposed Change for human review — all on an auto-created session branch
 - **Resources** — `infrahub://schema` lists all available kinds, `infrahub://schema/{kind}` returns full attribute/filter details, `infrahub://graphql-schema` exposes the GraphQL SDL, `infrahub://branches` lists all branches
 - **Prompts** — a built-in `infrahub_agent` system prompt that teaches agents the branch-per-session workflow and available tools
-- **Middleware** — 15-layer production middleware stack with rate limiting, retry with exponential backoff, response caching, scope-based auth, OpenTelemetry tracing, Prometheus metrics, and read-only mode — all opt-in via environment variables
+- **Middleware** — 17-layer production middleware stack with rate limiting, retry with exponential backoff, response caching, scope-based auth, OpenTelemetry tracing, Prometheus metrics, and read-only mode — all opt-in via environment variables
 - **Infrastructure** — Dockerfile for container deployment, Docker Compose sidecar configuration, Streamable HTTP transport support, `/health` and `/metrics` endpoints
 
 See the [Methods reference](./references/methods.mdx) for full details on every tool, resource, and prompt.

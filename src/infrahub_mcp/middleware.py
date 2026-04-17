@@ -45,11 +45,12 @@ from fastmcp.server.middleware.response_limiting import (
     ResponseLimitingMiddleware,
 )
 from fastmcp.server.middleware.timing import DetailedTimingMiddleware
+from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
 from mcp import McpError
 from mcp.types import ErrorData
 
-from infrahub_mcp.auth import get_user_from_token
-from infrahub_mcp.constants import AUTH_MODE_OIDC
+from infrahub_mcp.auth import get_passthrough_token, get_user_from_token
+from infrahub_mcp.constants import AUTH_MODE_OIDC, AUTH_MODE_TOKEN_PASSTHROUGH
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -137,9 +138,23 @@ class ReadOnlyMiddleware(Middleware):
     2. **Call rejection** — ``on_call_tool`` resolves the tool and blocks it
        if tagged ``"write"``, catching hardcoded tool names that bypass discovery.
 
+    The fallback path (when ``fastmcp_context`` is unavailable) is
+    **fail-closed**: only tools in a known read-only allowlist are
+    permitted; any unknown tool is blocked.
+
     This is defense-in-depth on top of the ``mcp.mount()`` gating in
     ``server.py``, which hides write tools at registration time.
     """
+
+    # Known read-only tools used as an allowlist when tag-based resolution
+    # is unavailable (fastmcp_context is None).  Fail-closed: any tool NOT
+    # in this set is blocked.
+    _KNOWN_READ_ONLY_TOOLS: frozenset[str] = frozenset({
+        "get_schema",
+        "query_graphql",
+        "get_nodes",
+        "search_nodes",
+    })
 
     @override
     async def on_list_tools(
@@ -169,16 +184,14 @@ class ReadOnlyMiddleware(Middleware):
             tool = await context.fastmcp_context.fastmcp.get_tool(
                 tool_name
             )
-            if tool is not None:
-                is_write = WRITE_TAG in (tool.tags or set())
+            is_write = (
+                WRITE_TAG in (tool.tags or set())
+                if tool is not None
+                else tool_name not in self._KNOWN_READ_ONLY_TOOLS
+            )
         else:
-            # Defensive: without context, deny known write tools by name
-            is_write = tool_name in {
-                "node_upsert",
-                "node_delete",
-                "propose_changes",
-                "mutate_graphql",
-            }
+            # Fail-closed: without context, only allow known read-only tools
+            is_write = tool_name not in self._KNOWN_READ_ONLY_TOOLS
 
         if is_write:
             logger.warning("read_only_blocked tool=%s", tool_name)
@@ -193,6 +206,98 @@ class ReadOnlyMiddleware(Middleware):
                 )
             )
         return await call_next(context)
+
+
+# ---------------------------------------------------------------------------
+# Token passthrough — fail-closed gate
+# ---------------------------------------------------------------------------
+
+
+class TokenPassthroughMiddleware(Middleware):
+    """Fail-closed gate for token-passthrough auth mode.
+
+    Rejects tool calls and resource reads when no passthrough token is set
+    in the current request context.  The token itself is extracted by the
+    ASGI-level ``_TokenPassthroughASGI`` middleware and stored in a
+    ``ContextVar``; this middleware just enforces its presence.
+    """
+
+    @override
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext[mt.CallToolRequestParams],
+        call_next: CallNext[mt.CallToolRequestParams, ToolResult],
+    ) -> ToolResult:
+        if get_passthrough_token() is None:
+            raise McpError(
+                ErrorData(
+                    code=-32001,
+                    message="Authentication required: no Infrahub API token in request header.",
+                )
+            )
+        return await call_next(context)
+
+    @override
+    async def on_read_resource(
+        self,
+        context: MiddlewareContext[Any],
+        call_next: CallNext[Any, Any],
+    ) -> Any:
+        if get_passthrough_token() is None:
+            raise McpError(
+                ErrorData(
+                    code=-32001,
+                    message="Authentication required: no Infrahub API token in request header.",
+                )
+            )
+        return await call_next(context)
+
+
+# ---------------------------------------------------------------------------
+# Infrahub connection errors — friendly messages
+# ---------------------------------------------------------------------------
+
+
+class InfrahubConnectionMiddleware(Middleware):
+    """Catch Infrahub SDK connection errors and return clean MCP errors.
+
+    Converts ``ServerNotReachableError``, ``ServerNotResponsiveError``, and
+    ``AuthenticationError`` into actionable ``McpError`` messages instead of
+    leaking raw stack traces to the client.
+    """
+
+    @override
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext[mt.CallToolRequestParams],
+        call_next: CallNext[mt.CallToolRequestParams, ToolResult],
+    ) -> ToolResult:
+        return await self._wrap(call_next, context)
+
+    @override
+    async def on_read_resource(
+        self,
+        context: MiddlewareContext[Any],
+        call_next: CallNext[Any, Any],
+    ) -> Any:
+        return await self._wrap(call_next, context)
+
+    @staticmethod
+    async def _wrap(call_next: CallNext[Any, Any], context: MiddlewareContext[Any]) -> Any:
+        try:
+            return await call_next(context)
+        except ServerNotReachableError as exc:
+            raise McpError(
+                ErrorData(code=-32002, message=f"Infrahub is unreachable at {exc}. Check that the instance is running.")
+            ) from exc
+        except ServerNotResponsiveError as exc:
+            raise McpError(
+                ErrorData(code=-32002, message=f"Infrahub is not responding: {exc}")
+            ) from exc
+        except AuthenticationError as exc:
+            raise McpError(
+                ErrorData(code=-32001, message=f"Infrahub authentication failed: {exc}")
+            ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -449,40 +554,42 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
     Middleware executes in registration order (first registered = outermost).
     The stack is ordered for optimal observability and safety:
 
-    1. **RequestIdMiddleware** — correlation ID (outermost)
-    2. **MetricsMiddleware** — request/error/latency counters
-    3. **OTelTracingMiddleware** — OpenTelemetry spans (conditional)
-    4. **ErrorHandlingMiddleware** — exception → MCP error mapping
-    5. **RetryMiddleware** — exponential backoff for transient failures (conditional)
-    6. **RateLimitingMiddleware** — token bucket rate limiting (conditional)
-    7. **StructuredLoggingMiddleware** — JSON logs with token estimates
-    8. **DetailedTimingMiddleware** — per-operation timing breakdown
-    9. **AuthMiddleware** — scope-based authorization for HTTP transport (conditional)
-    10. **ReadOnlyMiddleware** — tag-based write tool blocking (conditional)
-    11. **AuditMiddleware** — structured audit trail
-    12. **ResponseCachingMiddleware** — TTL-based response caching (conditional)
-    13. **DereferenceRefsMiddleware** — inline $ref in JSON schemas (conditional)
-    14. **PingMiddleware** — periodic keepalive pings for HTTP sessions (conditional)
-    15. **ResponseLimitingMiddleware** — truncates oversized responses (innermost)
+    - **RequestIdMiddleware** — correlation ID (outermost)
+    - **MetricsMiddleware** — request/error/latency counters
+    - **OTelTracingMiddleware** — OpenTelemetry spans (conditional)
+    - **ErrorHandlingMiddleware** — exception → MCP error mapping
+    - **InfrahubConnectionMiddleware** — friendly Infrahub SDK error messages
+    - **RetryMiddleware** — exponential backoff for transient failures (conditional)
+    - **RateLimitingMiddleware** — token bucket rate limiting (conditional)
+    - **StructuredLoggingMiddleware** — JSON logs with token estimates
+    - **DetailedTimingMiddleware** — per-operation timing breakdown
+    - **AuthMiddleware** — scope-based authorization for HTTP transport (conditional)
+    - **TokenPassthroughMiddleware** — fail-closed gate for token-passthrough mode (conditional)
+    - **ReadOnlyMiddleware** — tag-based write tool blocking (conditional)
+    - **AuditMiddleware** — structured audit trail
+    - **ResponseCachingMiddleware** — TTL-based response caching (conditional)
+    - **DereferenceRefsMiddleware** — inline $ref in JSON schemas (conditional)
+    - **PingMiddleware** — periodic keepalive pings for HTTP sessions (conditional)
+    - **ResponseLimitingMiddleware** — truncates oversized responses (innermost)
     """
     global _metrics, _error_handling, _caching_middleware  # noqa: PLW0603
 
     # Reset module-level references so reconfiguration is clean
     _caching_middleware = None
 
-    # 1. Request ID correlation — outermost wrapper
+    # Request ID correlation — outermost wrapper
     mcp.add_middleware(RequestIdMiddleware())
 
-    # 2. Metrics — counts and latency for /metrics endpoint
+    # Metrics — counts and latency for /metrics endpoint
     _metrics = MetricsMiddleware()
     mcp.add_middleware(_metrics)
 
-    # 3. OpenTelemetry tracing — spans for every request (conditional)
+    # OpenTelemetry tracing — spans for every request (conditional)
     if config.otel_enabled:
         mcp.add_middleware(OTelTracingMiddleware())
         logger.info("otel_tracing enabled=true")
 
-    # 4. Error handling — catches everything below
+    # Error handling — catches everything below
     _error_handling = ErrorHandlingMiddleware(
         logger=logging.getLogger("infrahub_mcp.errors"),
         include_traceback=config.log_level_debug,
@@ -490,8 +597,11 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
     )
     mcp.add_middleware(_error_handling)
 
-    # 5. Retry — exponential backoff for transient failures (conditional)
-    #    Uses SafeRetryMiddleware to skip retries for non-idempotent tool calls.
+    # Infrahub connection errors — friendly messages instead of raw stack traces
+    mcp.add_middleware(InfrahubConnectionMiddleware())
+
+    # Retry — exponential backoff for transient failures (conditional)
+    # Uses SafeRetryMiddleware to skip retries for non-idempotent tool calls.
     if config.retry_max_attempts > 0:
         mcp.add_middleware(
             SafeRetryMiddleware(
@@ -507,7 +617,7 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
             config.retry_base_delay,
         )
 
-    # 6. Rate limiting — token bucket (conditional)
+    # Rate limiting — token bucket (conditional)
     if config.rate_limit_rps > 0:
         burst = config.rate_limit_burst if config.rate_limit_burst > 0 else int(config.rate_limit_rps * 2)
         mcp.add_middleware(
@@ -523,7 +633,7 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
             burst,
         )
 
-    # 7. Structured logging — JSON log lines with token estimates
+    # Structured logging — JSON log lines with token estimates
     mcp.add_middleware(
         StructuredLoggingMiddleware(
             logger=logging.getLogger("infrahub_mcp.requests"),
@@ -533,16 +643,16 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
         )
     )
 
-    # 8. Detailed timing — per-operation breakdown
+    # Detailed timing — per-operation breakdown
     mcp.add_middleware(
         DetailedTimingMiddleware(
             logger=logging.getLogger("infrahub_mcp.timing"),
         )
     )
 
-    # 9. Auth middleware — scope-based authorization for OIDC transport (conditional)
-    #    Only enabled in OIDC mode where an auth provider supplies tokens with scopes.
-    #    In none mode (incl. stdio): no token provider exists, so scope checks are skipped.
+    # Auth middleware — scope-based authorization for OIDC transport (conditional)
+    # Only enabled in OIDC mode where an auth provider supplies tokens with scopes.
+    # In none mode (incl. stdio): no token provider exists, so scope checks are skipped.
     if config.auth_mode == AUTH_MODE_OIDC:
         scopes_raw = config.auth_scopes_write or "write"
         scopes = [s.strip() for s in scopes_raw.split(",") if s.strip()]
@@ -555,16 +665,21 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
             scopes,
         )
 
-    # 10. Read-only enforcement — tag-based, defense-in-depth (conditional)
+    # Token passthrough — fail-closed gate (conditional)
+    if config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH:
+        mcp.add_middleware(TokenPassthroughMiddleware())
+        logger.info("token_passthrough_middleware enabled=true")
+
+    # Read-only enforcement — tag-based, defense-in-depth (conditional)
     if config.read_only:
         mcp.add_middleware(ReadOnlyMiddleware())
         logger.info("read_only_mode enabled=true")
 
-    # 11. Audit trail — structured tool/resource access log
+    # Audit trail — structured tool/resource access log
     audit_claim = config.oidc_user_claim if config.auth_mode == AUTH_MODE_OIDC else None
     mcp.add_middleware(AuditMiddleware(user_claim=audit_claim))
 
-    # 12. Response caching — TTL-based for schema/list operations (conditional)
+    # Response caching — TTL-based for schema/list operations (conditional)
     if config.cache_enabled:
         _caching_middleware = ResponseCachingMiddleware(
             list_tools_settings=ListToolsSettings(ttl=config.cache_list_ttl),
@@ -583,17 +698,17 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
             config.cache_read_ttl,
         )
 
-    # 13. Dereference $ref in JSON schemas for client compatibility (conditional)
+    # Dereference $ref in JSON schemas for client compatibility (conditional)
     if config.dereference_schemas:
         mcp.add_middleware(DereferenceRefsMiddleware())
         logger.info("dereference_schemas enabled=true")
 
-    # 14. Ping — periodic keepalive for HTTP sessions (conditional)
+    # Ping — periodic keepalive for HTTP sessions (conditional)
     if config.ping_interval_ms > 0:
         mcp.add_middleware(PingMiddleware(interval_ms=config.ping_interval_ms))
         logger.info("ping_middleware enabled=true interval_ms=%d", config.ping_interval_ms)
 
-    # 15. Response size limiting — innermost
+    # Response size limiting — innermost
     mcp.add_middleware(
         ResponseLimitingMiddleware(
             max_size=_MAX_RESPONSE_BYTES,

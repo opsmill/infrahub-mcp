@@ -14,6 +14,13 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
+      label: 'Topics',
+      items: [
+        'topics/authentication',
+      ],
+    },
+    {
+      type: 'category',
       label: 'Reference',
       items: [
         'references/configuration',

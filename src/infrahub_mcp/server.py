@@ -3,6 +3,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib.metadata import version
+from typing import TYPE_CHECKING
 
 from fastmcp import FastMCP
 from infrahub_sdk.client import InfrahubClient
@@ -11,8 +12,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from infrahub_app import app as infrahub_app
-from infrahub_mcp.auth import create_auth_provider
+from infrahub_mcp.auth import create_auth_provider, reset_passthrough_token, set_passthrough_token
 from infrahub_mcp.config import ServerConfig, load_config
+from infrahub_mcp.constants import AUTH_MODE_OIDC, AUTH_MODE_TOKEN_PASSTHROUGH
 from infrahub_mcp.middleware import (
     configure_middleware,
     get_caching_middleware,
@@ -28,11 +30,18 @@ from infrahub_mcp.tools.schema import mcp as schema_tools_mcp
 from infrahub_mcp.tools.write import mcp as write_mcp
 from infrahub_mcp.utils import AppContext
 
+if TYPE_CHECKING:
+    from asgiref.typing import ASGIApplication as ASGIApp
+
 _config: ServerConfig = load_config()
 
 
 def _validate_env() -> None:
     """Validate required environment variables at startup and raise with clear guidance."""
+    # Token-passthrough mode: credentials come from the client, not env vars.
+    if _config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH:
+        return
+
     address = os.environ.get("INFRAHUB_ADDRESS")
     if not address:
         msg = "INFRAHUB_ADDRESS is required. Set it to the URL of your Infrahub instance (e.g. http://localhost:8000)."
@@ -64,14 +73,15 @@ def _inject_kind_enum(kinds: list[str]) -> None:
 async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: ARG001
     """Manage the application lifecycle: validate config, create client, yield context."""
     _validate_env()
-    client = InfrahubClient()
+    client = None if _config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH else InfrahubClient()
 
     # Populate kind dropdowns in the dev UI with available schema kinds
-    try:
-        all_schemas = await client.schema.all()
-        _inject_kind_enum(sorted(all_schemas.keys()))
-    except Exception:
-        logger.debug("Could not fetch schema for kind enum injection", exc_info=True)
+    if client is not None:
+        try:
+            all_schemas = await client.schema.all()
+            _inject_kind_enum(sorted(all_schemas.keys()))
+        except Exception:
+            logger.debug("Could not fetch schema for kind enum injection", exc_info=True)
 
     yield AppContext(client=client, config=_config)
 
@@ -248,3 +258,87 @@ if not _config.read_only:
 
 # Infrahub App — generic visualization tools (FastMCPApp)
 mcp.add_provider(infrahub_app)
+
+
+# ---------------------------------------------------------------------------
+# Token passthrough — ASGI-level header extraction
+# ---------------------------------------------------------------------------
+
+
+class _TokenPassthroughASGI:
+    """ASGI middleware that extracts a token from an HTTP header into a ContextVar.
+
+    Supports both ``Bearer <token>`` and raw token values.  Non-HTTP scopes
+    (e.g. websocket lifespan) are passed through unchanged.
+    """
+
+    def __init__(self, app: "ASGIApp", *, header: str = "Authorization") -> None:
+        self._app = app
+        self._header = header.lower().encode("latin-1")
+
+    async def __call__(self, scope: dict, receive: object, send: object) -> None:  # type: ignore[type-arg]
+        reset = None
+        if scope["type"] == "http":
+            headers = dict(scope.get("headers", []))
+            raw = headers.get(self._header, b"").decode("latin-1")
+            stripped = raw.strip()
+            token = stripped[len("bearer "):].strip() if stripped[:7].lower() == "bearer " else stripped
+            if token:
+                reset = set_passthrough_token(token)
+        try:
+            await self._app(scope, receive, send)  # type: ignore[arg-type]
+        finally:
+            if reset is not None:
+                reset_passthrough_token(reset)
+
+
+_OAUTH_DISCOVERY_SEGMENTS = (
+    "/.well-known/oauth-authorization-server",
+    "/.well-known/oauth-protected-resource",
+    "/.well-known/openid-configuration",
+)
+
+
+class _OAuthDiscoveryInterceptASGI:
+    """ASGI middleware returning RFC 6749 JSON 404 for OAuth/OIDC discovery probes.
+
+    MCP clients probe well-known paths for OAuth support even when the server
+    doesn't use OIDC.  Without this, Starlette returns plain-text "Not Found"
+    which clients fail to parse as JSON, causing ``SyntaxError`` messages.
+    Only intercepts the specific OAuth/OIDC discovery endpoints (including
+    path-suffixed variants like ``/mcp``) and ``/register``.
+    """
+
+    def __init__(self, app: "ASGIApp") -> None:
+        self._app = app
+
+    @staticmethod
+    def _is_oauth_probe(path: str) -> bool:
+        normalized = path.rstrip("/")
+        if normalized == "/register":
+            return True
+        return any(segment in normalized for segment in _OAUTH_DISCOVERY_SEGMENTS)
+
+    async def __call__(self, scope: dict, receive: object, send: object) -> None:  # type: ignore[type-arg]
+        if scope["type"] == "http":
+            path: str = scope.get("path", "")
+            if self._is_oauth_probe(path):
+                response = JSONResponse(
+                    {"error": "invalid_request", "error_description": "OAuth is not enabled on this server."},
+                    status_code=404,
+                )
+                await response(scope, receive, send)  # type: ignore[arg-type]
+                return
+        await self._app(scope, receive, send)  # type: ignore[arg-type]
+
+
+def get_asgi_middleware() -> list[object]:
+    """Return Starlette ASGI middleware for the current auth mode."""
+    from starlette.middleware import Middleware as StarletteMiddleware  # noqa: PLC0415
+
+    middlewares: list[object] = []
+    if _config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH:
+        middlewares.append(StarletteMiddleware(_TokenPassthroughASGI, header=_config.token_passthrough_header))
+    if _config.auth_mode != AUTH_MODE_OIDC:
+        middlewares.append(StarletteMiddleware(_OAuthDiscoveryInterceptASGI))
+    return middlewares

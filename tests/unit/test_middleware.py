@@ -2,27 +2,34 @@
 
 from __future__ import annotations
 
+import json
 import logging
-from collections.abc import Sequence
+from collections.abc import Generator, Sequence
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import mcp.types as mt
 import pytest
 from fastmcp.server.middleware.middleware import MiddlewareContext
+from fastmcp.server.middleware.error_handling import RetryMiddleware
 from fastmcp.tools.base import ToolResult
 
 import infrahub_mcp.middleware as middleware_module
 from mcp import McpError
 
+from infrahub_mcp.auth import _passthrough_token, set_passthrough_token
 from infrahub_mcp.config import ServerConfig
+from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
+
 from infrahub_mcp.middleware import (
     AuditMiddleware,
+    InfrahubConnectionMiddleware,
     MetricsMiddleware,
     OTelTracingMiddleware,
     ReadOnlyMiddleware,
     RequestIdMiddleware,
     SafeRetryMiddleware,
+    TokenPassthroughMiddleware,
     WRITE_TAG,
     configure_middleware,
     get_caching_middleware,
@@ -208,7 +215,7 @@ class TestReadOnlyMiddleware:
     async def test_blocks_known_write_tools_without_context(
         self, tool_name: str
     ) -> None:
-        """Fallback name-based check blocks all known write tools."""
+        """Fail-closed fallback blocks write tools not in the read-only allowlist."""
         middleware = ReadOnlyMiddleware()
         ctx = _make_tool_context(tool_name)
 
@@ -218,6 +225,38 @@ class TestReadOnlyMiddleware:
 
         with pytest.raises(McpError):
             await middleware.on_call_tool(ctx, call_next)
+
+    @pytest.mark.anyio
+    async def test_blocks_unknown_tool_without_context(self) -> None:
+        """Fail-closed: an unknown tool not in the read-only allowlist is blocked."""
+        middleware = ReadOnlyMiddleware()
+        ctx = _make_tool_context("some_future_write_tool")
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            msg = "should not reach here"
+            raise AssertionError(msg)
+
+        with pytest.raises(McpError, match="read-only mode"):
+            await middleware.on_call_tool(ctx, call_next)
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize(
+        "tool_name",
+        ["get_schema", "query_graphql", "get_nodes", "search_nodes"],
+    )
+    async def test_allows_known_read_tools_without_context(
+        self, tool_name: str
+    ) -> None:
+        """Fail-closed fallback permits all known read-only tools."""
+        middleware = ReadOnlyMiddleware()
+        ctx = _make_tool_context(tool_name)
+        expected = ToolResult(content=[])
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            return expected
+
+        result = await middleware.on_call_tool(ctx, call_next)
+        assert result is expected
 
 
 # ---------------------------------------------------------------------------
@@ -313,8 +352,6 @@ class TestMetricsMiddleware:
         assert snap["latency_ms"]["tools/call"] >= 0
 
     def test_snapshot_is_serializable(self) -> None:
-        import json
-
         middleware = MetricsMiddleware()
         snap = middleware.snapshot()
         # Should not raise
@@ -396,14 +433,19 @@ class TestOTelTracingMiddleware:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(autouse=True)
-def _reset_middleware_globals() -> None:
-    """Reset module-level middleware state between tests."""
+@pytest.fixture()
+def _reset_middleware_globals() -> Generator[None]:
+    """Reset module-level middleware state before and after each test."""
+    middleware_module._metrics = None  # noqa: SLF001
+    middleware_module._error_handling = None  # noqa: SLF001
+    middleware_module._caching_middleware = None  # noqa: SLF001
+    yield
     middleware_module._metrics = None  # noqa: SLF001
     middleware_module._error_handling = None  # noqa: SLF001
     middleware_module._caching_middleware = None  # noqa: SLF001
 
 
+@pytest.mark.usefixtures("_reset_middleware_globals")
 class TestConfigureMiddleware:
     def test_registers_middleware_read_write_mode(self) -> None:
         mock_mcp = MagicMock()
@@ -743,6 +785,7 @@ class TestConfigureMiddleware:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("_reset_middleware_globals")
 class TestModuleLevelGetters:
     def test_get_metrics_after_configure(self) -> None:
         mock_mcp = MagicMock()
@@ -964,7 +1007,7 @@ class TestSafeRetryMiddlewareRouting:
             return ToolResult(content=[])
 
         with patch.object(
-            type(mw).__mro__[1], "on_call_tool", return_value=ToolResult(content=[])
+            RetryMiddleware, "on_call_tool", return_value=ToolResult(content=[])
         ) as mock_super:
             await mw.on_call_tool(ctx, call_next)
             assert mock_super.called, "Should delegate to parent retry logic"
@@ -981,7 +1024,7 @@ class TestSafeRetryMiddlewareRouting:
         mw = SafeRetryMiddleware(max_retries=2, base_delay=0)
 
         with patch.object(
-            type(mw).__mro__[1], "on_call_tool", return_value=ToolResult(content=[])
+            RetryMiddleware, "on_call_tool", return_value=ToolResult(content=[])
         ) as mock_super:
             await mw.on_call_tool(ctx, call_next=MagicMock())
             assert mock_super.called
@@ -1020,3 +1063,188 @@ class TestSafeRetryMiddlewareRouting:
 
         result = await mw.on_call_tool(ctx, call_next)
         assert result is sentinel
+
+
+# ---------------------------------------------------------------------------
+# TokenPassthroughMiddleware
+# ---------------------------------------------------------------------------
+
+
+class TestTokenPassthroughMiddleware:
+    @pytest.fixture(autouse=True)
+    def _clean_passthrough_token(self) -> Generator[None]:
+        token = _passthrough_token.set(None)
+        yield
+        _passthrough_token.reset(token)
+
+    @pytest.mark.anyio
+    async def test_rejects_tool_call_without_token(self) -> None:
+        middleware = TokenPassthroughMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            msg = "should not reach here"
+            raise AssertionError(msg)
+
+        with pytest.raises(McpError, match="Authentication required"):
+            await middleware.on_call_tool(ctx, call_next)
+
+    @pytest.mark.anyio
+    async def test_rejects_resource_read_without_token(self) -> None:
+        middleware = TokenPassthroughMiddleware()
+        ctx = _make_resource_context("infrahub://schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> str:
+            msg = "should not reach here"
+            raise AssertionError(msg)
+
+        with pytest.raises(McpError, match="Authentication required"):
+            await middleware.on_read_resource(ctx, call_next)
+
+    @pytest.mark.anyio
+    async def test_allows_tool_call_with_token(self) -> None:
+        middleware = TokenPassthroughMiddleware()
+        ctx = _make_tool_context("get_schema")
+        expected = ToolResult(content=[])
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            return expected
+
+        set_passthrough_token("valid-token")
+        result = await middleware.on_call_tool(ctx, call_next)
+        assert result is expected
+
+    @pytest.mark.anyio
+    async def test_allows_resource_read_with_token(self) -> None:
+        middleware = TokenPassthroughMiddleware()
+        ctx = _make_resource_context("infrahub://schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> str:
+            return "data"
+
+        set_passthrough_token("valid-token")
+        result = await middleware.on_read_resource(ctx, call_next)
+        assert result == "data"
+
+
+# ---------------------------------------------------------------------------
+# configure_middleware — token-passthrough mode
+# ---------------------------------------------------------------------------
+
+
+class TestConfigureMiddlewareTokenPassthrough:
+    def test_token_passthrough_middleware_enabled(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig(auth_mode="token-passthrough")
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "TokenPassthroughMiddleware" in types
+
+    def test_token_passthrough_middleware_not_in_none_mode(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+
+        def side_effect(mw: Any) -> None:
+            mock_mcp.middleware.append(mw)
+
+        mock_mcp.add_middleware.side_effect = side_effect
+
+        config = ServerConfig(auth_mode="none")
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "TokenPassthroughMiddleware" not in types
+
+
+# ---------------------------------------------------------------------------
+# InfrahubConnectionMiddleware
+# ---------------------------------------------------------------------------
+
+
+class TestInfrahubConnectionMiddleware:
+    @pytest.mark.anyio
+    async def test_catches_server_not_reachable_on_tool_call(self) -> None:
+        middleware = InfrahubConnectionMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            raise ServerNotReachableError(address="http://infrahub:8000")
+
+        with pytest.raises(McpError, match="Infrahub is unreachable"):
+            await middleware.on_call_tool(ctx, call_next)
+
+    @pytest.mark.anyio
+    async def test_catches_server_not_reachable_on_resource_read(self) -> None:
+        middleware = InfrahubConnectionMiddleware()
+        ctx = _make_resource_context("infrahub://schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> str:
+            raise ServerNotReachableError(address="http://infrahub:8000")
+
+        with pytest.raises(McpError, match="Infrahub is unreachable"):
+            await middleware.on_read_resource(ctx, call_next)
+
+    @pytest.mark.anyio
+    async def test_catches_server_not_responsive(self) -> None:
+        middleware = InfrahubConnectionMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            raise ServerNotResponsiveError(url="http://infrahub:8000/api/schema")
+
+        with pytest.raises(McpError, match="Infrahub is not responding"):
+            await middleware.on_call_tool(ctx, call_next)
+
+    @pytest.mark.anyio
+    async def test_catches_authentication_error(self) -> None:
+        middleware = InfrahubConnectionMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            raise AuthenticationError("Invalid API token")
+
+        with pytest.raises(McpError, match="Infrahub authentication failed"):
+            await middleware.on_call_tool(ctx, call_next)
+
+    @pytest.mark.anyio
+    async def test_passes_through_on_success(self) -> None:
+        middleware = InfrahubConnectionMiddleware()
+        ctx = _make_tool_context("get_schema")
+        expected = ToolResult(content=[])
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            return expected
+
+        result = await middleware.on_call_tool(ctx, call_next)
+        assert result is expected
+
+    @pytest.mark.anyio
+    async def test_does_not_catch_other_exceptions(self) -> None:
+        middleware = InfrahubConnectionMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            msg = "some other error"
+            raise ValueError(msg)
+
+        with pytest.raises(ValueError, match="some other error"):
+            await middleware.on_call_tool(ctx, call_next)
+
+    def test_always_in_middleware_stack(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+        mock_mcp.add_middleware.side_effect = lambda mw: mock_mcp.middleware.append(mw)
+
+        config = ServerConfig()
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "InfrahubConnectionMiddleware" in types

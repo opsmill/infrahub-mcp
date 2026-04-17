@@ -2,15 +2,29 @@
 
 import argparse
 
-from infrahub_mcp.server import mcp
+from infrahub_mcp.constants import AUTH_MODE_OIDC, AUTH_MODE_TOKEN_PASSTHROUGH
+from infrahub_mcp.server import _config, get_asgi_middleware, mcp
+
+_HTTP_ONLY_AUTH_MODES = {AUTH_MODE_OIDC, AUTH_MODE_TOKEN_PASSTHROUGH}
 
 
 def main() -> None:
     """Entry point for the infrahub-mcp CLI command."""
     parser = argparse.ArgumentParser(description="Infrahub MCP Server")
-    parser.add_argument("--transport", default="stdio", choices=["stdio", "streamable-http", "sse"])
+    parser.add_argument("--transport", default="stdio", choices=["stdio", "streamable-http"])
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8001)
     args = parser.parse_args()
 
-    mcp.run(transport=args.transport, host=args.host, port=args.port)
+    if _config.auth_mode in _HTTP_ONLY_AUTH_MODES and args.transport == "stdio":
+        msg = (
+            f"Auth mode {_config.auth_mode!r} requires streamable-http transport. "
+            "Stdio has no HTTP headers."
+        )
+        raise SystemExit(msg)
+
+    kwargs: dict[str, object] = {"transport": args.transport, "host": args.host, "port": args.port}
+    asgi_mw = get_asgi_middleware()
+    if asgi_mw and args.transport == "streamable-http":
+        kwargs["middleware"] = asgi_mw
+    mcp.run(**kwargs)  # type: ignore[arg-type]

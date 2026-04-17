@@ -18,6 +18,7 @@
     "@docusaurus/core": "^3.10.0",
     "@docusaurus/plugin-client-redirects": "^3.10.0",
     "@docusaurus/preset-classic": "^3.10.0",
+    "@docusaurus/theme-mermaid": "^3.10.0",
     "@easyops-cn/docusaurus-search-local": "^0.44.5",
     "@mdx-js/react": "^3.0.1",
     "@signalwire/docusaurus-plugin-llms-txt": "^1.2.1",

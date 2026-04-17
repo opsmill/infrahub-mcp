@@ -18,4 +18,4 @@ repos:
         name: rumdl
         entry: uv run rumdl check
         language: system
-        types: [markdown]
+        types_or: [markdown, mdx]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from contextvars import ContextVar, Token
 from typing import TYPE_CHECKING
 
 from infrahub_mcp.constants import AUTH_MODE_OIDC
@@ -25,6 +26,9 @@ def create_auth_provider(config: ServerConfig) -> OIDCProxy | None:
 
     The OIDC token is for MCP-level access control only — Infrahub API calls
     still use the shared env var credentials.
+
+    Returns:
+        OIDCProxy when auth_mode is ``oidc``, otherwise ``None``.
     """
     if config.auth_mode != AUTH_MODE_OIDC:
         return None
@@ -50,6 +54,34 @@ def create_auth_provider(config: ServerConfig) -> OIDCProxy | None:
 
 
 # ---------------------------------------------------------------------------
+# Token passthrough — per-request ContextVar
+# ---------------------------------------------------------------------------
+
+_passthrough_token: ContextVar[str | None] = ContextVar("_passthrough_token", default=None)
+
+
+def set_passthrough_token(token: str) -> Token[str | None]:
+    """Store the passthrough token for the current async task.
+
+    Returns a :class:`contextvars.Token` that **must** be passed to
+    :func:`reset_passthrough_token` when the request is done so that
+    the value does not leak to subsequent requests sharing the same
+    async context.
+    """
+    return _passthrough_token.set(token)
+
+
+def reset_passthrough_token(token: Token[str | None]) -> None:
+    """Restore the passthrough ContextVar to its previous value."""
+    _passthrough_token.reset(token)
+
+
+def get_passthrough_token() -> str | None:
+    """Read the passthrough token for the current async task."""
+    return _passthrough_token.get()
+
+
+# ---------------------------------------------------------------------------
 # User identity from OIDC token
 # ---------------------------------------------------------------------------
 
@@ -68,16 +100,20 @@ def sanitize_user_for_branch(raw: str) -> str:
     Applies the rules from ``git check-ref-format``:
     - Replace characters not in ``[a-zA-Z0-9._/-]`` with hyphens.
     - Replace ``..`` sequences (forbidden in refs) with a single dot.
-    - Replace ``//`` sequences with a single slash.
     - Replace ``/.`` sequences with ``/`` (refs cannot have components starting with ``.``).
+    - Replace ``//`` sequences with a single slash (runs after ``/.`` removal
+      so collapsed slashes can't be reintroduced).
     - Strip a trailing ``.lock`` suffix.
     - Strip leading/trailing dots, slashes, and hyphens.
     - Collapse runs of hyphens.
+
+    Returns:
+        Sanitized string safe for branch names, or ``"anonymous"`` if empty.
     """
     cleaned = _BRANCH_UNSAFE.sub("-", raw)
     cleaned = _DOUBLE_DOT.sub(".", cleaned)
-    cleaned = _DOUBLE_SLASH.sub("/", cleaned)
     cleaned = _SLASH_DOT.sub("/", cleaned)
+    cleaned = _DOUBLE_SLASH.sub("/", cleaned)
     cleaned = _DOT_LOCK_END.sub("", cleaned)
     cleaned = _COLLAPSE_HYPHENS.sub("-", cleaned)
     return cleaned.strip("-./") or "anonymous"
@@ -92,6 +128,9 @@ def get_user_from_token(claim: str = "email") -> str:
 
     Args:
         claim: JWT claim to use for identity (default: ``email``).
+
+    Returns:
+        Sanitized user identity string, or ``"anonymous"`` when unavailable.
     """
     try:
         from fastmcp.server.middleware.authorization import get_access_token  # noqa: PLC0415
@@ -101,6 +140,6 @@ def get_user_from_token(claim: str = "email") -> str:
             value = token.claims.get(claim) or token.claims.get("sub")
             if value:
                 return sanitize_user_for_branch(str(value))
-    except Exception:
+    except (ImportError, AttributeError, KeyError, TypeError):
         logger.debug("Failed to extract user from OIDC token", exc_info=True)
     return "anonymous"

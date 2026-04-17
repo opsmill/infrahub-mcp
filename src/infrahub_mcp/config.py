@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import math
 import os
+import string
 from dataclasses import dataclass
+from typing import Literal, cast
 
-from infrahub_mcp.constants import _ALLOWED_PLACEHOLDERS, _VALID_AUTH_MODES
+from infrahub_mcp.constants import _ALLOWED_PLACEHOLDERS, _VALID_AUTH_MODES, AUTH_MODE_TOKEN_PASSTHROUGH
+
+AuthMode = Literal["none", "oidc", "token-passthrough"]
 
 
 @dataclass(frozen=True)
@@ -31,14 +36,15 @@ class ServerConfig:
         dereference_schemas: Dereference $ref in JSON schemas for client compatibility.
         ping_interval_ms: Ping interval in milliseconds for HTTP sessions (0 = disabled).
         auth_scopes_write: OAuth scopes required for write operations (comma-separated).
-        auth_mode: Authentication mode. ``none`` = env var credentials only,
-            ``oidc`` = external IdP via OIDCProxy for identity + role gating.
+        auth_mode: Authentication mode (``none``, ``oidc``, or ``token-passthrough``).
         oidc_config_url: OIDC discovery URL (required when auth_mode=oidc).
         oidc_client_id: OAuth client ID registered with the IdP (required when auth_mode=oidc).
         oidc_client_secret: OAuth client secret (optional, omit for PKCE flow).
         oidc_base_url: Public URL where MCP server is accessible (required when auth_mode=oidc).
         oidc_audience: Token audience claim (optional).
         oidc_user_claim: JWT claim to use for user identity. Defaults to ``email``.
+        token_passthrough_header: HTTP header carrying the Infrahub API token when
+            ``auth_mode="token-passthrough"``. Defaults to ``Authorization``.
     """
 
     read_only: bool = False
@@ -57,18 +63,20 @@ class ServerConfig:
     dereference_schemas: bool = False
     ping_interval_ms: int = 0
     auth_scopes_write: str = ""
-    auth_mode: str = "none"
+    auth_mode: AuthMode = "none"
     oidc_config_url: str = ""
     oidc_client_id: str = ""
     oidc_client_secret: str = ""
     oidc_base_url: str = ""
     oidc_audience: str = ""
     oidc_user_claim: str = "email"
+    token_passthrough_header: str = "Authorization"  # noqa: S105
 
 
 _MAX_BRANCH_RETRIES_LIMIT = 20
 _MAX_RATE_LIMIT_RPS = 10000.0
 _MAX_PING_INTERVAL_MS = 300_000
+_VALID_LOG_LEVELS = {"debug", "info", "warning", "error"}
 
 
 def load_config() -> ServerConfig:
@@ -91,7 +99,8 @@ def load_config() -> ServerConfig:
         INFRAHUB_MCP_DEREFERENCE_SCHEMAS: Dereference $ref in schemas (true/false).
         INFRAHUB_MCP_PING_INTERVAL_MS: Ping interval in ms (0 = disabled).
         INFRAHUB_MCP_AUTH_SCOPES_WRITE: OAuth scopes for write ops (comma-separated).
-        INFRAHUB_MCP_AUTH_MODE: Authentication mode (``none`` or ``oidc``).
+        INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER: HTTP header for token-passthrough auth (default: Authorization).
+        INFRAHUB_MCP_AUTH_MODE: Authentication mode (``none``, ``oidc``, or ``token-passthrough``).
         INFRAHUB_MCP_OIDC_CONFIG_URL: OIDC discovery URL (required when auth_mode=oidc).
         INFRAHUB_MCP_OIDC_CLIENT_ID: OAuth client ID (required when auth_mode=oidc).
         INFRAHUB_MCP_OIDC_CLIENT_SECRET: OAuth client secret (optional, omit for PKCE).
@@ -102,6 +111,7 @@ def load_config() -> ServerConfig:
     _validate_auth_mode()
     _validate_branch_retries()
     _validate_branch_pattern()
+    _validate_log_level()
     _validate_rate_limit()
     _validate_retry()
     _validate_ping_interval()
@@ -123,13 +133,14 @@ def load_config() -> ServerConfig:
         dereference_schemas=_parse_bool("INFRAHUB_MCP_DEREFERENCE_SCHEMAS"),
         ping_interval_ms=_parse_int("INFRAHUB_MCP_PING_INTERVAL_MS", default=0),
         auth_scopes_write=os.environ.get("INFRAHUB_MCP_AUTH_SCOPES_WRITE", ""),
-        auth_mode=os.environ.get("INFRAHUB_MCP_AUTH_MODE", "none").strip().lower(),
+        auth_mode=cast("AuthMode", os.environ.get("INFRAHUB_MCP_AUTH_MODE", "none").strip().lower()),
         oidc_config_url=os.environ.get("INFRAHUB_MCP_OIDC_CONFIG_URL", ""),
         oidc_client_id=os.environ.get("INFRAHUB_MCP_OIDC_CLIENT_ID", ""),
         oidc_client_secret=os.environ.get("INFRAHUB_MCP_OIDC_CLIENT_SECRET", ""),
         oidc_base_url=os.environ.get("INFRAHUB_MCP_OIDC_BASE_URL", ""),
         oidc_audience=os.environ.get("INFRAHUB_MCP_OIDC_AUDIENCE", ""),
         oidc_user_claim=os.environ.get("INFRAHUB_MCP_OIDC_USER_CLAIM", "email"),
+        token_passthrough_header=os.environ.get("INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER", "Authorization"),
     )
 
 
@@ -139,6 +150,13 @@ def _validate_auth_mode() -> None:
     if mode not in _VALID_AUTH_MODES:
         msg = (
             f"INFRAHUB_MCP_AUTH_MODE must be one of {sorted(_VALID_AUTH_MODES)}, got {mode!r}."
+        )
+        raise ValueError(msg)
+
+    if mode == AUTH_MODE_TOKEN_PASSTHROUGH and not os.environ.get("INFRAHUB_ADDRESS", "").strip():
+        msg = (
+            "Token-passthrough auth mode requires INFRAHUB_ADDRESS. "
+            "Set it to the URL of your Infrahub instance (e.g. http://localhost:8000)."
         )
         raise ValueError(msg)
 
@@ -164,6 +182,14 @@ def _validate_branch_retries() -> None:
         raise ValueError(msg)
 
 
+def _validate_log_level() -> None:
+    """Validate INFRAHUB_MCP_LOG_LEVEL against known levels."""
+    level = os.environ.get("INFRAHUB_MCP_LOG_LEVEL", "info").strip().lower()
+    if level not in _VALID_LOG_LEVELS:
+        msg = f"INFRAHUB_MCP_LOG_LEVEL must be one of {sorted(_VALID_LOG_LEVELS)}, got {level!r}."
+        raise ValueError(msg)
+
+
 def _validate_branch_pattern() -> None:
     """Validate INFRAHUB_MCP_BRANCH_PATTERN at startup.
 
@@ -171,21 +197,32 @@ def _validate_branch_pattern() -> None:
     by performing a trial expansion with sample values.
     """
     pattern = os.environ.get("INFRAHUB_MCP_BRANCH_PATTERN", "mcp/session-{date}-{hex}")
-    sample = dict.fromkeys(_ALLOWED_PLACEHOLDERS, "sample")
     try:
-        expanded = pattern.format(**sample)
-    except (KeyError, ValueError, IndexError) as exc:
+        parsed = list(string.Formatter().parse(pattern))
+    except (ValueError, IndexError) as exc:
         msg = (
             f"INFRAHUB_MCP_BRANCH_PATTERN has invalid syntax: {pattern!r}. "
             f"Allowed placeholders are {{date}}, {{hex}}, {{user}}. Error: {exc}"
         )
         raise ValueError(msg) from exc
 
-    # Check for leftover braces that indicate unknown placeholders
-    if "{" in expanded or "}" in expanded:
+    fields: list[str] = []
+    for _, field_name, format_spec, conversion in parsed:
+        if field_name is None:
+            continue
+        if format_spec or conversion is not None:
+            msg = (
+                f"INFRAHUB_MCP_BRANCH_PATTERN must not use format specifiers or conversions: {pattern!r}. "
+                f"Allowed placeholders are {{date}}, {{hex}}, {{user}} (no :spec, !conversion)."
+            )
+            raise ValueError(msg)
+        fields.append(field_name)
+
+    bad = sorted(set(fields) - _ALLOWED_PLACEHOLDERS)
+    if bad:
         msg = (
             f"INFRAHUB_MCP_BRANCH_PATTERN contains unsupported placeholders: {pattern!r}. "
-            f"Allowed placeholders are {{date}}, {{hex}}, {{user}}."
+            f"Unknown: {bad}. Allowed placeholders are {{date}}, {{hex}}, {{user}}."
         )
         raise ValueError(msg)
 
@@ -264,12 +301,19 @@ def _parse_int(env_var: str, *, default: int) -> int:
 
 
 def _parse_float(env_var: str, *, default: float) -> float:
-    """Parse a float environment variable with a default."""
+    """Parse a float environment variable with a default.
+
+    Rejects ``nan`` and ``inf`` so downstream range checks remain meaningful.
+    """
     raw = os.environ.get(env_var)
     if raw is None:
         return default
     try:
-        return float(raw)
+        value = float(raw)
     except ValueError as exc:
         msg = f"{env_var} must be a number."
         raise ValueError(msg) from exc
+    if not math.isfinite(value):
+        msg = f"{env_var} must be a finite number, got {raw!r}."
+        raise ValueError(msg)
+    return value
