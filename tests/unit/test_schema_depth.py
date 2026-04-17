@@ -103,7 +103,7 @@ async def test_peer_schema_present_at_depth_one() -> None:
     assert children_rel["peer_schema"]["kind"] == "KindB"
     assert "attributes" in children_rel["peer_schema"]
     assert "relationships" in children_rel["peer_schema"]
-    assert "filters" in children_rel["peer_schema"]
+    assert "filters" not in children_rel["peer_schema"]
 
 
 async def test_peer_schema_relationships_have_no_nested_peer_schema() -> None:
@@ -213,8 +213,8 @@ async def test_mutual_cycle() -> None:
     assert "peer_schema" not in parent_rel
 
 
-async def test_same_kind_in_different_branches_not_marked_seen() -> None:
-    """KindC appears via two different paths — both should expand (not cycle)."""
+async def test_same_kind_deduped_across_branches() -> None:
+    """KindC appears via two paths — first is inlined, second is @ref."""
     schema_a = _make_schema_node(
         kind="KindA",
         label="Kind A",
@@ -243,14 +243,17 @@ async def test_same_kind_in_different_branches_not_marked_seen() -> None:
 
     result = await get_schema_detail(client, kind="KindA", depth=2)
 
+    # One of the two paths gets the full inline, the other gets @ref
     right_rel = next(r for r in result["relationships"] if r["name"] == "right")
-    assert "peer_schema" in right_rel
-    assert right_rel["peer_schema"]["kind"] == "KindC"
-
     left_rel = next(r for r in result["relationships"] if r["name"] == "left")
     target_rel = next(r for r in left_rel["peer_schema"]["relationships"] if r["name"] == "target")
-    assert "peer_schema" in target_rel
-    assert target_rel["peer_schema"]["kind"] == "KindC"
+
+    # Collect both peer_schema values for KindC
+    kindc_refs = [right_rel["peer_schema"], target_rel["peer_schema"]]
+    inline_count = sum(1 for r in kindc_refs if isinstance(r, dict))
+    ref_count = sum(1 for r in kindc_refs if r == "@ref:KindC")
+    assert inline_count == 1
+    assert ref_count == 1
 
 
 def test_tool_depth_capped_at_config_max() -> None:
