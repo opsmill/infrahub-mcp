@@ -7,3 +7,10 @@ schema_attribute_type_mapping = {
     "DateTime": "DateTime",
     "Enum": "String",
 }
+
+_ALLOWED_PLACEHOLDERS = {"date", "hex", "user"}
+
+AUTH_MODE_NONE = "none"
+AUTH_MODE_OIDC = "oidc"
+AUTH_MODE_TOKEN_PASSTHROUGH = "token-passthrough"  # noqa: S105
+_VALID_AUTH_MODES = {AUTH_MODE_NONE, AUTH_MODE_OIDC, AUTH_MODE_TOKEN_PASSTHROUGH}
