@@ -1,0 +1,35 @@
+specs/INFP-411-pr2-read-only.md
+  679c529e3ad16052 1-64
+src/infrahub_mcp/tools/gql.py
+  679c529e3ad16052 1,6-9,22,25-27,36-39,46,52-62,71
+src/infrahub_mcp/tools/write.py
+  679c529e3ad16052 292-347
+tests/unit/test_middleware.py
+  679c529e3ad16052 1-157
+src/infrahub_mcp/server.py
+  679c529e3ad16052 59-88,93,109-118,128,132-135
+pyproject.toml
+  679c529e3ad16052 104-105
+src/infrahub_mcp/middleware.py
+  679c529e3ad16052 5,10-19,22-24,26,30-36,39,41-117,138-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "b1cc50f706c9d59a80d4b33313d76d627f10c676",
+  "prompts": {
+    "679c529e3ad16052": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "66526e43-8eb5-4bec-94b8-aaf07c08fe0d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 457,
+      "total_deletions": 56,
+      "accepted_lines": 455,
+      "overriden_lines": 0
+    }
+  }
+}
