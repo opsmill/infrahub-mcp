@@ -1,0 +1,49 @@
+specs/INFP-411-pr4-production-middleware.md
+  8e4eb5e224d76763 48
+specs/INFP-411-pr5-observability.md
+  8e4eb5e224d76763 45
+specs/INFP-411-pr6-session-compat.md
+  8e4eb5e224d76763 48
+specs/INFP-411-pr3-auth.md
+  8e4eb5e224d76763 52
+tests/unit/test_config.py
+  8e4eb5e224d76763 121-126
+src/infrahub_mcp/server.py
+  8e4eb5e224d76763 52
+src/infrahub_mcp/config.py
+  8e4eb5e224d76763 123
+  679c529e3ad16052 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "a06362885c2380bab89f7ccd3157179ebfc60d0c",
+  "prompts": {
+    "679c529e3ad16052": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "66526e43-8eb5-4bec-94b8-aaf07c08fe0d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 308,
+      "overriden_lines": 0
+    },
+    "8e4eb5e224d76763": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d69676d3-9233-4a0e-8e9f-88f689a5a702",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 12,
+      "overriden_lines": 0
+    }
+  }
+}
