@@ -217,8 +217,10 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
 
     Returns:
         A dict with ``nodes`` (list of display labels or TOON-encoded string),
-        ``count`` (number of nodes in this page), ``total_count`` (total matching nodes),
-        ``has_more`` (whether more results exist), and ``offset`` / ``limit`` for context.
+        ``count`` (number of nodes in this page), ``total_count`` (total matching
+        nodes, or ``-1`` if the count query failed), ``has_more`` (True/False
+        when ``total_count`` is known, ``None`` when it is unavailable), and
+        ``offset`` / ``limit`` for context.
 
     Raises:
         RuntimeError: Via ``_log_and_raise_error`` when the schema is not found or the query fails.
@@ -264,7 +266,10 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
     if total_count > 0:
         await ctx.report_progress(progress=min(offset + len(nodes), total_count), total=total_count)
 
-    has_more = total_count > offset + len(nodes) if total_count >= 0 else len(nodes) == limit
+    # When the count query failed (total_count == -1) we cannot determine pagination
+    # authoritatively — return None so clients don't mistake an exact-page-boundary
+    # response for "more results available".
+    has_more: bool | None = total_count > offset + len(nodes) if total_count >= 0 else None
 
     if include_attributes:
         dicts = [await convert_node_to_dict(obj=node, branch=branch, include_id=True) for node in nodes]
