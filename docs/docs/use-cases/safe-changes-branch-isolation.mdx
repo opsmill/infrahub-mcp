@@ -59,7 +59,7 @@ Supported placeholders:
 | `{hex}` | Short random hex |
 | `{user}` | OIDC-authenticated user ID, sanitized for git refs |
 
-If the generated name collides, the server retries up to `INFRAHUB_MCP_MAX_BRANCH_RETRIES` times (default 5, max 20). A fixed name with no placeholders cannot collide by design and must not already exist.
+If the generated name collides, the server retries up to `INFRAHUB_MCP_MAX_BRANCH_RETRIES` times (default 5, max 20). A fixed name with no placeholders always resolves to the same branch, so startup fails if that branch already exists.
 
 See [Authentication architecture — Branch placeholder](../references/authentication.mdx#branch-placeholder) for how `{user}` is sanitized.
 
