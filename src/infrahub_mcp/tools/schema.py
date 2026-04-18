@@ -33,10 +33,11 @@ async def get_schema(
         Field(default=None, description="Branch to query. Defaults to the default branch."),
     ] = None,
 ) -> str:
-    """Discover available schema kinds and their structure in Infrahub.
+    """Discover available schema kinds — call this first when you don't know what kinds or filters exist.
 
-    Call without arguments to list all available kinds.
-    Call with a ``kind`` to see its attributes, relationships, and valid filter keys.
+    Without a ``kind``, returns the catalog of all kinds (compact JSON).
+    With a ``kind``, returns its attributes, relationships, and the full set
+    of filter keys accepted by ``get_nodes`` (TOON-encoded for token efficiency).
 
     Prefer reading the ``infrahub://schema`` resource if your client supports
     MCP resources — this tool provides the same data for clients that don't.

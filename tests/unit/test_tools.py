@@ -1,9 +1,16 @@
 import json
+import os
 
+import pytest
 import toon
 from fastmcp import Client
 
 from infrahub_mcp.server import mcp
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("INFRAHUB_ADDRESS"),
+    reason="Requires a live Infrahub instance; set INFRAHUB_ADDRESS to run.",
+)
 
 
 async def test_schema_catalog_resource() -> None:
