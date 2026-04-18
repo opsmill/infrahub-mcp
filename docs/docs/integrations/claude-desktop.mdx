@@ -12,7 +12,7 @@ Claude Desktop is the default starting point for most users — it speaks MCP ov
 
 ## Configure
 
-Open **Settings → Developer → Edit config**. Claude Desktop opens `claude_desktop_config.json`. Add an entry under `mcpServers`:
+Open **Settings → Developer**, then click `Edit config`. Claude Desktop opens `claude_desktop_config.json`. Add an entry under `mcpServers`:
 
 ```json
 {
@@ -38,7 +38,7 @@ Open **Settings → Developer → Edit config**. Claude Desktop opens `claude_de
 
 Save and restart Claude Desktop. The `infrahub_mcp` server appears under **Developer → MCP servers** with a green status indicator once the handshake succeeds.
 
-The `command` is run from Claude Desktop's working directory. If you installed the server somewhere other than your home directory, either set an absolute `cwd` or wrap the command in a shell script that `cd`s into the repo first.
+The `command` is run from Claude Desktop's working directory. If you installed the server somewhere other than your home directory, either set an absolute `cwd` or wrap the command in a shell script that `cd`s into the repository first.
 
 ## Connect to a remote server
 

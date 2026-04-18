@@ -2,7 +2,7 @@
 title: Cross-system correlation
 ---
 
-Infrastructure data doesn't live in one place. A ticket in Jira mentions a device, a Git commit touches a config file, an Ansible run fails against a hostname. Connecting those dots — "which device is this about, what depends on it, what changed recently?" — is a natural fit for an agent that can read Infrahub through MCP and your other systems through their own tools.
+Infrastructure data doesn't live in one place. A ticket in Jira mentions a device, a Git commit touches a configuration file, an Ansible run fails against a hostname. Connecting those dots — "which device is this about, what depends on it, what changed recently?" — is a natural fit for an agent that can read Infrahub through MCP and your other systems through their own tools.
 
 ## Scenario
 
@@ -68,7 +68,7 @@ query {
 
 ### 4. Correlate with change history
 
-Ask your Git MCP server (or a git log tool) for recent commits touching `spine-03`'s config. Infrahub's own branch history surfaces recently-merged proposed changes via the branches resource:
+Ask your Git MCP server (or a git log tool) for recent commits touching `spine-03`'s configuration. Infrahub's own branch history surfaces recently-merged proposed changes via the branches resource:
 
 ```text
 resource: infrahub://branches
@@ -78,7 +78,7 @@ resource: infrahub://branches
 
 The agent synthesizes:
 
-> `spine-03` is an Arista 7280 in Site AMS1, Rack 4B. Interface `Ethernet1/5` is a 100G uplink to `leaf-12 Ethernet49`. Two services depend on this link: `edge-fabric-eu` and `transit-carrier-a`. No Infrahub changes in the last 7 days; the last Git config push was 3 days ago by `@alice`.
+> `spine-03` is an Arista 7280 in Site AMS1, Rack 4B. Interface `Ethernet1/5` is a 100G uplink to `leaf-12 Ethernet49`. Two services depend on this link: `edge-fabric-eu` and `transit-carrier-a`. No Infrahub changes in the last 7 days; the last Git configuration push was 3 days ago by `@alice`.
 
 ## Patterns
 
