@@ -14,6 +14,8 @@ concurrency:
 
 env:
   VALE_VERSION: "3.7.1"
+  MCP_DISCOVERY_VERSION: "0.2.5"
+  MCP_DISCOVERY_SHA256: "ede19b0e8a6d960ddb3cf0abd7d33e791ad94aecfe65d94c33c6011bd5291ba9"
 
 jobs:
   files-changed:
@@ -83,9 +85,13 @@ jobs:
         run: "uv sync --frozen"
 
       - name: "Install mcp-discovery"
+        env:
+          TARBALL: "mcp-discovery-x86_64-unknown-linux-gnu.tar.xz"
+          BASE_URL: "https://github.com/rust-mcp-stack/mcp-discovery/releases/download"
         run: |
-          curl -sL https://github.com/rust-mcp-stack/mcp-discovery/releases/latest/download/mcp-discovery-x86_64-unknown-linux-gnu.tar.xz \
-            | tar -xJ --strip-components=1
+          curl -sL "${BASE_URL}/v${MCP_DISCOVERY_VERSION}/${TARBALL}" -o mcp-discovery.tar.xz
+          echo "${MCP_DISCOVERY_SHA256}  mcp-discovery.tar.xz" | sha256sum --check -
+          tar -xJf mcp-discovery.tar.xz --strip-components=1
           sudo mv mcp-discovery /usr/local/bin/
 
       - name: "Validate CAPABILITIES.md matches the live server"

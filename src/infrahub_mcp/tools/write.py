@@ -37,7 +37,7 @@ async def node_upsert(  # pylint: disable=too-many-locals
         Field(
             description=(
                 "Flat {attribute: value} map. See infrahub://schema/{kind} for valid names. "
-                "Scalar attributes only; use query_graphql for relationships."
+                "Scalar attributes only; use mutate_graphql for relationships."
             )
         ),
     ],
@@ -69,7 +69,7 @@ async def node_upsert(  # pylint: disable=too-many-locals
     - **Update**: supply either ``id`` or ``hfid`` to identify the target node.
 
     Only scalar attribute fields are accepted in ``data``. To set relationship
-    fields, use ``query_graphql`` with an appropriate GraphQL mutation.
+    fields, use ``mutate_graphql`` with an appropriate GraphQL mutation.
 
     Parameters:
         kind: Node kind to create or update.

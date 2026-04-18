@@ -338,6 +338,17 @@ class TestGetClientPassthrough:
         with pytest.raises(ToolError, match="Authentication required"):
             get_client(ctx)
 
+    def test_raises_when_infrahub_address_missing(self) -> None:
+        """Passthrough mode must fail closed when INFRAHUB_ADDRESS is unset."""
+        config = ServerConfig(auth_mode="token-passthrough")
+        app_ctx = AppContext(client=None, config=config)
+        ctx = _make_ctx(app_ctx)
+
+        set_passthrough_token("test-api-token")
+        with patch.dict(os.environ, {}, clear=True):
+            with pytest.raises(ToolError, match="INFRAHUB_ADDRESS is not set"):
+                get_client(ctx)
+
     def test_creates_client_with_token(self) -> None:
         config = ServerConfig(auth_mode="token-passthrough")
         app_ctx = AppContext(client=None, config=config)
