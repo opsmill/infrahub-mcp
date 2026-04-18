@@ -53,12 +53,15 @@ jobs:
 
       - name: Install mcp-discovery
         env:
+          GH_TOKEN: ${{ github.token }}
           VERSION: "0.2.5"
           EXPECTED_SHA256: "ede19b0e8a6d960ddb3cf0abd7d33e791ad94aecfe65d94c33c6011bd5291ba9"
           TARBALL: "mcp-discovery-x86_64-unknown-linux-gnu.tar.xz"
-          BASE_URL: "https://github.com/rust-mcp-stack/mcp-discovery/releases/download"
         run: |
-          curl -fsSL "${BASE_URL}/v${VERSION}/${TARBALL}" -o mcp-discovery.tar.xz
+          gh release download "v${VERSION}" \
+            --repo rust-mcp-stack/mcp-discovery \
+            --pattern "${TARBALL}" \
+            --output mcp-discovery.tar.xz
           echo "${EXPECTED_SHA256}  mcp-discovery.tar.xz" | sha256sum --check -
           tar -xJf mcp-discovery.tar.xz --strip-components=1
           sudo mv mcp-discovery /usr/local/bin/
