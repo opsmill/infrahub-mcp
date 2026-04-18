@@ -186,7 +186,11 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
         ),
     ] = 0,
 ) -> dict[str, Any]:
-    """Retrieve objects of a specific kind from Infrahub with pagination support.
+    """List nodes of a specific kind — the default read path for typed queries with optional filtering and pagination.
+
+    Prefer this over ``query_graphql`` when you just need objects of one kind:
+    results come back as display labels (fast, token-cheap) or full attribute
+    dicts (``include_attributes=True``).
 
     To discover available kinds, read the ``infrahub://schema`` resource.
     If your client does not support MCP resources, call the ``get_schema`` tool instead.
@@ -213,8 +217,10 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
 
     Returns:
         A dict with ``nodes`` (list of display labels or TOON-encoded string),
-        ``count`` (number of nodes in this page), ``total_count`` (total matching nodes),
-        ``has_more`` (whether more results exist), and ``offset`` / ``limit`` for context.
+        ``count`` (number of nodes in this page), ``total_count`` (total matching
+        nodes, or ``-1`` if the count query failed), ``has_more`` (True/False
+        when ``total_count`` is known, ``None`` when it is unavailable), and
+        ``offset`` / ``limit`` for context.
 
     Raises:
         RuntimeError: Via ``_log_and_raise_error`` when the schema is not found or the query fails.
@@ -260,7 +266,10 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
     if total_count > 0:
         await ctx.report_progress(progress=min(offset + len(nodes), total_count), total=total_count)
 
-    has_more = total_count > offset + len(nodes) if total_count >= 0 else len(nodes) == limit
+    # When the count query failed (total_count == -1) we cannot determine pagination
+    # authoritatively — return None so clients don't mistake an exact-page-boundary
+    # response for "more results available".
+    has_more: bool | None = total_count > offset + len(nodes) if total_count >= 0 else None
 
     if include_attributes:
         dicts = [await convert_node_to_dict(obj=node, branch=branch, include_id=True) for node in nodes]
@@ -303,10 +312,12 @@ async def search_nodes(
         Field(default=10, ge=1, le=100, description="Maximum number of results to return."),
     ] = 10,
 ) -> list[str]:
-    """Search nodes of a specific kind by partial name match.
+    """Find a node of a specific kind by partial name — use when you only know part of the name.
 
-    A convenience wrapper around get_nodes with ``partial_match=True`` and a ``name__value``
-    filter. Use when you need to find a node without knowing its exact name.
+    Matches substrings against the ``name`` attribute only (via
+    ``name__value`` with ``partial_match=True``). For matching on other
+    attributes, or for combining multiple filters, use ``get_nodes`` with
+    an explicit ``filters`` dict instead.
 
     To discover available kinds, read the ``infrahub://schema`` resource.
     If your client does not support MCP resources, call the ``get_schema`` tool instead.

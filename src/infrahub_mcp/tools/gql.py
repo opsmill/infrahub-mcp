@@ -33,10 +33,12 @@ async def query_graphql(
         ),
     ] = None,
 ) -> dict[str, Any]:
-    """Execute a read-only GraphQL query against Infrahub.
+    """Execute a read-only GraphQL query against Infrahub — use for reads only, never mutations.
 
-    This tool only accepts GraphQL **queries**. For mutations, use the
-    ``mutate_graphql`` tool instead (available when write mode is enabled).
+    Mutations are rejected at the AST level: use ``mutate_graphql`` instead
+    (available when write mode is enabled). For simple attribute reads, prefer
+    ``get_nodes`` / ``search_nodes`` — use GraphQL only when you need relationship
+    traversal, aggregation, or fields not exposed by the typed tools.
 
     To discover available kinds and their attributes, read the ``infrahub://schema``
     resource. If your client does not support MCP resources, call the ``get_schema``

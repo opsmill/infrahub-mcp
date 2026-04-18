@@ -37,7 +37,7 @@ async def node_upsert(  # pylint: disable=too-many-locals
         Field(
             description=(
                 "Flat {attribute: value} map. See infrahub://schema/{kind} for valid names. "
-                "Scalar attributes only; use query_graphql for relationships."
+                "Scalar attributes only; use mutate_graphql for relationships."
             )
         ),
     ],
@@ -69,7 +69,7 @@ async def node_upsert(  # pylint: disable=too-many-locals
     - **Update**: supply either ``id`` or ``hfid`` to identify the target node.
 
     Only scalar attribute fields are accepted in ``data``. To set relationship
-    fields, use ``query_graphql`` with an appropriate GraphQL mutation.
+    fields, use ``mutate_graphql`` with an appropriate GraphQL mutation.
 
     Parameters:
         kind: Node kind to create or update.
@@ -321,14 +321,16 @@ async def mutate_graphql(
         ),
     ] = None,
 ) -> dict[str, Any]:
-    """Execute a GraphQL mutation against Infrahub on the active session branch.
+    """Execute a GraphQL mutation against Infrahub — use only for complex writes that typed tools can't express.
 
-    Use this tool for GraphQL mutations (creating, updating, or deleting data).
-    For read-only queries, use ``query_graphql`` instead.
+    Prefer ``node_upsert`` (create/update scalar attributes) or ``node_delete``
+    (remove a node) for straightforward changes; they validate against the
+    schema and produce clearer audit entries. Reach for ``mutate_graphql``
+    when you need relationship edits, bulk operations, or any mutation shape
+    not covered by the typed tools. For reads, use ``query_graphql``.
 
-    The mutation targets the session branch by default, which is auto-created on
-    the first write of the session. Prefer ``node_upsert`` / ``node_delete`` for
-    simple attribute changes — use this tool for complex mutations only.
+    The mutation targets the session branch by default, which is auto-created
+    on the first write of the session (``mcp/session-YYYYMMDD-<hex>``).
 
     To discover available kinds and their attributes, read the ``infrahub://schema``
     resource or call the ``get_schema`` tool.

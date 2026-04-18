@@ -47,8 +47,15 @@ def get_client(ctx: Context) -> InfrahubClient:
         if token is None:
             msg = "Authentication required: no Infrahub API token in request header."
             raise ToolError(msg)
+        address = os.environ.get("INFRAHUB_ADDRESS", "").strip()
+        if not address:
+            msg = (
+                "INFRAHUB_ADDRESS is not set. "
+                "Configure it to the URL of your Infrahub instance (e.g. http://localhost:8000)."
+            )
+            raise ToolError(msg)
         return InfrahubClient(
-            address=os.environ["INFRAHUB_ADDRESS"],
+            address=address,
             config={"api_token": token},
         )
 
