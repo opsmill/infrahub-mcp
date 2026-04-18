@@ -64,6 +64,33 @@ jobs:
       - name: "Tests: pytest (unit-only, integration tests skipped without INFRAHUB_ADDRESS)"
         run: "uv run pytest"
 
+  capabilities-check:
+    name: Validate CAPABILITIES.md is current
+    if: needs.files-changed.outputs.python == 'true'
+    needs: ["files-changed"]
+    runs-on: "ubuntu-latest"
+    timeout-minutes: 5
+    steps:
+      - name: "Check out repository code"
+        uses: "actions/checkout@v6"
+
+      - name: "Install uv"
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+
+      - name: "Install dependencies"
+        run: "uv sync --frozen"
+
+      - name: "Install mcp-discovery"
+        run: |
+          curl -sL https://github.com/rust-mcp-stack/mcp-discovery/releases/latest/download/mcp-discovery-x86_64-unknown-linux-gnu.tar.xz \
+            | tar -xJ --strip-components=1
+          sudo mv mcp-discovery /usr/local/bin/
+
+      - name: "Validate CAPABILITIES.md matches the live server"
+        run: "uv run invoke check-capabilities"
+
   yaml-lint:
     if: needs.files-changed.outputs.yaml == 'true'
     needs: ["files-changed"]

@@ -60,13 +60,7 @@ jobs:
         # yamllint enable rule:line-length
 
       - name: Validate CAPABILITIES.md is up to date
-        run: |
-          bash scripts/update-capabilities.sh /tmp/capabilities-check.md
-          if ! diff -q CAPABILITIES.md /tmp/capabilities-check.md > /dev/null 2>&1; then
-            echo "::error::CAPABILITIES.md is out of date. Run 'bash scripts/update-capabilities.sh' and commit."
-            diff CAPABILITIES.md /tmp/capabilities-check.md || true
-            exit 1
-          fi
+        run: "uv run invoke check-capabilities"
 
   publish:
     needs: validate
