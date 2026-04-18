@@ -1,0 +1,84 @@
+---
+title: Natural language to GraphQL
+---
+
+`get_nodes` and `search_nodes` handle most everyday queries, but some questions need the full expressive power of GraphQL: aggregates, deep joins, multi-kind filters, and computed fields. This recipe shows how an agent goes from a free-form English question to a working `query_graphql` call, using the server's own schema as the grounding.
+
+## Scenario
+
+A capacity planner asks:
+
+> Show me every /24 prefix in the `EU` region that has less than 50% of its addresses allocated, sorted by available space descending.
+
+No canned tool covers that shape. The agent needs to generate a GraphQL query against Infrahub's schema.
+
+## The flow
+
+### 1. Ground the model in the real schema
+
+Reading `infrahub://graphql-schema` returns the full GraphQL SDL for *this* Infrahub instance — including any schema extensions. This is the single source of truth the agent should consult before writing a query.
+
+For clients that don't support the `text/plain` resource type, the agent can fall back to calling `get_schema()` for the kind catalog, then `get_schema(kind="IpamIPPrefix")` (or whichever kind applies) for the full field list.
+
+### 2. Draft the query
+
+With the SDL in context, the agent drafts:
+
+```graphql
+query PrefixCapacity($region: String!) {
+  IpamIPPrefix(
+    prefix_length__value: 24,
+    region__name__value: $region
+  ) {
+    count
+    edges {
+      node {
+        prefix { value }
+        utilization { value }
+        region { node { name { value } } }
+      }
+    }
+  }
+}
+```
+
+The agent inspects the returned `utilization` values, filters client-side to those below 50%, and sorts by available space.
+
+### 3. Execute via `query_graphql`
+
+```text
+query_graphql(
+    query="<the query above>",
+    branch=None,
+)
+```
+
+Mutations are rejected by `query_graphql` — this is a read-only path. If the agent tries to mutate, it gets a clear error telling it to use `mutate_graphql` or `node_upsert` instead.
+
+### 4. Narrate the result
+
+The agent summarizes in natural language: "8 prefixes in EU have less than 50% utilization. The three with the most headroom are ..."
+
+## When to use which tool
+
+| Question shape | Use |
+| --- | --- |
+| "Show me all X where attribute = Y" | `get_nodes` with filters |
+| "Find X whose name contains Y" | `search_nodes` |
+| "What relationships does X have?" | `get_related_nodes` |
+| "Aggregate, join, or compute across kinds" | `query_graphql` |
+| "Build a custom change pipeline" | `mutate_graphql` (write) |
+
+## The `answer_infra_question` prompt
+
+The server ships a prompt called `answer_infra_question` that encodes this exact pipeline — discover kinds, read schema detail, pick the right tool, traverse relationships, summarize with provenance. Invoke it directly from your client when you want a canned read-only investigation flow:
+
+```text
+/answer_infra_question question="How many /24s in EU have <50% utilization?"
+```
+
+## Related reading
+
+- [Troubleshooting data queries](./troubleshooting-queries.mdx) — when the query structure is wrong.
+- [Cross-system correlation](./cross-system-correlation.mdx) — combining Infrahub data with external signals.
+- [Methods reference](../references/methods.mdx#query_graphql) — the full `query_graphql` contract.
