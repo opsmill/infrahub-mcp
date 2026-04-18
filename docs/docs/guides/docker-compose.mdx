@@ -162,7 +162,7 @@ For the full list including retry, auth, OpenTelemetry, and more, see the [Confi
 
 ## Operational tips
 
-- **Health probes** — `/health` returns HTTP 503 when the server can't reach Infrahub. Wire it into your orchestrator's liveness probe with a generous timeout (Infrahub can be slow to start).
+- **Health probes** — `/health` returns HTTP 503 when the server can't reach Infrahub. Wire it into your orchestrator's readiness probe with a generous timeout (Infrahub can be slow to start).
 - **Metrics** — set `INFRAHUB_MCP_PROMETHEUS_ENABLED=true` and scrape `/metrics` into Prometheus or a Grafana Agent. The JSON format (default) is useful for ad-hoc curls; the Prometheus format is what production monitoring wants.
 - **Log level** — `INFRAHUB_MCP_LOG_LEVEL=debug` logs full tracebacks and per-call timing; use it when diagnosing an issue, not in steady state.
 - **Token pass-through requires HTTP** — the Compose deployment is HTTP-only, which is what token pass-through and OIDC require. Don't mix stdio transport into a container deployment.
