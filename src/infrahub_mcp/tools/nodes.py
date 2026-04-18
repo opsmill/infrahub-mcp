@@ -105,7 +105,12 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
         dict[str, Any] | None,
         Field(
             default=None,
-            description="Attribute/relationship filters. See infrahub://schema/{kind} for the full filter map.",
+            description=(
+                "Attribute/relationship filters. Keys follow the schema's "
+                'filter map (e.g. {"name__value": "atl1"} or '
+                '{"site__name__value": "atl1"}). See infrahub://schema/{kind} '
+                "for the full filter map."
+            ),
         ),
     ] = None,
     partial_match: Annotated[
@@ -136,6 +141,12 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
     If your client does not support MCP resources, call the ``get_schema`` tool instead.
     To discover available filters for a kind, read ``infrahub://schema/{kind}``
     or call ``get_schema(kind='...')``.
+
+    Filter keys follow the schema's filter map. Attribute filters use
+    ``<attr>__value`` (e.g. ``{"name__value": "atl1"}``) and relationship
+    filters chain via ``<rel>__<attr>__value`` (e.g.
+    ``{"site__name__value": "atl1"}``). See ``infrahub://schema/{kind}`` for
+    the full list of valid keys.
 
     Args:
         kind: Kind of the objects to retrieve.

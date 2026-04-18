@@ -39,7 +39,7 @@ curl -s http://localhost:8001/health
 
 ## Deploy as a sidecar to Infrahub
 
-The repo ships a `docker-compose.yml` that uses a YAML anchor (`x-infrahub-mcp-config`) to centralize the env-var list. This is the recommended starting point for real deployments — drop it next to (or merge it into) your existing Infrahub Compose file.
+The repository ships a `docker-compose.yml` that uses a YAML anchor (`x-infrahub-mcp-config`) to centralize the env-var list. This is the recommended starting point for real deployments — drop it next to (or merge it into) your existing Infrahub Compose file.
 
 ```yaml
 ---
