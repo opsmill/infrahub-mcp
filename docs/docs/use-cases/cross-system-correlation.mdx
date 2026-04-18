@@ -1,0 +1,94 @@
+---
+title: Cross-system correlation
+---
+
+Infrastructure data doesn't live in one place. A ticket in Jira mentions a device, a Git commit touches a config file, an Ansible run fails against a hostname. Connecting those dots — "which device is this about, what depends on it, what changed recently?" — is a natural fit for an agent that can read Infrahub through MCP and your other systems through their own tools.
+
+## Scenario
+
+A support engineer is triaging a Jira ticket:
+
+> "SR-4812 — `spine-03` flapping interface `Ethernet1/5`, downstream services degraded."
+
+The agent's job: enrich the ticket with Infrahub context — what is `spine-03`, what connects to `Ethernet1/5`, which services depend on that link, and when did it last change.
+
+## The flow
+
+### 1. Start with the signal
+
+The agent already has the ticket text from the Jira MCP server (or its own Jira tool). It extracts the device name `spine-03` and the interface `Ethernet1/5`.
+
+### 2. Resolve the device in Infrahub
+
+```text
+search_nodes(query="spine-03", kind="DcimDevice", limit=5)
+```
+
+Once the agent has the canonical name and UUID, it fetches the full record:
+
+```text
+get_nodes(
+    kind="DcimDevice",
+    filters={"name__value": "spine-03"},
+    include_attributes=True,
+)
+```
+
+### 3. Walk the relationships
+
+The interesting context lives in related nodes — interfaces, connected circuits, upstream/downstream peers, the rack, the site, any services that reference this device.
+
+```text
+get_related_nodes(kind="DcimDevice", id="<uuid>", relation="interfaces")
+get_related_nodes(kind="DcimDevice", id="<uuid>", relation="site")
+```
+
+For the specific interface:
+
+```graphql
+query {
+  DcimInterface(
+    device__name__value: "spine-03",
+    name__value: "Ethernet1/5"
+  ) {
+    edges {
+      node {
+        description { value }
+        connected_endpoint {
+          node {
+            name { value }
+            device { node { name { value } } }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### 4. Correlate with change history
+
+Ask your Git MCP server (or a git log tool) for recent commits touching `spine-03`'s config. Infrahub's own branch history surfaces recently-merged proposed changes via the branches resource:
+
+```text
+resource: infrahub://branches
+```
+
+### 5. Return a triage summary
+
+The agent synthesizes:
+
+> `spine-03` is an Arista 7280 in Site AMS1, Rack 4B. Interface `Ethernet1/5` is a 100G uplink to `leaf-12 Ethernet49`. Two services depend on this link: `edge-fabric-eu` and `transit-carrier-a`. No Infrahub changes in the last 7 days; the last Git config push was 3 days ago by `@alice`.
+
+## Patterns
+
+- **Name → ID**: always resolve human-friendly names to UUIDs before fetching related data. Use `search_nodes` for fuzzy names, `get_nodes` with exact filters for clean ones.
+- **Relationship names are schema-defined**: use `infrahub://schema/{kind}` to discover the exact relationship field names (`interfaces`, `connected_endpoint`, `site`, etc.) rather than guessing.
+- **GraphQL for multi-hop**: if you need to cross 3+ relationships in one call, write a GraphQL query — it's cheaper than chaining `get_related_nodes` calls.
+- **Branch awareness**: if the ticket is about a pending change, pass `branch=...` to your queries. The same device can have different state on different branches.
+
+## Related reading
+
+- [Natural-language to GraphQL](./natural-language-graphql.mdx) — for multi-hop joins.
+- [Compliance analysis](./compliance-analysis.mdx) — for correlating across *many* devices.
+- [Troubleshooting data queries](./troubleshooting-queries.mdx) — when the correlation returns nothing.

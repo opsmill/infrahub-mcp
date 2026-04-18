@@ -1,0 +1,107 @@
+---
+title: OpenAI Agents SDK
+---
+
+The [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/) has first-class support for MCP servers. This page shows how to build a custom infrastructure-automation agent that talks to the Infrahub MCP server over Streamable HTTP.
+
+## Prerequisites
+
+- Python 3.13+ and an OpenAI API key.
+- The Infrahub MCP server running on HTTP (see [Docker Compose](../guides/docker-compose.mdx) or the [installation guide](../getting-started/installation.mdx) for the `--transport streamable-http` path).
+- `pip install openai-agents httpx`.
+
+## Minimal read-only agent
+
+```python
+import asyncio
+from agents import Agent, Runner
+from agents.mcp import MCPServerStreamableHttp
+
+
+async def main() -> None:
+    async with MCPServerStreamableHttp(
+        name="infrahub",
+        params={
+            "url": "http://localhost:8001/mcp",
+            # Token pass-through: forward the user's Infrahub API token
+            "headers": {
+                "Authorization": "Bearer your-infrahub-api-token",
+            },
+        },
+    ) as infrahub_server:
+        agent = Agent(
+            name="Infra Analyst",
+            instructions=(
+                "You are a network analyst with read-only access to Infrahub "
+                "via MCP. Always read infrahub://schema before guessing kind "
+                "names. Prefer get_nodes and search_nodes over query_graphql "
+                "for simple lookups."
+            ),
+            mcp_servers=[infrahub_server],
+        )
+
+        result = await Runner.run(
+            agent,
+            "List every schema kind whose name starts with Dcim, and pick three "
+            "to sample with get_nodes (limit 3).",
+        )
+        print(result.final_output)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+The SDK handles `tools/list`, `resources/list`, and translates MCP tool calls into the OpenAI tool-call format automatically. You get structured tool-call traces in the result object for auditing.
+
+## Adding the built-in system prompt
+
+The server ships an `infrahub_agent` prompt that encodes the expected workflow. Fetch it and use it as your `instructions` override:
+
+```python
+prompt_response = await infrahub_server.get_prompt("infrahub_agent", {})
+agent = Agent(
+    name="Infra Agent",
+    instructions=prompt_response.messages[0].content.text,
+    mcp_servers=[infrahub_server],
+)
+```
+
+The prompt dynamically reflects the server's read-only mode. If the server runs with `INFRAHUB_MCP_READ_ONLY=true`, the prompt tells the agent that write tools are unavailable.
+
+## Multi-tenant: per-user tokens
+
+For a web app where each authenticated user has their own Infrahub API token, forward the token per request instead of hardcoding it:
+
+```python
+async def handle_request(user_token: str, question: str) -> str:
+    async with MCPServerStreamableHttp(
+        name="infrahub",
+        params={
+            "url": "http://mcp.internal:8001/mcp",
+            "headers": {"Authorization": f"Bearer {user_token}"},
+        },
+    ) as server:
+        agent = Agent(
+            name="Infra Agent",
+            instructions="Use Infrahub tools to answer the user's question.",
+            mcp_servers=[server],
+        )
+        result = await Runner.run(agent, question)
+        return result.final_output
+```
+
+The MCP server must be configured with `INFRAHUB_MCP_AUTH_MODE=token-passthrough`. See [Authentication setup](../getting-started/authentication.mdx#token-passthrough).
+
+## Production considerations
+
+- **Rate limit** — set `INFRAHUB_MCP_RATE_LIMIT_RPS` on the server to cap per-client load.
+- **Retry** — enable server-side retries via `INFRAHUB_MCP_RETRY_MAX_ATTEMPTS=3` for transient network errors.
+- **Observability** — scrape `/metrics` (JSON or Prometheus) to track tool-call rates and error budgets.
+- **Audit** — with OIDC enabled, every call is logged with the authenticated user. See the [Authentication architecture](../references/authentication.mdx#audit-logs).
+
+## Related reading
+
+- [Docker Compose deployment](../guides/docker-compose.mdx) — to run the MCP server for your SDK client.
+- [Authentication setup](../getting-started/authentication.mdx)
+- [Methods reference](../references/methods.mdx)

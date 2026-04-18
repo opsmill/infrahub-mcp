@@ -2,7 +2,17 @@
 title: Set up authentication
 ---
 
-This guide walks through configuring each authentication mode. For an explanation of how the auth architecture works and when to choose each mode, see [Authentication architecture](../topics/authentication.mdx).
+This guide walks through configuring each authentication mode. For a deeper explanation of how the auth architecture works — sequence diagrams, the two-layer model, audit logs, and branch-placeholder resolution — see [Authentication architecture](../references/authentication.mdx).
+
+## Choosing a mode
+
+| Mode | When to use | Transport | Identity per request |
+| --- | --- | --- | --- |
+| `none` (default) | Local development, single-user workstations, VPN-only deployments | stdio or HTTP | Shared `INFRAHUB_API_TOKEN` |
+| `token-passthrough` | Multi-tenant HTTP deployments where each user should act as themselves in Infrahub | HTTP only | Client sends own Infrahub API token |
+| `oidc` | Enterprise SSO (Google, Okta, Entra, Keycloak) with centralized identity and optional scope-based write gating | HTTP only | OIDC token validated per request |
+
+Username/password authentication is not supported — use OIDC when you need external identity.
 
 ## No authentication (default)
 
@@ -153,7 +163,7 @@ INFRAHUB_MCP_AUTH_SCOPES_WRITE=write
 
 ## Configuration reference
 
-For the complete list of environment variables, see the [Configuration reference](../references/configuration.mdx#authentication-and-authorization).
+For the complete list of environment variables, see the [Configuration reference](../references/configuration.mdx#authentication-and-authorization). For an architectural deep-dive on each mode, see [Authentication architecture](../references/authentication.mdx).
 
 | Variable                                | Required   | Default         | Description                                                          |
 | --------------------------------------- | ---------- | --------------- | -------------------------------------------------------------------- |
