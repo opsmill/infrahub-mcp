@@ -282,13 +282,15 @@ def _update_server_json(server_json_path: str = "server.json") -> None:
 
         for var_name in sorted(missing):
             field_name = var_name.removeprefix("INFRAHUB_MCP_").lower()
-            env_list.append({
-                "name": var_name,
-                "description": _get_field_description(field_name),
-                "isRequired": False,
-                "format": "string",
-                "isSecret": var_name in SECRET_ENV_VARS,
-            })
+            env_list.append(
+                {
+                    "name": var_name,
+                    "description": _get_field_description(field_name),
+                    "isRequired": False,
+                    "format": "string",
+                    "isSecret": var_name in SECRET_ENV_VARS,
+                }
+            )
 
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     if missing or extra_mcp:
