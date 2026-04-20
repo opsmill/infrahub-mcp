@@ -200,8 +200,10 @@ def infrahub_agent() -> str:
         "Never guess kind names or filter keys — discover them first.\n\n"
         "## Available tools\n\n"
         "### Read\n"
-        "- **`get_schema`** — discover available kinds and their attributes/filters. Use when resources are not available.\n"
-        "- **`get_nodes`** — retrieve objects of a given kind, with optional filters. Pass `include_attributes=True` for full attribute data.\n"
+        "- **`get_schema`** — discover available kinds and their attributes/filters. "
+        "Use when resources are not available.\n"
+        "- **`get_nodes`** — retrieve objects of a given kind, with optional filters. "
+        "Pass `include_attributes=True` for full attribute data.\n"
         "- **`search_nodes`** — find nodes by partial name match.\n"
         "- **`query_graphql`** — execute a read-only GraphQL query."
     )

@@ -117,6 +117,25 @@ max-line-length = 150
 ]
 
 
+[tool.pylint.format]
+max-line-length = 120
+
+[tool.pylint."messages control"]
+disable = [
+    "too-many-arguments",            # R0913 — MCP tool functions have many params by design
+    "too-many-positional-arguments", # R0917 — same reason
+    "fixme",                         # W0511 — TODOs are tracked, not banned
+    "missing-module-docstring",      # C0114 — module docstrings add noise, ruff handles this
+    "import-outside-toplevel",       # C0415 — conditional/lazy imports are intentional
+    "too-few-public-methods",        # R0903 — ASGI middleware classes need only __call__
+    "invalid-name",                  # C0103 — module-level instances are intentionally lowercase
+    "broad-exception-caught",        # W0718 — health/lifespan endpoints catch-all intentionally
+    "global-statement",              # W0603 — middleware registry uses module-level state
+    "no-else-return",                # R1705 — stylistic, ruff handles this differently
+    "protected-access",              # W0212 — SDK workarounds require private member access
+    "unused-argument",               # W0613 — framework callback signatures require unused args
+]
+
 [tool.uv]
 constraint-dependencies = [
     "aiohttp>=3.13.3",

@@ -100,7 +100,7 @@ class ServerConfig(BaseSettings):
     @property
     def log_level_debug(self) -> bool:
         """True when ``INFRAHUB_MCP_LOG_LEVEL=debug``."""
-        return self.log_level.lower() == "debug"
+        return self.log_level.lower() == "debug"  # pylint: disable=no-member
 
     @field_validator("log_level", mode="before")
     @classmethod

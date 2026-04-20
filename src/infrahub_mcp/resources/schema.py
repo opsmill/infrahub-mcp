@@ -80,5 +80,5 @@ async def graphql_schema(ctx: Context) -> str:
     # infrahub_sdk has no public API to fetch the raw GraphQL SDL;
     # using private _get() as a workaround.
     # TODO: open an issue with infrahub_sdk maintainers requesting a public schema-retrieval method.
-    resp = await client._get(url=f"{client.address}/schema.graphql")  # noqa: SLF001
+    resp = await client._get(url=f"{client.address}/schema.graphql")  # noqa: SLF001  # pylint: disable=protected-access
     return resp.text

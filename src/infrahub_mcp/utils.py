@@ -233,13 +233,14 @@ def _node_label(node: InfrahubNode, *, include_kind: bool = True) -> str:
     return node.id or "unknown"
 
 
-async def convert_node_to_dict(  # noqa: C901
+async def convert_node_to_dict(  # noqa: C901  # pylint: disable=too-many-branches
     *,
     obj: InfrahubNode,
     branch: str | None,
     include_id: bool = False,
     hfid_include_kind: bool = True,
 ) -> dict[str, Any]:
+    """Serialize an InfrahubNode into a plain dict with attributes and relationships."""
     data = {}
 
     if include_id:
