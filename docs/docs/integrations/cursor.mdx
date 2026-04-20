@@ -52,7 +52,7 @@ For a shared MCP server deployment:
 
 Cursor prompts the user before every tool call by default, which is useful during onboarding but noisy for chatty read-only flows. Two ways to tune this:
 
-- **Auto-approve read tools** — in **Settings → MCP tools → infrahub_mcp**, whitelist `get_schema`, `get_nodes`, `search_nodes`, `get_related_nodes`, `get_node_filters`, `query_graphql`.
+- **Auto-approve read tools** — in **Settings → MCP tools → infrahub_mcp**, whitelist `get_schema`, `get_nodes`, `search_nodes`, `query_graphql`.
 - **Keep manual approval for writes** — leave `node_upsert`, `node_delete`, `propose_changes`, `mutate_graphql` on interactive approval so a human explicitly confirms each mutation. This matches Cursor's default for destructive actions.
 
 For a server-side hard lock, set `INFRAHUB_MCP_READ_ONLY=true` and Cursor will only ever see read tools.
