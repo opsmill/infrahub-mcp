@@ -26,20 +26,22 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --frozen
 
+      - name: Install mcp-discovery CLI
+        run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/rust-mcp-stack/mcp-discovery/releases/latest/download/mcp-discovery-installer.sh | sh
+
       - name: Generate CAPABILITIES.md
-        uses: rust-mcp-stack/mcp-discovery-action@v1
-        with:
-          command: create
-          mcp-launch-command: >-
-            env INFRAHUB_ADDRESS=http://localhost:8080 INFRAHUB_API_TOKEN=dummy
-            uv run fastmcp run src/infrahub_mcp/server.py:mcp
-          filename: ${{ github.workspace }}/capabilities-check.md
-          template: md
+        run: >-
+          mcp-discovery create
+          --filename capabilities-check.md
+          --template md
+          --
+          env INFRAHUB_ADDRESS=http://localhost:8080 INFRAHUB_API_TOKEN=dummy
+          uv run fastmcp run src/infrahub_mcp/server.py:mcp
 
       - name: Validate CAPABILITIES.md is up to date
         run: |
-          if ! diff -q CAPABILITIES.md ${{ github.workspace }}/capabilities-check.md > /dev/null 2>&1; then
+          if ! diff -q CAPABILITIES.md capabilities-check.md > /dev/null 2>&1; then
             echo "::error::CAPABILITIES.md is out of date. Run 'bash scripts/update-capabilities.sh' and commit."
-            diff CAPABILITIES.md ${{ github.workspace }}/capabilities-check.md || true
+            diff CAPABILITIES.md capabilities-check.md || true
             exit 1
           fi
