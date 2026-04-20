@@ -14,7 +14,7 @@ The current `reports/` module bakes domain-specific dashboards into the MCP serv
 
 Three layers, matching the Hitchhiker's Guide pattern:
 
-```
+```text
 Standalone App (domain-specific)
     ↓ calls
 FastMCPApp "Infrahub" (generic, schema-agnostic)
@@ -30,7 +30,7 @@ MCP Server (pure data/action API)
 
 New package `src/infrahub_app/` (separate from `infrahub_mcp`, treated as a distinct package even though it lives in the same repo for now):
 
-```
+```text
 src/infrahub_app/
 ├── __init__.py            # exports `app` for mounting
 ├── app.py                 # FastMCPApp("Infrahub") instance
@@ -80,7 +80,7 @@ async def explore(
 ### Parameters
 
 | Parameter | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `kind` | `str` | Schema kind to explore (e.g., `"InfraDevice"`) |
 | `branch` | `str \| None` | Branch name, defaults to main |
 | `filters` | `dict \| None` | Key-value filters passed to `get_nodes` (e.g., `{"status__value": "active"}`) |
@@ -119,7 +119,7 @@ Each panel is a dict:
 
 ### Layout
 
-```
+```text
 Tabs:
   "Overview":
     Grid(columns=3): Metric cards (node count, attributes, relationships)
@@ -162,7 +162,7 @@ async def overview(
 ### Parameters
 
 | Parameter | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `branch` | `str \| None` | Branch name |
 | `group_by` | `str` | Grouping dimension: `"namespace"` (default), `"label"`, `"kind"` |
 | `filters` | `dict \| None` | Filter the catalog of kinds (e.g., `{"namespace": "Infra"}` to show only Infra kinds) |
@@ -180,7 +180,7 @@ async def overview(
 
 ### Layout
 
-```
+```text
 Tabs:
   "Summary":
     Grid(columns=3): Metric cards (total nodes, populated kinds, empty kinds)
@@ -246,7 +246,7 @@ class PanelConfig:
 ### Chart Type Mapping
 
 | Panel Type | Prefab Component | Key Options |
-|---|---|---|
+| --- | --- | --- |
 | `pie` | `PieChart` | `data_key`, `name_key` |
 | `bar` | `BarChart` | `horizontal`, `stacked`, `series` (multi-series) |
 | `line` | `LineChart` | `series` |
@@ -258,7 +258,7 @@ class PanelConfig:
 
 UI controls (filter dropdowns, group_by selectors) trigger backend re-fetch via Prefab's `CallTool` + `SetState` pattern:
 
-```
+```text
 User changes filter in UI
   → CallTool("fetch_explore_data", {kind, branch, filters: new_filters})
   → on_success: SetState(nodes=result.nodes, distributions=result.distributions)
@@ -266,6 +266,7 @@ User changes filter in UI
 ```
 
 This means:
+
 - `@app.ui()` functions build the initial view and state
 - `@app.tool()` functions are the backend endpoints for re-fetching data
 - Prefab handles the reactive update cycle

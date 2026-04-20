@@ -216,11 +216,8 @@ def _get_expected_server_json_vars() -> set[str]:
     return expected
 
 
-def _validate_server_json(server_json_path: str = "server.json") -> list[str]:
-    """Check that server.json environmentVariables covers all non-auth ServerConfig fields.
-
-    Returns a list of error messages (empty if valid).
-    """
+def _read_server_json(server_json_path: str = "server.json") -> tuple[dict, set[str]]:
+    """Read server.json and return (parsed data, set of env var names)."""
     path = Path(server_json_path)
     data = json.loads(path.read_text(encoding="utf-8"))
 
@@ -228,6 +225,11 @@ def _validate_server_json(server_json_path: str = "server.json") -> list[str]:
     for pkg in data.get("packages", []):
         actual_vars.update(env_entry["name"] for env_entry in pkg.get("environmentVariables", []))
 
+    return data, actual_vars
+
+
+def _check_server_json_drift(actual_vars: set[str]) -> list[str]:
+    """Return error messages for env var drift (empty if in sync)."""
     expected_mcp_vars = _get_expected_server_json_vars()
 
     missing = sorted(expected_mcp_vars - actual_vars)
@@ -241,15 +243,77 @@ def _validate_server_json(server_json_path: str = "server.json") -> list[str]:
     return errors
 
 
+def _get_field_description(field_name: str) -> str:
+    """Derive a short description for a ServerConfig field."""
+    config = ServerConfig()
+    default = getattr(config, field_name)
+    field_info = ServerConfig.model_fields[field_name]
+
+    parts: list[str] = []
+    if field_info.description:
+        parts.append(field_info.description)
+    else:
+        parts.append(field_name.replace("_", " ").capitalize())
+
+    if isinstance(default, bool):
+        parts.append(f"(default: {str(default).lower()})")
+    elif isinstance(default, float) and default == int(default):
+        parts.append(f"(default: {int(default)})")
+    elif (isinstance(default, str) and default) or isinstance(default, (int, float)):
+        parts.append(f"(default: {default})")
+
+    return " ".join(parts)
+
+
+def _update_server_json(server_json_path: str = "server.json") -> None:
+    """Add missing INFRAHUB_MCP_* entries and remove stale ones from server.json."""
+    path = Path(server_json_path)
+    data, actual_vars = _read_server_json(server_json_path)
+    expected_mcp_vars = _get_expected_server_json_vars()
+
+    missing = expected_mcp_vars - actual_vars
+    extra_mcp = actual_vars - expected_mcp_vars - EXTRA_SERVER_JSON_VARS
+
+    for pkg in data.get("packages", []):
+        env_list: list[dict] = pkg.get("environmentVariables", [])
+
+        if extra_mcp:
+            env_list[:] = [e for e in env_list if e["name"] not in extra_mcp]
+
+        for var_name in sorted(missing):
+            field_name = var_name.removeprefix("INFRAHUB_MCP_").lower()
+            env_list.append({
+                "name": var_name,
+                "description": _get_field_description(field_name),
+                "isRequired": False,
+                "format": "string",
+                "isSecret": var_name in SECRET_ENV_VARS,
+            })
+
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    if missing or extra_mcp:
+        print(f"server.json updated: +{len(missing)} added, -{len(extra_mcp)} removed")
+    else:
+        print("server.json already up to date")
+
+
 @task
-def validate_serverjson(context: Context) -> None:  # noqa: ARG001
-    """Validate that server.json environment variables match ServerConfig fields."""
-    errors = _validate_server_json()
+def validate_serverjson(context: Context, update: bool = False) -> None:  # noqa: ARG001
+    """Validate (or update) server.json environment variables against ServerConfig.
+
+    Pass ``--update`` to auto-add missing entries and remove stale ones.
+    """
+    if update:
+        _update_server_json()
+        return
+
+    _, actual_vars = _read_server_json()
+    errors = _check_server_json_drift(actual_vars)
     if errors:
         for err in errors:
             print(f"::error::{err}", file=sys.stderr)
         print(
-            "Run 'uv run invoke gen-config-env' to see the expected variables.",
+            "Run 'uv run invoke validate-serverjson --update' to fix automatically.",
             file=sys.stderr,
         )
         sys.exit(1)
