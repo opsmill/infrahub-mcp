@@ -1,0 +1,53 @@
+tests/unit/test_server_prompt.py
+  6eadb2027e92fbcf 4
+src/infrahub_mcp/server.py
+  6eadb2027e92fbcf 6,44-47,287,305,359,367,369
+tests/unit/test_token_passthrough.py
+  6eadb2027e92fbcf 6,9-11,24,28,54,71,90,172,193,267,286,301,316,331,387-388,395-396,423,430,437,503
+tests/unit/test_middleware.py
+  6eadb2027e92fbcf 7,10-12,109,125,153-154,176,189,202,218,231,249,268,283,304,319,335,355,371,400,413,777,787,797,809,830,846,867,881,984,1020,1035,1059,1071,1084,1096,1152,1163,1174,1185-1187,1199-1201,1212,1223,1233,1254,1267,1290,1299
+tasks.py
+  6eadb2027e92fbcf 86,346
+src/infrahub_mcp/auth.py
+  6eadb2027e92fbcf 8,38,53
+src/infrahub_mcp/_cli.py
+  6eadb2027e92fbcf 4,25,29
+pyproject.toml
+  6eadb2027e92fbcf 20,104,110-117
+tests/unit/test_health.py
+  6eadb2027e92fbcf 5,8-9
+src/infrahub_mcp/tools/session.py
+  6eadb2027e92fbcf 31-34
+tests/unit/test_server_env.py
+  6eadb2027e92fbcf 6,9-10
+src/infrahub_mcp/tools/write.py
+  6eadb2027e92fbcf 273-276,278,285
+src/infrahub_mcp/utils.py
+  6eadb2027e92fbcf 46-49,177-180,202-205,232
+tests/unit/test_config.py
+  6eadb2027e92fbcf 22,25,35-39,41,50,129,166,268,271,283,372,393
+src/infrahub_mcp/tools/nodes.py
+  6eadb2027e92fbcf 8,46,90,370
+tests/unit/test_auth.py
+  6eadb2027e92fbcf 5,8-10,59,70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "190c1ccc1a7f4d9619d8e21cf6f6317a69140b59",
+  "prompts": {
+    "6eadb2027e92fbcf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f25905aa-7923-45a1-a5ef-a369c46af18d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 239,
+      "total_deletions": 195,
+      "accepted_lines": 915,
+      "overriden_lines": 0
+    }
+  }
+}
