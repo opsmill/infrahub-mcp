@@ -654,7 +654,7 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
     # Only enabled in OIDC mode where an auth provider supplies tokens with scopes.
     # In none mode (incl. stdio): no token provider exists, so scope checks are skipped.
     if config.auth_mode == AUTH_MODE_OIDC:
-        scopes_raw = config.auth_scopes_write or "write"
+        scopes_raw = config.auth_scopes_write
         scopes = [s.strip() for s in scopes_raw.split(",") if s.strip()]
         mcp.add_middleware(
             AuthMiddleware(auth=restrict_tag(WRITE_TAG, scopes=scopes))
