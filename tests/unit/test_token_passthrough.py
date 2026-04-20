@@ -19,7 +19,12 @@ from infrahub_mcp.auth import (
     set_passthrough_token,
 )
 from infrahub_mcp.config import ServerConfig
-from infrahub_mcp.server import _CredentialsPassthroughASGI, _OAuthDiscoveryInterceptASGI, _decode_basic, get_asgi_middleware
+from infrahub_mcp.server import (
+    _CredentialsPassthroughASGI,
+    _OAuthDiscoveryInterceptASGI,
+    _decode_basic,
+    get_asgi_middleware,
+)
 from infrahub_mcp.utils import AppContext, get_client
 
 
