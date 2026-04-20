@@ -65,7 +65,7 @@ If your client shows tool-call traces, you should see those two MCP calls in the
 
 ## 4. Verify observability (optional)
 
-If you enabled Prometheus metrics (`INFRAHUB_MCP_PROMETHEUS_ENABLED=true`), scrape `/metrics` after a few calls:
+If you're running the server with Streamable HTTP transport and enabled Prometheus metrics (`INFRAHUB_MCP_PROMETHEUS_ENABLED=true`), scrape `/metrics` after a few calls:
 
 ```bash
 curl -s http://localhost:8001/metrics | grep infrahub_mcp_requests_total
