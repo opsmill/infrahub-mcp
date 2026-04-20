@@ -9,6 +9,7 @@ import pytest
 
 from infrahub_mcp.auth import (
     _passthrough_token,
+    assert_writable_branch,
     create_auth_provider,
     get_passthrough_token,
     get_user_from_token,
@@ -152,3 +153,21 @@ class TestGetUserFromToken:
         token.claims = {}
         with patch("fastmcp.server.middleware.authorization.get_access_token", return_value=token):
             assert get_user_from_token() == "anonymous"
+
+
+class TestAssertWritableBranch:
+    def test_rejects_protected_branch(self) -> None:
+        with pytest.raises(ValueError, match="protected branch 'main'"):
+            assert_writable_branch("main", protected=["main"])
+
+    def test_allows_unprotected_branch(self) -> None:
+        assert_writable_branch("mcp/session-20260420-abcd", protected=["main"])
+        assert_writable_branch("feature/x", protected=["main"])
+
+    def test_empty_protected_list_allows_any(self) -> None:
+        assert_writable_branch("main", protected=[])
+
+    def test_custom_protected_list(self) -> None:
+        with pytest.raises(ValueError, match="protected branch 'release'"):
+            assert_writable_branch("release", protected=["main", "release"])
+        assert_writable_branch("main", protected=["release"])

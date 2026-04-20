@@ -18,6 +18,7 @@ class TestServerConfig:
         assert config.read_only is False
         assert config.branch_pattern == "mcp/session-{date}-{hex}"
         assert config.max_branch_retries == 5
+        assert config.branch_protected == ["main"]
         assert config.log_level_debug is False
         assert config.rate_limit_rps == 0.0
         assert config.rate_limit_burst == 0
@@ -54,6 +55,7 @@ class TestLoadConfig:
         assert config.read_only is False
         assert config.branch_pattern == "mcp/session-{date}-{hex}"
         assert config.max_branch_retries == 5
+        assert config.branch_protected == ["main"]
         assert config.log_level_debug is False
 
     def test_read_only_true(self) -> None:
@@ -222,6 +224,23 @@ class TestLoadConfig:
         with patch.dict(os.environ, {"INFRAHUB_MCP_PING_INTERVAL_MS": "-1"}, clear=True):
             with pytest.raises(ValidationError, match="greater than or equal to 0"):
                 load_config()
+
+    # --- Branch protection ---
+
+    def test_branch_protected_defaults_to_main(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            config = load_config()
+        assert config.branch_protected == ["main"]
+
+    def test_branch_protected_csv(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_BRANCH_PROTECTED": "main, release , prod"}, clear=True):
+            config = load_config()
+        assert config.branch_protected == ["main", "release", "prod"]
+
+    def test_branch_protected_empty_string_disables(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_BRANCH_PROTECTED": ""}, clear=True):
+            config = load_config()
+        assert config.branch_protected == []
 
     # --- Auth ---
 

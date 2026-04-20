@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import os
 import string
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import AliasChoices, Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from infrahub_mcp.constants import _ALLOWED_PLACEHOLDERS, AUTH_MODE_OIDC, AUTH_MODE_TOKEN_PASSTHROUGH
 
@@ -69,6 +69,10 @@ class ServerConfig(BaseSettings):
     read_only: bool = False
     branch_pattern: str = "mcp/session-{date}-{hex}"
     max_branch_retries: int = Field(default=5, ge=1, le=20)
+    branch_protected: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["main"],
+        validation_alias=AliasChoices("branch_protected", "INFRAHUB_MCP_BRANCH_PROTECTED"),
+    )
     log_level: str = Field(
         default="info",
         validation_alias=AliasChoices("log_level", "INFRAHUB_MCP_LOG_LEVEL"),
@@ -98,6 +102,18 @@ class ServerConfig(BaseSettings):
     def log_level_debug(self) -> bool:
         """True when ``INFRAHUB_MCP_LOG_LEVEL=debug``."""
         return self.log_level.lower() == "debug"
+
+    @field_validator("branch_protected", mode="before")
+    @classmethod
+    def _parse_branch_protected(cls, raw: object) -> list[str]:
+        if not raw:
+            return []
+        if isinstance(raw, str):
+            return [name.strip() for name in raw.split(",") if name.strip()]
+        if isinstance(raw, list):
+            return [str(name).strip() for name in raw if str(name).strip()]
+        msg = f"INFRAHUB_MCP_BRANCH_PROTECTED must be a comma-separated string or list, got {type(raw).__name__}."
+        raise TypeError(msg)
 
     @field_validator("log_level", mode="before")
     @classmethod

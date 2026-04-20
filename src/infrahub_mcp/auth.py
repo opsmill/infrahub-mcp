@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 from infrahub_mcp.constants import AUTH_MODE_OIDC
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from fastmcp.server.auth import OIDCProxy
 
     from infrahub_mcp.config import ServerConfig
@@ -92,6 +94,22 @@ _DOUBLE_DOT = re.compile(r"\.{2,}")
 _DOUBLE_SLASH = re.compile(r"/{2,}")
 _SLASH_DOT = re.compile(r"/\.")
 _DOT_LOCK_END = re.compile(r"\.lock$")
+
+
+def assert_writable_branch(branch: str, *, protected: Sequence[str]) -> None:
+    """Reject writes targeting a protected branch.
+
+    Session branches (``mcp/session-...``) and feature branches bypass this
+    guard. Only the names listed in ``INFRAHUB_MCP_BRANCH_PROTECTED`` are
+    blocked — ``["main"]`` by default.
+    """
+    if branch in protected:
+        msg = (
+            f"Writes to protected branch {branch!r} are not allowed. "
+            "Use the auto-created session branch or a feature branch; "
+            "merge via propose_changes."
+        )
+        raise ValueError(msg)
 
 
 def sanitize_user_for_branch(raw: str) -> str:
