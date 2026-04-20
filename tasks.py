@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -102,6 +103,15 @@ AUTH_MODE_SPECIFIC_FIELDS: set[str] = {
     "auth_scopes_write",
 }
 
+OIDC_ONLY_FIELDS: set[str] = {
+    "oidc_config_url",
+    "oidc_client_id",
+    "oidc_client_secret",
+    "oidc_base_url",
+    "oidc_audience",
+    "oidc_user_claim",
+}
+
 
 def _get_expected_env_vars() -> dict[str, str]:
     """Build the expected {VAR_NAME: default_value} map from ServerConfig + extras."""
@@ -175,6 +185,75 @@ def validate_dockercomposeenv(context: Context) -> None:
     exec_cmd = f"git diff --exit-code {docker_compose_file}"
     with context.cd(MAIN_DIRECTORY_PATH):
         context.run(exec_cmd)
+
+
+EXTRA_SERVER_JSON_VARS: set[str] = {
+    "INFRAHUB_ADDRESS",
+    "INFRAHUB_API_TOKEN",
+    "INFRAHUB_USERNAME",
+    "INFRAHUB_PASSWORD",
+    "INFRAHUB_TIMEOUT",
+}
+
+SECRET_ENV_VARS: set[str] = {
+    "INFRAHUB_API_TOKEN",
+    "INFRAHUB_PASSWORD",
+    "INFRAHUB_MCP_OIDC_CLIENT_SECRET",
+}
+
+
+def _get_expected_server_json_vars() -> set[str]:
+    """Return the set of INFRAHUB_MCP_* env var names that should appear in server.json.
+
+    Excludes OIDC-only fields (they require auth_mode=oidc and would confuse
+    general-purpose registry listings).
+    """
+    expected: set[str] = set()
+    for field_name in ServerConfig.model_fields:
+        if field_name in OIDC_ONLY_FIELDS:
+            continue
+        expected.add(f"INFRAHUB_MCP_{field_name.upper()}")
+    return expected
+
+
+def _validate_server_json(server_json_path: str = "server.json") -> list[str]:
+    """Check that server.json environmentVariables covers all non-auth ServerConfig fields.
+
+    Returns a list of error messages (empty if valid).
+    """
+    path = Path(server_json_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+
+    actual_vars: set[str] = set()
+    for pkg in data.get("packages", []):
+        actual_vars.update(env_entry["name"] for env_entry in pkg.get("environmentVariables", []))
+
+    expected_mcp_vars = _get_expected_server_json_vars()
+
+    missing = sorted(expected_mcp_vars - actual_vars)
+    extra_mcp = sorted(actual_vars - expected_mcp_vars - EXTRA_SERVER_JSON_VARS)
+
+    errors: list[str] = []
+    if missing:
+        errors.append(f"Missing from server.json: {', '.join(missing)}")
+    if extra_mcp:
+        errors.append(f"In server.json but not in ServerConfig: {', '.join(extra_mcp)}")
+    return errors
+
+
+@task
+def validate_serverjson(context: Context) -> None:  # noqa: ARG001
+    """Validate that server.json environment variables match ServerConfig fields."""
+    errors = _validate_server_json()
+    if errors:
+        for err in errors:
+            print(f"::error::{err}", file=sys.stderr)
+        print(
+            "Run 'uv run invoke gen-config-env' to see the expected variables.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print("server.json environment variables are in sync with ServerConfig.")
 
 
 @task(name="update-capabilities")

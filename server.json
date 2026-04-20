@@ -73,6 +73,13 @@
           "isSecret": false
         },
         {
+          "name": "INFRAHUB_MCP_MAX_BRANCH_RETRIES",
+          "description": "Max collision retries for branch name generation (default: 5, range: 1-20).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
           "name": "INFRAHUB_MCP_RATE_LIMIT_RPS",
           "description": "Max sustained requests per second; 0 disables (default: 0).",
           "isRequired": false,

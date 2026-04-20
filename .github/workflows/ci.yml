@@ -106,8 +106,10 @@ jobs:
           version: ${{ needs.prepare-environment.outputs.UV_VERSION }}
       - name: Install dependencies
         run: "uv sync --all-groups"
-      - name: Run validation
+      - name: Validate docker-compose env vars
         run: uv run invoke validate-dockercomposeenv
+      - name: Validate server.json env vars
+        run: uv run invoke validate-serverjson
 
   yaml-lint:
     if: needs.files-changed.outputs.yaml == 'true'
