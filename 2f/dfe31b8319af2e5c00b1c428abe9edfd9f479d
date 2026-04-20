@@ -1,0 +1,27 @@
+.github/instructions/tooling.instructions.md
+  6eadb2027e92fbcf 11
+tasks.py
+  6eadb2027e92fbcf 219-220,228-232,246-299,301-311,316
+specs/003-infrahub-app/spec.md
+  6eadb2027e92fbcf 17,33,83,122,165,183,249,261,269
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "2fdfe31b8319af2e5c00b1c428abe9edfd9f479d",
+  "prompts": {
+    "6eadb2027e92fbcf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f25905aa-7923-45a1-a5ef-a369c46af18d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 181,
+      "total_deletions": 21,
+      "accepted_lines": 837,
+      "overriden_lines": 0
+    }
+  }
+}
