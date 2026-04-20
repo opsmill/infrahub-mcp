@@ -44,6 +44,8 @@ export INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER=X-Infrahub-Token
 Token passthrough requires Streamable HTTP transport. The server rejects `--transport stdio` at startup since stdio has no HTTP headers.
 :::
 
+For per-client `.mcp.json` configuration examples, see [Streamable HTTP with authentication](./installation.mdx#streamable-http-with-authentication).
+
 ## Basic passthrough
 
 Same fail-closed passthrough model as token passthrough, but clients send Infrahub username and password via the standard HTTP `Basic` scheme:
@@ -67,6 +69,15 @@ The server decodes the header per request, constructs a fresh `InfrahubClient` w
 :::note
 Basic passthrough requires Streamable HTTP transport, same as token passthrough.
 :::
+
+To encode your credentials for the `Authorization` header:
+
+```bash
+echo -n "username:password" | base64
+# dXNlcm5hbWU6cGFzc3dvcmQ=
+```
+
+For per-client `.mcp.json` configuration examples, see [Streamable HTTP with authentication](./installation.mdx#streamable-http-with-authentication).
 
 ## OIDC
 
@@ -179,14 +190,14 @@ INFRAHUB_MCP_AUTH_SCOPES_WRITE=write
 
 For the complete list of environment variables, see the [Configuration reference](../references/configuration.mdx#authentication-and-authorization).
 
-| Variable                                | Required   | Default         | Description                                                          |
-| --------------------------------------- | ---------- | --------------- | -------------------------------------------------------------------- |
-| `INFRAHUB_MCP_AUTH_MODE`                | No         | `none`          | Authentication mode (`none`, `oidc`, or `token-passthrough`)         |
-| `INFRAHUB_MCP_OIDC_CONFIG_URL`          | Yes (oidc) |                 | OIDC discovery endpoint URL                                          |
-| `INFRAHUB_MCP_OIDC_CLIENT_ID`           | Yes (oidc) |                 | OAuth client ID registered with the IdP                              |
-| `INFRAHUB_MCP_OIDC_CLIENT_SECRET`       | No         |                 | OAuth client secret (omit for PKCE flow)                             |
-| `INFRAHUB_MCP_OIDC_BASE_URL`            | Yes (oidc) |                 | Public URL where the MCP server is accessible                        |
-| `INFRAHUB_MCP_OIDC_AUDIENCE`            | No         |                 | Token audience claim                                                 |
-| `INFRAHUB_MCP_OIDC_USER_CLAIM`          | No         | `email`         | JWT claim used for user identity                                     |
-| `INFRAHUB_MCP_AUTH_SCOPES_WRITE`        | No         | `write`         | Scopes required for write operations (comma-separated)               |
-| `INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER` | No         | `Authorization` | HTTP header carrying the Infrahub API token (token-passthrough mode) |
+| Variable                                | Required   | Default         | Description                                                                    |
+| --------------------------------------- | ---------- | --------------- | ------------------------------------------------------------------------------ |
+| `INFRAHUB_MCP_AUTH_MODE`                | No         | `none`          | Authentication mode (`none`, `oidc`, `token-passthrough`, `basic-passthrough`) |
+| `INFRAHUB_MCP_OIDC_CONFIG_URL`          | Yes (oidc) |                 | OIDC discovery endpoint URL                                                    |
+| `INFRAHUB_MCP_OIDC_CLIENT_ID`           | Yes (oidc) |                 | OAuth client ID registered with the IdP                                        |
+| `INFRAHUB_MCP_OIDC_CLIENT_SECRET`       | No         |                 | OAuth client secret (omit for PKCE flow)                                       |
+| `INFRAHUB_MCP_OIDC_BASE_URL`            | Yes (oidc) |                 | Public URL where the MCP server is accessible                                  |
+| `INFRAHUB_MCP_OIDC_AUDIENCE`            | No         |                 | Token audience claim                                                           |
+| `INFRAHUB_MCP_OIDC_USER_CLAIM`          | No         | `email`         | JWT claim used for user identity                                               |
+| `INFRAHUB_MCP_AUTH_SCOPES_WRITE`        | No         | `write`         | Scopes required for write operations (comma-separated)                         |
+| `INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER` | No         | `Authorization` | HTTP header carrying the Infrahub API token (token-passthrough mode)           |

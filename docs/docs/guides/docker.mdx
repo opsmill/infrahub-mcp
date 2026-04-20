@@ -7,10 +7,18 @@ import TabItem from '@theme/TabItem';
 
 This guide covers deploying the Infrahub MCP server as a container, including running it alongside Infrahub in the same Docker Compose stack.
 
-## Build the image
+## Quick start with Docker Compose
 
 ```bash
-docker build -t infrahub-mcp .
+docker compose up -d
+```
+
+This pulls the published image from the Opsmill registry and starts the MCP server. Configure it with a `.env` file or environment variables (see [Configuration reference](../references/configuration.mdx)).
+
+## Build the image locally
+
+```bash
+docker build -f development/Dockerfile -t infrahub-mcp .
 ```
 
 ## Run standalone
@@ -19,7 +27,7 @@ docker build -t infrahub-mcp .
 docker run -p 8001:8001 \
   -e INFRAHUB_ADDRESS=http://your-infrahub-host:8000 \
   -e INFRAHUB_API_TOKEN=your-token \
-  infrahub-mcp
+  registry.opsmill.io/opsmill/infrahub-mcp:latest
 ```
 
 The server listens on `http://localhost:8001/mcp` using the [MCP Streamable HTTP](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http) transport.
@@ -33,9 +41,7 @@ services:
   # ... your existing Infrahub services ...
 
   infrahub-mcp:
-    build: https://github.com/opsmill/infrahub-mcp.git
-    # or use a pre-built image when published:
-    # image: registry.opsmill.io/opsmill/infrahub-mcp:latest
+    image: registry.opsmill.io/opsmill/infrahub-mcp:latest
     ports:
       - "8001:8001"
     environment:

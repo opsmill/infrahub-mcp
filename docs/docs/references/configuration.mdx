@@ -23,7 +23,6 @@ The Infrahub MCP server is configured entirely through environment variables. Al
 | `INFRAHUB_MCP_READ_ONLY` | Disable all write operations (`true`, `1`, or `yes`) | `false` |
 | `INFRAHUB_MCP_BRANCH_PATTERN` | Branch naming pattern. Supports `{date}`, `{hex}`, `{user}` placeholders. Fixed names (no placeholders) must not already exist. | `mcp/session-{date}-{hex}` |
 | `INFRAHUB_MCP_MAX_BRANCH_RETRIES` | Max collision retries when generating branch names (1–20) | `5` |
-| `INFRAHUB_MCP_BRANCH_PROTECTED` | Comma-separated branch names that reject direct writes (route via `propose_changes`). Empty string disables. | `main` |
 | `INFRAHUB_MCP_LOG_LEVEL` | Set to `debug` for verbose logging with tracebacks | `info` |
 
 ## Rate limiting

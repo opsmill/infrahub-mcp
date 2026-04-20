@@ -15,7 +15,9 @@ uv pip install infrahub-mcp
 Docker:
 
 ```bash
-docker pull registry.opsmill.io/opsmill/infrahub-mcp-server:latest
+docker pull registry.opsmill.io/opsmill/infrahub-mcp:latest
+# or use Docker Compose:
+docker compose up -d
 ```
 
 ## Quickstart
@@ -60,4 +62,4 @@ Full documentation, including client configuration for Cursor, VS Code, Claude D
 
 ## License
 
-Apache 2.0 — see [LICENSE](./LICENSE).
+Apache 2.0 — see [LICENSE](./LICENSE.txt).
