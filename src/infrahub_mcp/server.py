@@ -265,6 +265,9 @@ mcp.add_provider(infrahub_app)
 # ---------------------------------------------------------------------------
 
 
+_BEARER_PREFIX = "bearer "
+
+
 class _TokenPassthroughASGI:
     """ASGI middleware that extracts a token from an HTTP header into a ContextVar.
 
@@ -282,7 +285,11 @@ class _TokenPassthroughASGI:
             headers = dict(scope.get("headers", []))
             raw = headers.get(self._header, b"").decode("latin-1")
             stripped = raw.strip()
-            token = stripped[len("bearer "):].strip() if stripped[:7].lower() == "bearer " else stripped
+            token = (
+                stripped[len(_BEARER_PREFIX):].strip()
+                if stripped[: len(_BEARER_PREFIX)].lower() == _BEARER_PREFIX
+                else stripped
+            )
             if token:
                 reset = set_passthrough_token(token)
         try:

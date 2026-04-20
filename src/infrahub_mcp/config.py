@@ -77,6 +77,7 @@ _MAX_BRANCH_RETRIES_LIMIT = 20
 _MAX_RATE_LIMIT_RPS = 10000.0
 _MAX_PING_INTERVAL_MS = 300_000
 _VALID_LOG_LEVELS = {"debug", "info", "warning", "error"}
+_BRANCH_PATTERN_HELP = "Allowed placeholders are {date}, {hex}, {user}."
 
 
 def load_config() -> ServerConfig:
@@ -202,7 +203,7 @@ def _validate_branch_pattern() -> None:
     except (ValueError, IndexError) as exc:
         msg = (
             f"INFRAHUB_MCP_BRANCH_PATTERN has invalid syntax: {pattern!r}. "
-            f"Allowed placeholders are {{date}}, {{hex}}, {{user}}. Error: {exc}"
+            f"{_BRANCH_PATTERN_HELP} Error: {exc}"
         )
         raise ValueError(msg) from exc
 
@@ -213,7 +214,7 @@ def _validate_branch_pattern() -> None:
         if format_spec or conversion is not None:
             msg = (
                 f"INFRAHUB_MCP_BRANCH_PATTERN must not use format specifiers or conversions: {pattern!r}. "
-                f"Allowed placeholders are {{date}}, {{hex}}, {{user}} (no :spec, !conversion)."
+                f"{_BRANCH_PATTERN_HELP} (no :spec, !conversion)"
             )
             raise ValueError(msg)
         fields.append(field_name)
@@ -222,7 +223,7 @@ def _validate_branch_pattern() -> None:
     if bad:
         msg = (
             f"INFRAHUB_MCP_BRANCH_PATTERN contains unsupported placeholders: {pattern!r}. "
-            f"Unknown: {bad}. Allowed placeholders are {{date}}, {{hex}}, {{user}}."
+            f"Unknown: {bad}. {_BRANCH_PATTERN_HELP}"
         )
         raise ValueError(msg)
 
