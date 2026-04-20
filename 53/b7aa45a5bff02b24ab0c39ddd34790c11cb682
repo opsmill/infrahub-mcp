@@ -1,0 +1,35 @@
+.github/workflows/ci-mcp-discovery.yml
+  6eadb2027e92fbcf 29-31,33-39,43,45
+docs/docs/guides/installation.mdx
+  6eadb2027e92fbcf 193
+docs/docs/integrations/cursor.mdx
+  6eadb2027e92fbcf 9
+.vale/styles/spelling-exceptions.txt
+  6eadb2027e92fbcf 181
+docs/docs/integrations/claude-code.mdx
+  6eadb2027e92fbcf 9
+docs/docs/integrations/claude-desktop.mdx
+  6eadb2027e92fbcf 9
+docs/docs/integrations/vscode.mdx
+  6eadb2027e92fbcf 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "53b7aa45a5bff02b24ab0c39ddd34790c11cb682",
+  "prompts": {
+    "6eadb2027e92fbcf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f25905aa-7923-45a1-a5ef-a369c46af18d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 23,
+      "total_deletions": 20,
+      "accepted_lines": 772,
+      "overriden_lines": 0
+    }
+  }
+}
