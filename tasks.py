@@ -4,8 +4,6 @@ from pathlib import Path
 
 from invoke import Context, task
 
-from infrahub_mcp.config import ServerConfig
-
 CURRENT_DIRECTORY = Path(__file__).resolve()
 DOCUMENTATION_DIRECTORY = CURRENT_DIRECTORY.parent / "docs"
 
@@ -115,6 +113,8 @@ OIDC_ONLY_FIELDS: set[str] = {
 
 def _get_expected_env_vars() -> dict[str, str]:
     """Build the expected {VAR_NAME: default_value} map from ServerConfig + extras."""
+    from infrahub_mcp.config import ServerConfig  # noqa: PLC0415
+
     config = ServerConfig()
     env_vars: dict[str, str] = dict(EXTRA_ENV_VARS)
 
@@ -208,6 +208,8 @@ def _get_expected_server_json_vars() -> set[str]:
     Excludes OIDC-only fields (they require auth_mode=oidc and would confuse
     general-purpose registry listings).
     """
+    from infrahub_mcp.config import ServerConfig  # noqa: PLC0415
+
     expected: set[str] = set()
     for field_name in ServerConfig.model_fields:
         if field_name in OIDC_ONLY_FIELDS:
@@ -245,6 +247,8 @@ def _check_server_json_drift(actual_vars: set[str]) -> list[str]:
 
 def _get_field_description(field_name: str) -> str:
     """Derive a short description for a ServerConfig field."""
+    from infrahub_mcp.config import ServerConfig  # noqa: PLC0415
+
     config = ServerConfig()
     default = getattr(config, field_name)
     field_info = ServerConfig.model_fields[field_name]
