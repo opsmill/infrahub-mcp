@@ -1,0 +1,57 @@
+.github/file-filters.yml
+  f5dc36b94f52c88e 17-21
+development/Dockerfile
+  6eadb2027e92fbcf 1-44
+tasks.py
+  f5dc36b94f52c88e 6-7,18,55,87-164
+development/docker-compose.yml
+  6eadb2027e92fbcf 1-81
+development/keycloak/setup-keycloak.sh
+  6eadb2027e92fbcf 1-201
+development/keycloak/infrahub-realm.json
+  6eadb2027e92fbcf 1-110
+.github/workflows/ci-docker-image.yml
+  6eadb2027e92fbcf 78
+docker-compose.yml
+  6eadb2027e92fbcf 3-12,15,44-45,47,50-55
+  f5dc36b94f52c88e 18,24-32,34-40
+.github/workflows/ci-mcp-discovery.yml
+  6eadb2027e92fbcf 1-45
+.github/workflows/ci.yml
+  f5dc36b94f52c88e 24,38-51,53-82,84-110,136,162
+.github/workflows/release.yml
+  6eadb2027e92fbcf 47-48,51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "47833b32be0c9a2b8ad536b999c2496847e1d804",
+  "prompts": {
+    "6eadb2027e92fbcf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f25905aa-7923-45a1-a5ef-a369c46af18d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 355,
+      "total_deletions": 0,
+      "accepted_lines": 1258,
+      "overriden_lines": 0
+    },
+    "f5dc36b94f52c88e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7d767ff8-7b52-49d2-adb3-36592f41fe68",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 13,
+      "total_deletions": 0,
+      "accepted_lines": 189,
+      "overriden_lines": 0
+    }
+  }
+}
