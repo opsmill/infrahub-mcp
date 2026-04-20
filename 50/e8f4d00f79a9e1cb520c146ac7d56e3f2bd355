@@ -1,0 +1,27 @@
+src/infrahub_mcp/_cli.py
+  6eadb2027e92fbcf 17
+src/infrahub_mcp/server.py
+  6eadb2027e92fbcf 268-270,288-292
+src/infrahub_mcp/config.py
+  6eadb2027e92fbcf 80,206,217,226
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "50e8f4d00f79a9e1cb520c146ac7d56e3f2bd355",
+  "prompts": {
+    "6eadb2027e92fbcf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f25905aa-7923-45a1-a5ef-a369c46af18d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 15,
+      "total_deletions": 9,
+      "accepted_lines": 13,
+      "overriden_lines": 0
+    }
+  }
+}
