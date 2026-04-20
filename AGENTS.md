@@ -202,4 +202,3 @@ Before approving, verify:
 - **[.github/copilot-instructions.md](.github/copilot-instructions.md)** - For GitHub Copilot
 - **[GEMINI.md](GEMINI.md)** - For Google Gemini tools
 - **[GPT.md](GPT.md)** - For OpenAI/ChatGPT tools
-- **[.cursor/rules/dev-standard.mdc](.cursor/rules/dev-standard.mdc)** - For Cursor editor
