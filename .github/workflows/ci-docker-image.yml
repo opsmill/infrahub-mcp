@@ -35,6 +35,35 @@ on:
         required: false
         description: Comma separated platform list to build the image for
         default: "linux/amd64,linux/arm64"
+  workflow_dispatch:
+    inputs:
+      publish:
+        type: boolean
+        description: Whether to publish the image to the Infrahub private registry
+        required: false
+        default: false
+      version:
+        type: string
+        required: false
+        description: The string to extract semver labels from.
+        default: ''
+      ref:
+        type: string
+        required: true
+        description: The GIT ref from which the image will be built
+      tags:
+        type: string
+        required: true
+        description: The tags for the docker image
+      labels:
+        type: string
+        required: true
+        description: The labels for the docker image
+      platforms:
+        type: string
+        required: false
+        description: Comma separated platform list to build the image for
+        default: "linux/amd64,linux/arm64"
 
 permissions:
   contents: read
@@ -46,7 +75,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DOCKERFILE: "Dockerfile"
+  DOCKERFILE: "development/Dockerfile"
 
 jobs:
   build:

@@ -35,7 +35,7 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Run as non-root user
-RUN groupadd --system app && useradd --system --gid app app \
+RUN groupadd --system app && useradd --system --gid app --create-home app \
     && chown -R app:app /app
 USER app
 
