@@ -7,7 +7,6 @@ requires-python = ">=3.13"
 dependencies = [
     "fastmcp>=3.1.1",
     "infrahub-sdk>=1.13.5",
-    "prefab-ui>=0.15.0",
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.6,<3",
     "toonify>=0.1.2",
@@ -92,7 +91,7 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.ruff.lint.isort]
-known-first-party = ["infrahub_mcp", "infrahub_app"]
+known-first-party = ["infrahub_mcp"]
 
 
 [tool.ruff.lint.pycodestyle]
@@ -105,10 +104,6 @@ max-line-length = 150
     "PLC2701", # Private name imports (testing internal helpers)
     "PLR2004", # Magic values in comparisons (expected in assertions)
     "PLR6301", # Method could be static (standard test-class pattern)
-]
-"src/infrahub_app/**/*.py" = [
-    "PLR0915", # Too many statements (Prefab UI trees are declarative, not complex logic)
-    "PLR1702", # Too many nested blocks (Prefab component nesting is inherent to the pattern)
 ]
 
 
@@ -153,7 +148,7 @@ front-matter-title = ""
 enabled = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/infrahub_mcp", "src/infrahub_app"]
+packages = ["src/infrahub_mcp"]
 
 [build-system]
 requires = ["hatchling"]
