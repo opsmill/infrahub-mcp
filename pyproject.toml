@@ -8,6 +8,8 @@ dependencies = [
     "fastmcp>=3.1.1",
     "infrahub-sdk>=1.13.5",
     "prefab-ui>=0.15.0",
+    "pydantic>=2.10,<3",
+    "pydantic-settings>=2.6,<3",
     "toonify>=0.1.2",
 ]
 

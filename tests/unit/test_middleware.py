@@ -490,7 +490,7 @@ class TestConfigureMiddleware:
 
         mock_mcp.add_middleware.side_effect = side_effect
 
-        config = ServerConfig(log_level_debug=True)
+        config = ServerConfig(log_level="debug")
         configure_middleware(mock_mcp, config)
 
         error_mw = next(
@@ -738,7 +738,7 @@ class TestConfigureMiddleware:
 
         config = ServerConfig(
             read_only=True,
-            log_level_debug=True,
+            log_level="debug",
             rate_limit_rps=10.0,
             rate_limit_burst=20,
             retry_max_attempts=3,

@@ -6,13 +6,15 @@ import os
 from unittest.mock import patch
 
 import pytest
+from pydantic import ValidationError
 
 from infrahub_mcp.config import ServerConfig, load_config
 
 
 class TestServerConfig:
     def test_defaults(self) -> None:
-        config = ServerConfig()
+        with patch.dict(os.environ, {}, clear=True):
+            config = ServerConfig()
         assert config.read_only is False
         assert config.branch_pattern == "mcp/session-{date}-{hex}"
         assert config.max_branch_retries == 5
@@ -28,7 +30,7 @@ class TestServerConfig:
         assert config.prometheus_enabled is False
         assert config.dereference_schemas is False
         assert config.ping_interval_ms == 0
-        assert config.auth_scopes_write == ""
+        assert config.auth_scopes_write == "write"
         assert config.auth_mode == "none"
         assert config.oidc_config_url == ""
         assert config.oidc_client_id == ""
@@ -39,8 +41,9 @@ class TestServerConfig:
         assert config.token_passthrough_header == "Authorization"
 
     def test_frozen(self) -> None:
-        config = ServerConfig()
-        with pytest.raises(AttributeError):
+        with patch.dict(os.environ, {}, clear=True):
+            config = ServerConfig()
+        with pytest.raises(ValidationError):
             config.read_only = True  # type: ignore[misc]
 
 
@@ -90,17 +93,17 @@ class TestLoadConfig:
 
     def test_max_branch_retries_invalid_string(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_MAX_BRANCH_RETRIES": "abc"}, clear=True):
-            with pytest.raises(ValueError, match="must be an integer"):
+            with pytest.raises(ValidationError, match="valid integer"):
                 load_config()
 
     def test_max_branch_retries_too_low(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_MAX_BRANCH_RETRIES": "0"}, clear=True):
-            with pytest.raises(ValueError, match="must be between 1 and 20"):
+            with pytest.raises(ValidationError, match="greater than or equal to 1"):
                 load_config()
 
     def test_max_branch_retries_too_high(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_MAX_BRANCH_RETRIES": "100"}, clear=True):
-            with pytest.raises(ValueError, match="must be between 1 and 20"):
+            with pytest.raises(ValidationError, match="less than or equal to 20"):
                 load_config()
 
     def test_log_level_debug(self) -> None:
@@ -115,7 +118,7 @@ class TestLoadConfig:
 
     def test_log_level_invalid(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_LOG_LEVEL": "verbose"}, clear=True):
-            with pytest.raises(ValueError, match="INFRAHUB_MCP_LOG_LEVEL must be one of"):
+            with pytest.raises(ValidationError, match="INFRAHUB_MCP_LOG_LEVEL must be one of"):
                 load_config()
 
     # --- Rate limiting ---
@@ -127,12 +130,12 @@ class TestLoadConfig:
 
     def test_rate_limit_rps_invalid(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_RATE_LIMIT_RPS": "abc"}, clear=True):
-            with pytest.raises(ValueError, match="must be a number"):
+            with pytest.raises(ValidationError, match="valid number"):
                 load_config()
 
     def test_rate_limit_rps_negative(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_RATE_LIMIT_RPS": "-1"}, clear=True):
-            with pytest.raises(ValueError, match="must be between"):
+            with pytest.raises(ValidationError, match="greater than or equal to 0"):
                 load_config()
 
     def test_rate_limit_burst(self) -> None:
@@ -142,7 +145,7 @@ class TestLoadConfig:
 
     def test_rate_limit_burst_negative(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_RATE_LIMIT_BURST": "-5"}, clear=True):
-            with pytest.raises(ValueError, match="non-negative"):
+            with pytest.raises(ValidationError, match="greater than or equal to 0"):
                 load_config()
 
     # --- Retry ---
@@ -154,7 +157,7 @@ class TestLoadConfig:
 
     def test_retry_max_attempts_negative(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_RETRY_MAX_ATTEMPTS": "-1"}, clear=True):
-            with pytest.raises(ValueError, match="non-negative"):
+            with pytest.raises(ValidationError, match="greater than or equal to 0"):
                 load_config()
 
     def test_retry_base_delay(self) -> None:
@@ -164,7 +167,7 @@ class TestLoadConfig:
 
     def test_retry_base_delay_zero(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_RETRY_BASE_DELAY": "0"}, clear=True):
-            with pytest.raises(ValueError, match="must be positive"):
+            with pytest.raises(ValidationError, match="greater than 0"):
                 load_config()
 
     # --- Cache ---
@@ -212,12 +215,12 @@ class TestLoadConfig:
 
     def test_ping_interval_too_high(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_PING_INTERVAL_MS": "999999"}, clear=True):
-            with pytest.raises(ValueError, match="INFRAHUB_MCP_PING_INTERVAL_MS"):
+            with pytest.raises(ValidationError, match="less than or equal to 300000"):
                 load_config()
 
     def test_ping_interval_negative(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_PING_INTERVAL_MS": "-1"}, clear=True):
-            with pytest.raises(ValueError, match="INFRAHUB_MCP_PING_INTERVAL_MS"):
+            with pytest.raises(ValidationError, match="greater than or equal to 0"):
                 load_config()
 
     # --- Auth ---
@@ -321,7 +324,7 @@ class TestAuthModeConfig:
 
     def test_auth_mode_invalid_value(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_AUTH_MODE": "saml"}, clear=True):
-            with pytest.raises(ValueError, match="INFRAHUB_MCP_AUTH_MODE must be one of"):
+            with pytest.raises(ValidationError, match="INFRAHUB_MCP_AUTH_MODE must be one of"):
                 load_config()
 
     def test_auth_mode_oidc_missing_config_url(self) -> None:
