@@ -68,3 +68,26 @@ jobs:
       - name: Publish to PyPI
         if: ${{ inputs.publish == true }}
         run: uv publish --token "${{ secrets.PYPI_TOKEN }}"
+
+  build_container_image:
+    name: Build multi-arch container image
+    runs-on: ${{ inputs.runs-on || 'ubuntu-22.04' }}
+    needs: publish_to_pypi
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (linux/amd64, linux/arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          tags: infrahub-mcp-server:${{ inputs.version || 'dev' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
