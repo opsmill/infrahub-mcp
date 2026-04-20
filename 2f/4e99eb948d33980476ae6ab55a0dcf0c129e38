@@ -1,0 +1,38 @@
+docker-compose.yml
+  f5dc36b94f52c88e 17
+tasks.py
+  f5dc36b94f52c88e 94-104,112-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "2f4e99eb948d33980476ae6ab55a0dcf0c129e38",
+  "prompts": {
+    "6eadb2027e92fbcf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f25905aa-7923-45a1-a5ef-a369c46af18d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 111,
+      "overriden_lines": 0
+    },
+    "f5dc36b94f52c88e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7d767ff8-7b52-49d2-adb3-36592f41fe68",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 94,
+      "overriden_lines": 0
+    }
+  }
+}
