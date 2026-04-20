@@ -1,0 +1,76 @@
+---
+title: VS Code
+---
+
+VS Code supports MCP through its extension API — the Infrahub MCP server shows up as a tool provider alongside Copilot. This page covers the `code --add-mcp` setup and the VS Code Copilot compatibility flag.
+
+## Prerequisites
+
+- VS Code installed with an MCP-capable extension (GitHub Copilot Chat or another MCP client extension).
+- `uv` installed and the `infrahub-mcp` repository cloned locally.
+
+## Register via CLI
+
+The fastest way to register the server is with VS Code's `--add-mcp` flag:
+
+```bash
+code --add-mcp '{
+  "type": "stdio",
+  "name": "infrahub-mcp",
+  "description": "MCP server to interact with Infrahub",
+  "command": "uv",
+  "args": ["run", "fastmcp", "run", "src/infrahub_mcp/server.py:mcp"],
+  "env": {
+    "MCP_HOST": "0.0.0.0",
+    "MCP_PORT": "8001",
+    "INFRAHUB_ADDRESS": "http://localhost:8000",
+    "INFRAHUB_API_TOKEN": "placeholder-token"
+  }
+}'
+```
+
+Then open the MCP user configuration (**Cmd/Ctrl+Shift+P → MCP: Open User Configuration**) and replace `placeholder-token` with your real API token.
+
+Open the Extensions view, find **Infrahub MCP** in the list, right-click, and choose **Start Server**.
+
+## Remote (HTTP) transport
+
+```json
+{
+  "servers": {
+    "infrahub_mcp": {
+      "type": "http",
+      "url": "http://localhost:8001/mcp"
+    }
+  }
+}
+```
+
+## VS Code Copilot compatibility
+
+VS Code Copilot Chat does not follow JSON Schema `$ref` references in tool definitions. If you see errors about unresolved schemas, enable `$ref` inlining on the server:
+
+```bash
+export INFRAHUB_MCP_DEREFERENCE_SCHEMAS=true
+```
+
+This makes every tool definition self-contained. There's no downside for clients that do handle `$ref` — the schemas just become more verbose.
+
+## Using the tools
+
+Once registered, MCP tools show up alongside Copilot's native tools. In Copilot Chat, reference them like any other tool:
+
+> Use the Infrahub server to list all `DcimDevice` kinds and summarize their roles.
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| MCP command not found | Update VS Code — MCP support lands in recent versions. |
+| `$ref` schema errors | Set `INFRAHUB_MCP_DEREFERENCE_SCHEMAS=true`. |
+| Server shows as stopped | Right-click the extension, choose **Start Server**, and check the Output panel. |
+
+## Related reading
+
+- [Configuration reference — Client compatibility](../references/configuration.mdx#client-compatibility)
+- [Your first agent run](../getting-started/first-agent-run.mdx)

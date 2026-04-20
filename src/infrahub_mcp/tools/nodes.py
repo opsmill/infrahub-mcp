@@ -41,6 +41,49 @@ _RESERVED_FILTER_KEYS: frozenset[str] = frozenset(
 )
 
 
+async def _fetch_nodes(  # noqa: PLR0913, PLR0917
+    client: "InfrahubClient",
+    schema: MainSchemaTypes,
+    branch: str | None,
+    filters: dict[str, Any] | None,
+    partial_match: bool,
+    include_attributes: bool,
+    limit: int | None,
+    offset: int | None,
+) -> list[Any]:
+    """Fetch nodes from Infrahub, delegating offset/limit directly to the SDK."""
+    kwargs: dict[str, Any] = {
+        "kind": schema.kind,
+        "branch": branch,
+        "offset": offset,
+        "limit": limit,
+        "parallel": True,
+        "order": Order(disable=True),
+        "populate_store": True,
+        "prefetch_relationships": include_attributes,
+    }
+    if filters:
+        return await client.filters(**kwargs, partial_match=partial_match, **filters)
+    return await client.all(**kwargs)
+
+
+async def _get_total_count(
+    client: "InfrahubClient",
+    kind: str,
+    branch: str | None,
+    partial_match: bool,
+    **filters: Any,
+) -> int:
+    """Return total count of matching nodes, or -1 if the count query fails.
+
+    Delegates directly to ``client.count()`` which accepts the same filter kwargs.
+    """
+    try:
+        return await client.count(kind=kind, branch=branch, partial_match=partial_match, **filters)
+    except GraphQLError:
+        return -1
+
+
 async def _validate_filters(  # noqa: PLR0913, PLR0917
     ctx: Context,
     client: "InfrahubClient",
@@ -105,7 +148,12 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
         dict[str, Any] | None,
         Field(
             default=None,
-            description="Attribute/relationship filters. See infrahub://schema/{kind} for the full filter map.",
+            description=(
+                "Attribute/relationship filters. Keys follow the schema's "
+                'filter map (e.g. {"name__value": "atl1"} or '
+                '{"site__name__value": "atl1"}). See infrahub://schema/{kind} '
+                "for the full filter map."
+            ),
         ),
     ] = None,
     partial_match: Annotated[
@@ -129,13 +177,34 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
             description="Maximum nodes to return. Default 50. Pass -1 for all results (caution: may be expensive).",
         ),
     ] = 50,
-) -> list[str] | str:
-    """Retrieve objects of a specific kind from Infrahub.
+    offset: Annotated[
+        int,
+        Field(
+            default=0,
+            ge=0,
+            description="Number of results to skip for pagination. Use with limit to page through results.",
+        ),
+    ] = 0,
+) -> dict[str, Any]:
+    """List nodes of a specific kind — the default read path for typed queries with optional filtering and pagination.
+
+    Prefer this over ``query_graphql`` when you just need objects of one kind:
+    results come back as display labels (fast, token-cheap) or full attribute
+    dicts (``include_attributes=True``).
 
     To discover available kinds, read the ``infrahub://schema`` resource.
     If your client does not support MCP resources, call the ``get_schema`` tool instead.
     To discover available filters for a kind, read ``infrahub://schema/{kind}``
     or call ``get_schema(kind='...')``.
+
+    Filter keys follow the schema's filter map. Attribute filters use
+    ``<attr>__value`` (e.g. ``{"name__value": "atl1"}``) and relationship
+    filters chain via ``<rel>__<attr>__value`` (e.g.
+    ``{"site__name__value": "atl1"}``). See ``infrahub://schema/{kind}`` for
+    the full list of valid keys.
+
+    Use ``offset`` and ``limit`` to page through large result sets. The response
+    always includes ``total_count`` and ``has_more`` so you know when to stop.
 
     Args:
         kind: Kind of the objects to retrieve.
@@ -144,9 +213,14 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
         partial_match: Whether to use partial matching for string filters.
         include_attributes: Return full attribute dicts instead of display labels only.
         limit: Cap on results returned (default 50). Pass -1 for all.
+        offset: Number of results to skip (default 0). Use with limit to paginate.
 
     Returns:
-        A list of display labels (default) or a TOON-encoded string of full attribute dicts.
+        A dict with ``nodes`` (list of display labels or TOON-encoded string),
+        ``count`` (number of nodes in this page), ``total_count`` (total matching
+        nodes, or ``-1`` if the count query failed), ``has_more`` (True/False
+        when ``total_count`` is known, ``None`` when it is unavailable), and
+        ``offset`` / ``limit`` for context.
 
     Raises:
         RuntimeError: Via ``_log_and_raise_error`` when the schema is not found or the query fails.
@@ -155,7 +229,7 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
     req_id = ctx.request_id
     await ctx.info(
         f"Fetching {kind} nodes: request_id={req_id!r}, branch={branch!r}, "
-        f"filter_keys={sorted(filters) if filters else []}, limit={limit}"
+        f"filter_keys={sorted(filters) if filters else []}, limit={limit}, offset={offset}"
     )
 
     try:
@@ -171,22 +245,17 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
     if filters:
         await _validate_filters(ctx=ctx, client=client, schema=schema, kind=kind, branch=branch, filters=filters)
 
+    filter_kwargs = filters or {}
+    total_count = await _get_total_count(client, schema.kind, branch, partial_match, **filter_kwargs)
+
+    # Normalize limit: SDK uses None for "no limit", MCP tool uses -1
+    sdk_limit = None if limit == -1 else limit
+    sdk_offset = offset if offset > 0 else None
+
     try:
-        kwargs: dict[str, Any] = {
-            "kind": schema.kind,
-            "branch": branch,
-            "parallel": True,
-            "order": Order(disable=True),
-            "populate_store": True,
-            "prefetch_relationships": include_attributes,
-        }
-        if filters:
-            filter_kwargs: dict[str, Any] = {**kwargs, "partial_match": partial_match, **filters}
-            if limit > 0:
-                filter_kwargs["limit"] = limit
-            nodes = await client.filters(**filter_kwargs)
-        else:
-            nodes = await client.all(**kwargs)
+        nodes = await _fetch_nodes(
+            client, schema, branch, filters, partial_match, include_attributes, sdk_limit, sdk_offset
+        )
     except GraphQLError as exc:
         await _log_and_raise_error(
             ctx=ctx,
@@ -194,15 +263,30 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
             remediation=f"Check the provided filters against infrahub://schema/{kind}.",
         )
 
-    capped = nodes if limit == -1 else nodes[:limit]
-    if include_attributes:
-        dicts = [await convert_node_to_dict(obj=node, branch=branch, include_id=True) for node in capped]
-        await ctx.debug(f"Retrieved {len(dicts)} nodes of kind {kind} with attributes (request_id={req_id!r})")
-        return toon.encode(dicts)
+    if total_count > 0:
+        await ctx.report_progress(progress=min(offset + len(nodes), total_count), total=total_count)
 
-    serialized = [obj.display_label for obj in capped]
-    await ctx.debug(f"Retrieved {len(serialized)} nodes of kind {kind} (request_id={req_id!r})")
-    return serialized
+    # When the count query failed (total_count == -1) we cannot determine pagination
+    # authoritatively — return None so clients don't mistake an exact-page-boundary
+    # response for "more results available".
+    has_more: bool | None = total_count > offset + len(nodes) if total_count >= 0 else None
+
+    if include_attributes:
+        dicts = [await convert_node_to_dict(obj=node, branch=branch, include_id=True) for node in nodes]
+        await ctx.debug(f"Retrieved {len(dicts)} nodes of kind {kind} with attributes (request_id={req_id!r})")
+        node_data: list[str] | str = toon.encode(dicts)
+    else:
+        node_data = [obj.display_label for obj in nodes]
+        await ctx.debug(f"Retrieved {len(node_data)} nodes of kind {kind} (request_id={req_id!r})")
+
+    return {
+        "nodes": node_data,
+        "count": len(nodes),
+        "total_count": total_count,
+        "has_more": has_more,
+        "offset": offset,
+        "limit": limit,
+    }
 
 
 @mcp.tool(tags={"nodes", "search"}, annotations=ToolAnnotations(readOnlyHint=True))
@@ -228,10 +312,12 @@ async def search_nodes(
         Field(default=10, ge=1, le=100, description="Maximum number of results to return."),
     ] = 10,
 ) -> list[str]:
-    """Search nodes of a specific kind by partial name match.
+    """Find a node of a specific kind by partial name — use when you only know part of the name.
 
-    A convenience wrapper around get_nodes with ``partial_match=True`` and a ``name__value``
-    filter. Use when you need to find a node without knowing its exact name.
+    Matches substrings against the ``name`` attribute only (via
+    ``name__value`` with ``partial_match=True``). For matching on other
+    attributes, or for combining multiple filters, use ``get_nodes`` with
+    an explicit ``filters`` dict instead.
 
     To discover available kinds, read the ``infrahub://schema`` resource.
     If your client does not support MCP resources, call the ``get_schema`` tool instead.

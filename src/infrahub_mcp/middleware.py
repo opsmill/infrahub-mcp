@@ -18,6 +18,8 @@ import secrets
 import time
 from typing import TYPE_CHECKING, Any, override
 
+import pydantic_core
+from fastmcp.exceptions import ToolError
 from fastmcp.server.auth import restrict_tag
 from fastmcp.server.middleware.authorization import AuthMiddleware
 from fastmcp.server.middleware.caching import (
@@ -544,6 +546,56 @@ class SafeRetryMiddleware(RetryMiddleware):
 
 
 # ---------------------------------------------------------------------------
+# Strict response limiting — raise instead of truncating
+# ---------------------------------------------------------------------------
+
+
+class StrictResponseLimitingMiddleware(ResponseLimitingMiddleware):
+    """Response limiter that raises ``ToolError`` instead of silently truncating.
+
+    FastMCP's built-in ``ResponseLimitingMiddleware`` truncates oversized tool
+    responses and appends a warning suffix.  An agent consuming that output has
+    no programmatic signal that data was lost — it just sees a partial payload
+    ending in ``[Response truncated due to size limit]`` mid-TOON row.
+
+    This variant raises a ``ToolError`` with an actionable remediation instead,
+    keeping the agent in its self-correction loop (tighten ``filters``, drop
+    ``limit``, narrow ``include_attributes``) rather than guessing at truncated
+    data.
+    """
+
+    @override
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext[mt.CallToolRequestParams],
+        call_next: CallNext[mt.CallToolRequestParams, ToolResult],
+    ) -> ToolResult:
+        result = await call_next(context)
+
+        if self.tools is not None and context.message.name not in self.tools:
+            return result
+
+        serialized = pydantic_core.to_json(result, fallback=str)
+        if len(serialized) <= self.max_size:
+            return result
+
+        tool_name = context.message.name
+        logger.warning(
+            "tool=%r response_over_limit size=%d max=%d",
+            tool_name,
+            len(serialized),
+            self.max_size,
+        )
+        raise ToolError(
+            f"Response from {tool_name!r} is {len(serialized)} bytes, "
+            f"over the {self.max_size}-byte limit.\n"
+            "Remediation: narrow `filters`, lower `limit`, or drop "
+            "`include_attributes` to reduce the payload. "
+            "Check `infrahub://schema/{kind}` for available filters."
+        )
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -592,7 +644,8 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
     - **ResponseCachingMiddleware** — TTL-based response caching (conditional)
     - **DereferenceRefsMiddleware** — inline $ref in JSON schemas (conditional)
     - **PingMiddleware** — periodic keepalive pings for HTTP sessions (conditional)
-    - **ResponseLimitingMiddleware** — truncates oversized responses (innermost)
+    - **StrictResponseLimitingMiddleware** — rejects oversized responses with
+      a ``ToolError`` + remediation hint (innermost)
     """
     global _metrics, _error_handling, _caching_middleware  # noqa: PLW0603
 
@@ -729,8 +782,10 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
         logger.info("ping_middleware enabled=true interval_ms=%d", config.ping_interval_ms)
 
     # Response size limiting — innermost
+    # StrictResponseLimitingMiddleware raises ToolError with a remediation
+    # hint instead of silently truncating, so agents can self-correct.
     mcp.add_middleware(
-        ResponseLimitingMiddleware(
+        StrictResponseLimitingMiddleware(
             max_size=_MAX_RESPONSE_BYTES,
         )
     )

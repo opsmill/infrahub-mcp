@@ -1,0 +1,90 @@
+---
+title: Cursor
+---
+
+[Cursor](https://cursor.com) supports MCP servers via its **Tools & Integrations** panel. This page shows the Infrahub MCP server configuration and notes specific to Cursor's tool-approval UX.
+
+## Prerequisites
+
+- Cursor installed.
+- `uv` installed and the `infrahub-mcp` repository cloned locally.
+
+## Configure
+
+1. Open **Settings → Cursor Settings → Tools & Integrations**.
+2. Under **MCP tools**, click **Add Custom MCP**.
+3. Paste the configuration below into `mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "infrahub_mcp": {
+      "command": "uv",
+      "args": [
+        "run",
+        "fastmcp",
+        "run",
+        "src/infrahub_mcp/server.py:mcp"
+      ],
+      "env": {
+        "INFRAHUB_ADDRESS": "http://localhost:8000",
+        "INFRAHUB_API_TOKEN": "your-api-token"
+      }
+    }
+  }
+}
+```
+
+4. Save the file. Restart Cursor if prompted.
+
+The server appears under **MCP tools** once Cursor starts it. Click the entry to expand tool/resource details.
+
+## Remote (HTTP) transport
+
+For a shared MCP server deployment:
+
+```json
+{
+  "mcpServers": {
+    "infrahub_mcp": {
+      "type": "streamable-http",
+      "url": "http://localhost:8001/mcp"
+    }
+  }
+}
+```
+
+## Cursor's tool-approval model
+
+Cursor prompts the user before every tool call by default, which is useful during onboarding but noisy for chatty read-only flows. Two ways to tune this:
+
+- **Auto-approve read tools** — in **Settings → MCP tools → infrahub_mcp**, whitelist `get_schema`, `get_nodes`, `search_nodes`, `get_related_nodes`, `get_node_filters`, `query_graphql`.
+- **Keep manual approval for writes** — leave `node_upsert`, `node_delete`, `propose_changes`, `mutate_graphql` on interactive approval so a human explicitly confirms each mutation. This matches Cursor's default for destructive actions.
+
+For a server-side hard lock, set `INFRAHUB_MCP_READ_ONLY=true` and Cursor will only ever see read tools.
+
+## Workspace rules
+
+Add a Cursor rule (`.cursor/rules/infrahub.mdc`) to bake the agent workflow into Cursor's system prompt:
+
+```markdown
+When the Infrahub MCP server is connected:
+
+- Read infrahub://schema before guessing kind names
+- Use get_nodes or search_nodes before query_graphql
+- Always follow node_upsert / node_delete with propose_changes
+- Ask before calling write tools even if auto-approve is on
+```
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| Cursor shows `Failed to start MCP server` | Check Cursor's MCP log (**Output → MCP**) for the exact stderr. |
+| Tool descriptions look truncated | Some Cursor versions truncate MCP responses — upgrade to the latest. |
+| `$ref` errors in tool schemas | Enable `INFRAHUB_MCP_DEREFERENCE_SCHEMAS=true` to inline references. |
+
+## Related reading
+
+- [Your first agent run](../getting-started/first-agent-run.mdx)
+- [Configuration reference](../references/configuration.mdx)

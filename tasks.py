@@ -175,3 +175,35 @@ def validate_dockercomposeenv(context: Context) -> None:
     exec_cmd = f"git diff --exit-code {docker_compose_file}"
     with context.cd(MAIN_DIRECTORY_PATH):
         context.run(exec_cmd)
+
+
+@task(name="update-capabilities")
+def update_capabilities(context: Context) -> None:
+    """Regenerate CAPABILITIES.md from the live MCP server definition.
+
+    Requires the ``mcp-discovery`` CLI on PATH. See scripts/update-capabilities.sh.
+    """
+    exec_cmd = "bash scripts/update-capabilities.sh CAPABILITIES.md"
+    with context.cd(MAIN_DIRECTORY_PATH):
+        context.run(exec_cmd)
+
+
+@task(name="check-capabilities")
+def check_capabilities(context: Context) -> None:
+    """Fail if CAPABILITIES.md is stale.
+
+    Regenerates the file into a temp path and diffs against the committed
+    CAPABILITIES.md. Non-zero exit signals that a contributor must run
+    ``invoke update-capabilities`` and commit the result.
+    """
+    tmp_path = "/tmp/capabilities-check.md"  # noqa: S108
+    with context.cd(MAIN_DIRECTORY_PATH):
+        context.run(f"bash scripts/update-capabilities.sh {tmp_path}")
+        result = context.run(f"diff -u CAPABILITIES.md {tmp_path}", warn=True)
+    if result.exited != 0:
+        print(
+            "::error::CAPABILITIES.md is out of date. "
+            "Run 'uv run invoke update-capabilities' and commit the result.",
+            file=sys.stderr,
+        )
+        sys.exit(1)

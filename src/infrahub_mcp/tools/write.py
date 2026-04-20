@@ -327,14 +327,16 @@ async def mutate_graphql(
         ),
     ] = None,
 ) -> dict[str, Any]:
-    """Execute a GraphQL mutation against Infrahub on the active session branch.
+    """Execute a GraphQL mutation against Infrahub — use only for complex writes that typed tools can't express.
 
-    Use this tool for GraphQL mutations (creating, updating, or deleting data).
-    For read-only queries, use ``query_graphql`` instead.
+    Prefer ``node_upsert`` (create/update scalar attributes) or ``node_delete``
+    (remove a node) for straightforward changes; they validate against the
+    schema and produce clearer audit entries. Reach for ``mutate_graphql``
+    when you need relationship edits, bulk operations, or any mutation shape
+    not covered by the typed tools. For reads, use ``query_graphql``.
 
-    The mutation targets the session branch by default, which is auto-created on
-    the first write of the session. Prefer ``node_upsert`` / ``node_delete`` for
-    simple attribute changes — use this tool for complex mutations only.
+    The mutation targets the session branch by default, which is auto-created
+    on the first write of the session (``mcp/session-YYYYMMDD-<hex>``).
 
     To discover available kinds and their attributes, read the ``infrahub://schema``
     resource or call the ``get_schema`` tool.

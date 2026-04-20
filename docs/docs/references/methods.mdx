@@ -17,59 +17,26 @@ Scalar fields use standard `key: value` notation. Flat string maps (the schema c
 ## Schema
 
 <!-- vale off -->
-### get_schema_mapping
-<!-- vale on -->
-
-### Capabilities
-
-- read-only
-- idempotent
-- no destroy
-
-List all schema nodes and generics available in Infrahub.
-
-### Parameters
-
-- **branch** (string): branch to read from; default is the server’s default branch
-
-<!-- vale off -->
 ### get_schema
 <!-- vale on -->
 
-### Capabilities
+#### Capabilities
 
 - read-only
 - idempotent
 - no destroy
 
-Retrieve the full schema for a specific kind (attributes, relationships, and types).
+Discover available schema kinds or retrieve the full detail for a single kind.
 
-Response is encoded in **TOON** tabular format — arrays for `attributes`, `relationships`, and `filters` use the header-once layout.
+- Without `kind`: returns the catalog of all available kinds as compact JSON.
+- With `kind`: returns the kind's attributes, relationships, and the full set of filter keys accepted by `get_nodes` (TOON-encoded).
 
-### Parameters
+Prefer reading the `infrahub://schema` resource if your client supports MCP resources — this tool provides the same data for clients that don't.
 
-- **kind** (string, required): schema Kind to retrieve
-- **branch** (string): branch to read from; default is the server’s default branch
+#### Parameters
 
-<!-- vale off -->
-### get_schemas
-<!-- vale on -->
-
-### Capabilities
-
-- read-only
-- idempotent
-- no destroy
-
-Retrieve all schemas, optionally excluding Profiles and Templates.
-
-### Parameters
-
-<!-- vale off -->
-- **branch** (string): branch to read from; default is the server’s default branch
-- **exclude_profiles** (boolean, default: true): omit Profile schemas
-- **exclude_templates** (boolean, default: true): omit Template schemas
-<!-- vale on -->
+- **kind** (string): kind to get detail for; omit to list all kinds
+- **branch** (string): branch to read from; default is the server's default branch
 
 ## Nodes
 
@@ -77,129 +44,168 @@ Retrieve all schemas, optionally excluding Profiles and Templates.
 ### get_nodes
 <!-- vale on -->
 
-### Capabilities
+#### Capabilities
 
 - read-only
 - idempotent
 - no destroy
 
-Get all objects of a specific kind from Infrahub.
-Use `get_schema_mapping` to discover kinds and `get_node_filters` to discover filter keys.
+List nodes of a specific kind — the default read path for typed queries. Supports filtering and pagination.
+Use `get_schema` to discover kinds and their filter keys.
 
-### Parameters
+#### Parameters
 
 <!-- vale off -->
 - **kind** (string, required): kind of the objects to retrieve
-- **branch** (string): branch name (default: server’s default branch)
-- **filters** (object): dictionary of filters to apply
+- **branch** (string): branch name (default: server's default branch)
+- **filters** (object): attribute/relationship filter map (e.g. `{"name__value": "atl1"}` or `{"site__name__value": "atl1"}`)
 - **partial_match** (boolean, default: false): enable substring matches for string filters
-- **include_attributes** (boolean, default: false): return full attribute values in TOON tabular format instead of just display labels; use when you need structured data, not just names
+- **include_attributes** (boolean, default: false): return full attribute values in TOON tabular format instead of just display labels
+- **limit** (integer, default: 50, min: -1): maximum nodes to return; `-1` returns all results
+- **offset** (integer, default: 0, min: 0): number of results to skip for pagination
 <!-- vale on -->
+
+The response dict contains `nodes`, `count`, `total_count`, `has_more`, `offset`, and `limit`. `has_more` is `null` when the total count query failed and pagination cannot be confirmed.
 
 <!-- vale off -->
-### get_node_filters
+### search_nodes
 <!-- vale on -->
 
-### Capabilities
+#### Capabilities
 
 - read-only
 - idempotent
 - no destroy
 
-Retrieve all available filters for a specific schema node kind.
+Find nodes by partial name. Performs substring matching against the `name` attribute only (via `name__value` with `partial_match=true`). For other attributes, or combining filters, use `get_nodes` instead.
 
-### Parameters
+#### Parameters
 
-- **kind** (string, required): node kind (example: "Router")
+<!-- vale off -->
+- **query** (string, required): partial name to search for (minimum 1 character)
+- **kind** (string, required): kind to search within
 - **branch** (string): branch name
-
-:::info
-
-- Attribute filters: `attribute__value`
-- Relationship filters: `relationship__attribute__value`
-- Filters starting with `parent__` refer to a related generic node
-- Use `get_schema` to inspect peer kinds and attributes used in relationship filters
-
-:::
-
-<!-- vale off -->
-### get_related_nodes
+- **limit** (integer, default: 10, range: 1–100): maximum results to return
 <!-- vale on -->
 
-### Capabilities
+## Session
+
+<!-- vale off -->
+### get_session_info
+<!-- vale on -->
+
+#### Capabilities
 
 - read-only
 - idempotent
 - no destroy
 
-Retrieve related nodes by relation name for a given kind.
-
-### Parameters
-
-- **kind** (string, required): source node kind (example: "Device")
-- **relation** (string, required): relationship name to follow (example: "interfaces")
-- **filters** (object): filters applied to the **source** nodes before following the relation
-- **branch** (string): branch name
-
-## Branches
-
-<!-- vale off -->
-### branch_create
-<!-- vale on -->
-
-### Capabilities
-
-- write
-- idempotent
-- no destroy
-
-Create a new branch in Infrahub.
-
-### Parameters
-
-<!-- vale off -->
-- **name** (string, required): name of the branch to create
-- **sync_with_git** (boolean, default: false): whether to sync the branch with Git
-<!-- vale on -->
-
-<!-- vale off -->
-### get_branches
-<!-- vale on -->
-
-### Capabilities
-
-- read-only
-- idempotent
-- no destroy
-
-Retrieve all branches from Infrahub.
+Return the current MCP session state. Reports the active session branch (if any) and the Infrahub instance address. A session branch is lazily auto-created on the first write tool call and is named `mcp/session-YYYYMMDD-<hex>`. Before the first write, `session_branch` is `null` and all read tools target the default branch.
 
 ## GraphQL
-
-<!-- vale off -->
-### get_graphql_schema
-<!-- vale on -->
-
-### Capabilities
-
-- read-only
-- idempotent
-- no destroy
-
-Retrieve the GraphQL schema from Infrahub as a string.
 
 <!-- vale off -->
 ### query_graphql
 <!-- vale on -->
 
-### Capabilities
+#### Capabilities
 
-- may write (depends on operation)
-- idempotent for queries; non-idempotent for mutations
-- destructive potential depends on mutation
+- read-only
+- idempotent
+- no destroy
 
-Execute a GraphQL operation against Infrahub.
+Execute a read-only GraphQL query against Infrahub. Mutations are rejected at the AST level — use `mutate_graphql` instead. For straightforward attribute reads, prefer `get_nodes` or `search_nodes`.
 
-### Parameters
+#### Parameters
 
-- **query** (string, required): GraphQL document (use `query { ... }` for reads, `mutation { ... }` for writes)
+- **query** (string, required): GraphQL query document (mutations rejected)
+- **branch** (string): branch to execute against; default is the server's default branch
+
+## Write operations
+
+Write tools target the **active session branch**, auto-created on the first write of a session (`mcp/session-YYYYMMDD-<hex>`). Use `propose_changes` to open a review once your changes are ready. Write tools are hidden when the server runs in read-only mode.
+
+<!-- vale off -->
+### node_upsert
+<!-- vale on -->
+
+#### Capabilities
+
+- write
+- non-idempotent
+- non-destructive
+
+Create or update a node on the active session branch.
+
+- **Create**: omit both `id` and `hfid`.
+- **Update**: supply either `id` or `hfid` to identify the target node.
+
+Only scalar attribute fields are accepted in `data`. To set relationship fields, use `mutate_graphql` with an appropriate GraphQL mutation.
+
+#### Parameters
+
+<!-- vale off -->
+- **kind** (string, required): kind of the node to create or update
+- **data** (object, required): flat `{attribute: value}` map; scalar attributes only
+- **id** (string): UUID of an existing node to update (update mode)
+- **hfid** (array of string): human-friendly ID segments of an existing node (update mode)
+<!-- vale on -->
+
+<!-- vale off -->
+### node_delete
+<!-- vale on -->
+
+#### Capabilities
+
+- write
+- non-idempotent
+- destructive
+
+Delete a node on the active session branch. The deletion is applied to the session branch only and is not visible on the default branch until a proposed change is merged.
+
+#### Parameters
+
+<!-- vale off -->
+- **kind** (string, required): kind of the node to delete
+- **id** (string): UUID of the node to delete
+- **hfid** (array of string): human-friendly ID segments of the node to delete
+<!-- vale on -->
+
+Provide either `id` or `hfid` — both cannot be omitted.
+
+<!-- vale off -->
+### propose_changes
+<!-- vale on -->
+
+#### Capabilities
+
+- write
+- non-idempotent
+- non-destructive
+
+Open a proposed change (pull request) from the active session branch to the default branch. Creates a `CoreProposedChange` in Infrahub so a human can review, approve, and merge the changes made during this session. The session branch remains active after calling this — you can continue making changes.
+
+#### Parameters
+
+<!-- vale off -->
+- **title** (string, required): title for the proposed change
+- **description** (string): optional description explaining the motivation
+- **destination_branch** (string): branch to merge into; defaults to the instance's default branch
+<!-- vale on -->
+
+<!-- vale off -->
+### mutate_graphql
+<!-- vale on -->
+
+#### Capabilities
+
+- write
+- non-idempotent
+- potentially destructive
+
+Execute a GraphQL mutation against Infrahub — use only for complex writes that the typed tools can't express (relationship edits, bulk operations, mutations not covered by `node_upsert` / `node_delete`). The mutation targets the session branch by default.
+
+#### Parameters
+
+- **query** (string, required): GraphQL mutation to execute
+- **branch** (string): branch to execute against; defaults to the session branch

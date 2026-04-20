@@ -2,6 +2,8 @@
 title: Authentication architecture
 ---
 
+For the step-by-step configuration recipes, see [Set up authentication](../getting-started/authentication.mdx). This page explains *how* each mode works end-to-end.
+
 The MCP server sits between AI clients (Claude, Cursor, VS Code Copilot) and the Infrahub API. Authentication happens at two separate layers:
 
 1. **MCP layer** — controls *who* can reach the MCP server and *what* they can do (read-only vs read-write). Configured via `INFRAHUB_MCP_AUTH_MODE`.

@@ -10,18 +10,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import mcp.types as mt
 import pytest
-from fastmcp.server.middleware.middleware import MiddlewareContext
+from fastmcp.exceptions import ToolError
 from fastmcp.server.middleware.error_handling import RetryMiddleware
+from fastmcp.server.middleware.middleware import MiddlewareContext
 from fastmcp.tools.base import ToolResult
+from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
+from mcp import McpError
+from mcp.types import TextContent
 
 import infrahub_mcp.middleware as middleware_module
-from mcp import McpError
-
 from infrahub_mcp.auth import _passthrough_token, set_passthrough_token
 from infrahub_mcp.config import ServerConfig
-from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
-
 from infrahub_mcp.middleware import (
+    WRITE_TAG,
     AuditMiddleware,
     InfrahubConnectionMiddleware,
     MetricsMiddleware,
@@ -29,14 +30,13 @@ from infrahub_mcp.middleware import (
     ReadOnlyMiddleware,
     RequestIdMiddleware,
     SafeRetryMiddleware,
+    StrictResponseLimitingMiddleware,
     TokenPassthroughMiddleware,
-    WRITE_TAG,
     configure_middleware,
     get_caching_middleware,
     get_error_handling,
     get_metrics,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -421,7 +421,7 @@ class TestOTelTracingMiddleware:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def _reset_middleware_globals() -> Generator[None]:
     """Reset module-level middleware state before and after each test."""
     middleware_module._metrics = None  # noqa: SLF001
@@ -1233,3 +1233,70 @@ class TestInfrahubConnectionMiddleware:
 
         types = [type(m).__name__ for m in mock_mcp.middleware]
         assert "InfrahubConnectionMiddleware" in types
+
+
+# ---------------------------------------------------------------------------
+# StrictResponseLimitingMiddleware
+# ---------------------------------------------------------------------------
+
+
+class TestStrictResponseLimitingMiddleware:
+    @pytest.mark.anyio
+    async def test_passes_through_when_under_limit(self) -> None:
+        middleware = StrictResponseLimitingMiddleware(max_size=10_000)
+        ctx = _make_tool_context("get_nodes")
+        expected = ToolResult(content=[TextContent(type="text", text="small")])
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            return expected
+
+        result = await middleware.on_call_tool(ctx, call_next)
+        assert result is expected
+
+    @pytest.mark.anyio
+    async def test_raises_tool_error_when_over_limit(self) -> None:
+        middleware = StrictResponseLimitingMiddleware(max_size=200)
+        ctx = _make_tool_context("get_nodes")
+        big_text = "x" * 5_000
+        oversized = ToolResult(content=[TextContent(type="text", text=big_text)])
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            return oversized
+
+        with pytest.raises(ToolError) as excinfo:
+            await middleware.on_call_tool(ctx, call_next)
+
+        msg = str(excinfo.value)
+        assert "get_nodes" in msg
+        assert "Remediation:" in msg
+        assert "filters" in msg
+        assert "limit" in msg
+
+    @pytest.mark.anyio
+    async def test_respects_tools_allowlist(self) -> None:
+        """When ``tools`` is set, untracked tools bypass the size check."""
+        middleware = StrictResponseLimitingMiddleware(
+            max_size=200,
+            tools=["other_tool"],
+        )
+        ctx = _make_tool_context("get_nodes")
+        big_text = "x" * 5_000
+        oversized = ToolResult(content=[TextContent(type="text", text=big_text)])
+
+        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+            return oversized
+
+        result = await middleware.on_call_tool(ctx, call_next)
+        assert result is oversized
+
+    def test_registered_in_middleware_stack(self) -> None:
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+        mock_mcp.add_middleware.side_effect = lambda mw: mock_mcp.middleware.append(mw)
+
+        config = ServerConfig()
+        configure_middleware(mock_mcp, config)
+
+        types = [type(m).__name__ for m in mock_mcp.middleware]
+        assert "StrictResponseLimitingMiddleware" in types
+        assert "ResponseLimitingMiddleware" not in [t for t in types if t != "StrictResponseLimitingMiddleware"]

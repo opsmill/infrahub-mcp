@@ -1,0 +1,89 @@
+---
+title: Your first agent run
+---
+
+This walkthrough connects an LLM client to your running Infrahub MCP server and asks it a read-only question. By the end you'll have confirmed the server is reachable, the agent can discover your schema, and the built-in `infrahub_agent` system prompt is guiding the conversation correctly.
+
+## Prerequisites
+
+- A running Infrahub MCP server — see [Install the Infrahub MCP server](./installation.mdx).
+- An MCP-capable client installed. This guide uses **Claude Desktop** on stdio; the same flow works with [Claude Code](../integrations/claude-code.mdx), [Cursor](../integrations/cursor.mdx), [VS Code](../integrations/vscode.mdx), or any client that speaks MCP.
+- `INFRAHUB_ADDRESS` and `INFRAHUB_API_TOKEN` set in your environment.
+
+## 1. Configure Claude Desktop
+
+Open **Settings → Developer** in Claude Desktop, then click `Edit config` and add the server to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "infrahub_mcp": {
+      "transport": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "fastmcp",
+        "run",
+        "src/infrahub_mcp/server.py:mcp"
+      ],
+      "env": {
+        "INFRAHUB_ADDRESS": "http://localhost:8000",
+        "INFRAHUB_API_TOKEN": "your-api-token"
+      }
+    }
+  }
+}
+```
+
+Save the file and restart Claude Desktop. The `infrahub_mcp` server should appear in the developer panel with a green status dot.
+
+If you're connecting to a remote server over HTTP instead, replace the `command`/`args`/`env` block with a `url` field — see the [Docker Compose guide](../guides/docker-compose.mdx#connect-your-mcp-client) for the HTTP transport configuration.
+
+## 2. Load the agent prompt
+
+In a new Claude Desktop conversation, attach the built-in `infrahub_agent` prompt from the MCP server. The prompt teaches the model:
+
+- How to discover your schema via the `infrahub://schema` resource.
+- Which tools are read-only (`get_nodes`, `search_nodes`, `query_graphql`, `get_schema`) versus write (`node_upsert`, `node_delete`, `propose_changes`, `mutate_graphql`).
+- The session-branch workflow for any mutation.
+
+The prompt dynamically adjusts to read-only mode (`INFRAHUB_MCP_READ_ONLY=true`) and hides the write path when writes are disabled.
+
+## 3. Ask a read-only question
+
+Try a prompt like:
+
+> What device kinds are defined in the schema? List the five most common ones.
+
+Behind the scenes the agent should:
+
+1. **Read `infrahub://schema`** to list all non-internal kinds.
+2. **Call `get_nodes(kind=...)`** for each candidate to sample the data.
+3. **Return a natural-language summary** grounded in what's actually in your Infrahub.
+
+If your client shows tool-call traces, you should see those two MCP calls in the transcript. If the client hides them, watch the server logs — every call is logged with a request ID and latency.
+
+## 4. Verify observability (optional)
+
+If you enabled Prometheus metrics (`INFRAHUB_MCP_PROMETHEUS_ENABLED=true`), scrape `/metrics` after a few calls:
+
+```bash
+curl -s http://localhost:8001/metrics | grep infrahub_mcp_requests_total
+```
+
+You should see counters for `tools/call` and `resources/read` incrementing. See the [Configuration reference](../references/configuration.mdx#observability) for the full metrics list.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| Server won't start — `INFRAHUB_MCP_AUTH_MODE` validation error | Missing OIDC configuration or token-passthrough over stdio | Use `auth_mode=none` for stdio, or switch to `--transport streamable-http`. |
+| Client shows "server connected" but no tools | Stale `tools/list` cache | Restart the client; MCP capabilities are cached per session. |
+| `get_nodes` returns empty | Wrong kind casing, missing `__value` suffix in filters | Read `infrahub://schema/{kind}` first — it lists the exact filter keys. |
+| 401/403 from Infrahub | API token expired or lacks permissions | Regenerate the token in Infrahub → **Admin → API tokens**. |
+
+## Next steps
+
+- [Make a change through an agent](./make-a-change.mdx) — walk the write path end-to-end.
+- [Use cases](../use-cases/troubleshooting-queries.mdx) — recipe-style scenarios for day-to-day work.
+- [Integrations](../integrations/claude-desktop.mdx) — per-client configuration details.

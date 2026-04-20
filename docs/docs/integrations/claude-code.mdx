@@ -1,0 +1,96 @@
+---
+title: Claude Code
+---
+
+[Claude Code](https://claude.com/claude-code) is Anthropic's CLI/IDE agent. It auto-detects `.mcp.json` files at project roots and loads the servers on startup — a perfect fit for the Infrahub MCP server when you're working inside a specific Infrahub consumer repository (IaC, Ansible, Python clients, etc.).
+
+## Prerequisites
+
+- Claude Code installed (`npm install -g @anthropic-ai/claude-code`, or via the desktop app).
+- `uv` installed and the `infrahub-mcp` repository cloned locally.
+
+## Project-scoped setup
+
+Create `.mcp.json` at the root of the repository where you want the Infrahub server available:
+
+```json
+{
+  "mcpServers": {
+    "infrahub": {
+      "command": "uv",
+      "args": [
+        "run",
+        "fastmcp",
+        "run",
+        "src/infrahub_mcp/server.py:mcp"
+      ],
+      "env": {
+        "INFRAHUB_ADDRESS": "http://localhost:8000",
+        "INFRAHUB_API_TOKEN": "your-api-token"
+      }
+    }
+  }
+}
+```
+
+Claude Code loads the server on the next session. Run `claude` in the project directory and you should see `infrahub` listed under **/mcp**.
+
+## User-scoped setup
+
+For always-on access across every project, add the same block to `~/.claude/settings.json` instead. The server is spawned once per Claude Code session.
+
+## Using the bundled prompt
+
+Invoke the `infrahub_agent` system prompt directly:
+
+```text
+/infrahub_agent
+```
+
+The prompt teaches Claude the schema-discovery pattern, the session-branch write workflow, and when to use each tool. It dynamically reflects read-only mode — if the server is running with `INFRAHUB_MCP_READ_ONLY=true`, the prompt tells the model that write paths are unavailable.
+
+## CLAUDE.md conventions
+
+If you're adding the MCP server to a shared repository, document the expected workflow in `CLAUDE.md` so collaborators' sessions behave consistently. Example snippet:
+
+```markdown
+## Infrahub MCP
+
+This repo has the Infrahub MCP server wired up via `.mcp.json`. Claude should:
+
+1. Read `infrahub://schema` before guessing kind names.
+2. Use `search_nodes` for human-entered identifiers.
+3. Always call `propose_changes` after writes — never merge yourself.
+4. Prefer read-only tools unless the user explicitly asks for a mutation.
+```
+
+## Remote server
+
+For a shared HTTP deployment, replace the stdio block with:
+
+```json
+{
+  "mcpServers": {
+    "infrahub": {
+      "transport": "streamable-http",
+      "url": "http://mcp.internal:8001/mcp"
+    }
+  }
+}
+```
+
+Combine with [token pass-through](../getting-started/authentication.mdx#token-passthrough) or [OIDC](../getting-started/authentication.mdx#oidc) for multi-user deployments.
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| `.mcp.json` not picked up | Claude Code requires the file at the project root. Confirm with `ls .mcp.json` in the directory where you launched Claude. |
+| "Unknown tool" errors | Cache stale; restart Claude Code to re-fetch `tools/list`. |
+| Permissions dialog on every call | Pre-approve write tools in `.claude/settings.json` or use the `/allow` command. |
+
+## Related reading
+
+- [Your first agent run](../getting-started/first-agent-run.mdx)
+- [Make a change through an agent](../getting-started/make-a-change.mdx)
+- [Methods reference](../references/methods.mdx)
