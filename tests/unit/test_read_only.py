@@ -17,10 +17,7 @@ def _contains_mutation(query: str) -> bool:
         document = gql_parse(query)
     except GraphQLSyntaxError:
         return False
-    return any(
-        hasattr(defn, "operation") and defn.operation == OperationType.MUTATION
-        for defn in document.definitions
-    )
+    return any(hasattr(defn, "operation") and defn.operation == OperationType.MUTATION for defn in document.definitions)
 
 
 class TestMutationDetection:

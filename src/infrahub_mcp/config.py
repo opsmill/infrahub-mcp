@@ -2,22 +2,19 @@
 
 from __future__ import annotations
 
-import os
 import string
-from typing import Annotated, Literal
+from typing import Literal
 
 from pydantic import AliasChoices, Field, field_validator
-from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from infrahub_mcp.constants import (
     _ALLOWED_PLACEHOLDERS,
-    _PASSTHROUGH_AUTH_MODES,
     AUTH_MODE_OIDC,
 )
 
 AuthMode = Literal["none", "oidc", "token-passthrough", "basic-passthrough"]
 
-_VALID_AUTH_MODES = {"none", "oidc", "token-passthrough", "basic-passthrough"}
 _VALID_LOG_LEVELS = {"debug", "info", "warning", "error"}
 _BRANCH_PATTERN_HELP = "Allowed placeholders are {date}, {hex}, {user}."
 
@@ -50,7 +47,8 @@ class ServerConfig(BaseSettings):
             max 300 000).
         auth_scopes_write: OAuth scopes required for write operations (comma-separated).
             Defaults to ``write``.
-        auth_mode: Authentication mode (``none``, ``oidc``, or ``token-passthrough``).
+        auth_mode: Authentication mode (``none``, ``oidc``, ``token-passthrough``, or
+            ``basic-passthrough``).
         oidc_config_url: OIDC discovery URL (required when ``auth_mode=oidc``).
         oidc_client_id: OAuth client ID (required when ``auth_mode=oidc``).
         oidc_client_secret: OAuth client secret (optional — omit for PKCE).
@@ -58,8 +56,9 @@ class ServerConfig(BaseSettings):
             ``auth_mode=oidc``).
         oidc_audience: Token audience claim (optional).
         oidc_user_claim: JWT claim used for user identity (defaults to ``email``).
-        token_passthrough_header: HTTP header carrying the Infrahub API token when
-            ``auth_mode=token-passthrough``.
+        token_passthrough_header: HTTP header carrying the per-request credential
+            (Bearer token or Basic user:pass) when ``auth_mode`` is ``token-passthrough``
+            or ``basic-passthrough``.
     """
 
     model_config = SettingsConfigDict(
@@ -73,10 +72,6 @@ class ServerConfig(BaseSettings):
     read_only: bool = False
     branch_pattern: str = "mcp/session-{date}-{hex}"
     max_branch_retries: int = Field(default=5, ge=1, le=20)
-    branch_protected: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: ["main"],
-        validation_alias=AliasChoices("branch_protected", "INFRAHUB_MCP_BRANCH_PROTECTED"),
-    )
     log_level: str = Field(
         default="info",
         validation_alias=AliasChoices("log_level", "INFRAHUB_MCP_LOG_LEVEL"),
@@ -107,18 +102,6 @@ class ServerConfig(BaseSettings):
         """True when ``INFRAHUB_MCP_LOG_LEVEL=debug``."""
         return self.log_level.lower() == "debug"
 
-    @field_validator("branch_protected", mode="before")
-    @classmethod
-    def _parse_branch_protected(cls, raw: object) -> list[str]:
-        if not raw:
-            return []
-        if isinstance(raw, str):
-            return [name.strip() for name in raw.split(",") if name.strip()]
-        if isinstance(raw, list):
-            return [str(name).strip() for name in raw if str(name).strip()]
-        msg = f"INFRAHUB_MCP_BRANCH_PROTECTED must be a comma-separated string or list, got {type(raw).__name__}."
-        raise TypeError(msg)
-
     @field_validator("log_level", mode="before")
     @classmethod
     def _validate_log_level(cls, raw: object) -> str:
@@ -130,12 +113,9 @@ class ServerConfig(BaseSettings):
 
     @field_validator("auth_mode", mode="before")
     @classmethod
-    def _validate_auth_mode(cls, raw: object) -> str:
-        value = str(raw).strip().lower()
-        if value not in _VALID_AUTH_MODES:
-            msg = f"INFRAHUB_MCP_AUTH_MODE must be one of {sorted(_VALID_AUTH_MODES)}, got {value!r}."
-            raise ValueError(msg)
-        return value
+    def _normalize_auth_mode(cls, raw: object) -> str:
+        """Strip + lowercase the raw env value; Literal validation handles unknown values."""
+        return str(raw).strip().lower()
 
     @field_validator("branch_pattern")
     @classmethod
@@ -143,10 +123,7 @@ class ServerConfig(BaseSettings):
         try:
             parsed = list(string.Formatter().parse(pattern))
         except (ValueError, IndexError) as exc:
-            msg = (
-                f"INFRAHUB_MCP_BRANCH_PATTERN has invalid syntax: {pattern!r}. "
-                f"{_BRANCH_PATTERN_HELP} Error: {exc}"
-            )
+            msg = f"INFRAHUB_MCP_BRANCH_PATTERN has invalid syntax: {pattern!r}. {_BRANCH_PATTERN_HELP} Error: {exc}"
             raise ValueError(msg) from exc
 
         fields: list[str] = []
@@ -179,12 +156,6 @@ def _validate_auth_requirements(config: ServerConfig) -> None:
     required OIDC field — the env-driven requirement lives at the
     :func:`load_config` boundary, not inside the model.
     """
-    if config.auth_mode in _PASSTHROUGH_AUTH_MODES and not os.environ.get("INFRAHUB_ADDRESS", "").strip():
-        msg = (
-            f"{config.auth_mode} auth mode requires INFRAHUB_ADDRESS. "
-            "Set it to the URL of your Infrahub instance (e.g. http://localhost:8000)."
-        )
-        raise ValueError(msg)
     if config.auth_mode == AUTH_MODE_OIDC:
         missing = [
             name

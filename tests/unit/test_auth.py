@@ -156,18 +156,15 @@ class TestGetUserFromToken:
 
 
 class TestAssertWritableBranch:
-    def test_rejects_protected_branch(self) -> None:
-        with pytest.raises(ValueError, match="protected branch 'main'"):
-            assert_writable_branch("main", protected=["main"])
+    def test_rejects_default_branch(self) -> None:
+        with pytest.raises(ValueError, match="default branch 'main'"):
+            assert_writable_branch("main", default_branch="main")
 
-    def test_allows_unprotected_branch(self) -> None:
-        assert_writable_branch("mcp/session-20260420-abcd", protected=["main"])
-        assert_writable_branch("feature/x", protected=["main"])
+    def test_allows_non_default_branch(self) -> None:
+        assert_writable_branch("mcp/session-20260420-abcd", default_branch="main")
+        assert_writable_branch("feature/x", default_branch="main")
 
-    def test_empty_protected_list_allows_any(self) -> None:
-        assert_writable_branch("main", protected=[])
-
-    def test_custom_protected_list(self) -> None:
-        with pytest.raises(ValueError, match="protected branch 'release'"):
-            assert_writable_branch("release", protected=["main", "release"])
-        assert_writable_branch("main", protected=["release"])
+    def test_respects_custom_default(self) -> None:
+        with pytest.raises(ValueError, match="default branch 'release'"):
+            assert_writable_branch("release", default_branch="release")
+        assert_writable_branch("main", default_branch="release")

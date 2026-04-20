@@ -18,7 +18,6 @@ class TestServerConfig:
         assert config.read_only is False
         assert config.branch_pattern == "mcp/session-{date}-{hex}"
         assert config.max_branch_retries == 5
-        assert config.branch_protected == ["main"]
         assert config.log_level_debug is False
         assert config.rate_limit_rps == 0.0
         assert config.rate_limit_burst == 0
@@ -55,7 +54,6 @@ class TestLoadConfig:
         assert config.read_only is False
         assert config.branch_pattern == "mcp/session-{date}-{hex}"
         assert config.max_branch_retries == 5
-        assert config.branch_protected == ["main"]
         assert config.log_level_debug is False
 
     def test_read_only_true(self) -> None:
@@ -225,23 +223,6 @@ class TestLoadConfig:
             with pytest.raises(ValidationError, match="greater than or equal to 0"):
                 load_config()
 
-    # --- Branch protection ---
-
-    def test_branch_protected_defaults_to_main(self) -> None:
-        with patch.dict(os.environ, {}, clear=True):
-            config = load_config()
-        assert config.branch_protected == ["main"]
-
-    def test_branch_protected_csv(self) -> None:
-        with patch.dict(os.environ, {"INFRAHUB_MCP_BRANCH_PROTECTED": "main, release , prod"}, clear=True):
-            config = load_config()
-        assert config.branch_protected == ["main", "release", "prod"]
-
-    def test_branch_protected_empty_string_disables(self) -> None:
-        with patch.dict(os.environ, {"INFRAHUB_MCP_BRANCH_PROTECTED": ""}, clear=True):
-            config = load_config()
-        assert config.branch_protected == []
-
     # --- Auth ---
 
     def test_auth_scopes_write(self) -> None:
@@ -343,7 +324,7 @@ class TestAuthModeConfig:
 
     def test_auth_mode_invalid_value(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_AUTH_MODE": "saml"}, clear=True):
-            with pytest.raises(ValidationError, match="INFRAHUB_MCP_AUTH_MODE must be one of"):
+            with pytest.raises(ValidationError, match="Input should be 'none', 'oidc'"):
                 load_config()
 
     def test_auth_mode_oidc_missing_config_url(self) -> None:
@@ -411,13 +392,14 @@ class TestAuthModeConfig:
             config = load_config()
         assert config.token_passthrough_header == "X-Infrahub-Token"
 
-    def test_auth_mode_token_passthrough_missing_address(self) -> None:
+    def test_auth_mode_token_passthrough_without_address_loads(self) -> None:
+        """Passthrough modes defer the INFRAHUB_ADDRESS check to request time."""
         env = {
             "INFRAHUB_MCP_AUTH_MODE": "token-passthrough",
         }
         with patch.dict(os.environ, env, clear=True):
-            with pytest.raises(ValueError, match="INFRAHUB_ADDRESS"):
-                load_config()
+            config = load_config()
+        assert config.auth_mode == "token-passthrough"
 
     def test_auth_mode_none_ignores_oidc_fields(self) -> None:
         env = {

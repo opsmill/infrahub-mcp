@@ -27,7 +27,9 @@ class AppContext:
     client: InfrahubClient | None
     config: ServerConfig
     session_branch: str | None = field(default=None)
+    default_branch: str | None = field(default=None)
     _session_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    _default_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 def get_client(ctx: Context) -> InfrahubClient:
@@ -43,17 +45,22 @@ def get_client(ctx: Context) -> InfrahubClient:
     """
     app_ctx: AppContext = ctx.request_context.lifespan_context  # type: ignore[union-attr]
 
-    if app_ctx.config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH:
-        token = get_passthrough_token()
-        if token is None:
-            msg = "Authentication required: no Infrahub API token in request header."
+    if app_ctx.config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH}:
+        address = os.environ.get("INFRAHUB_ADDRESS")
+        if not address:
+            msg = (
+                "INFRAHUB_ADDRESS is required. "
+                "Set it to the URL of your Infrahub instance (e.g. http://localhost:8000)."
+            )
             raise ToolError(msg)
-        return InfrahubClient(
-            address=os.environ["INFRAHUB_ADDRESS"],
-            config={"api_token": token},
-        )
 
-    if app_ctx.config.auth_mode == AUTH_MODE_BASIC_PASSTHROUGH:
+        if app_ctx.config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH:
+            token = get_passthrough_token()
+            if token is None:
+                msg = "Authentication required: no Infrahub API token in request header."
+                raise ToolError(msg)
+            return InfrahubClient(address=address, config={"api_token": token})
+
         credentials = get_passthrough_basic()
         if credentials is None:
             msg = (
@@ -62,10 +69,7 @@ def get_client(ctx: Context) -> InfrahubClient:
             )
             raise ToolError(msg)
         username, password = credentials
-        return InfrahubClient(
-            address=os.environ["INFRAHUB_ADDRESS"],
-            config={"username": username, "password": password},
-        )
+        return InfrahubClient(address=address, config={"username": username, "password": password})
 
     if app_ctx.client is None:
         msg = "No Infrahub client available."
@@ -159,6 +163,24 @@ async def _create_branch_fixed(app_ctx: AppContext, ctx: Context) -> str:
     return branch_name
 
 
+async def get_default_branch(ctx: Context) -> str:
+    """Return the Infrahub default branch name, lazily resolved via the SDK and cached.
+
+    Queries ``client.branch.all()`` and picks the branch with ``is_default=True``.
+    Cached on the ``AppContext`` for the lifetime of the connection so we only
+    pay the round-trip once per session. Falls back to ``main`` if the server
+    does not advertise a default branch.
+    """
+    app_ctx: AppContext = ctx.request_context.lifespan_context  # type: ignore[union-attr]
+    async with app_ctx._default_branch_lock:  # noqa: SLF001
+        if app_ctx.default_branch is None:
+            client = get_client(ctx)
+            branches = await client.branch.all()
+            default = next((b.name for b in branches.values() if b.is_default), "main")
+            app_ctx.default_branch = default
+    return app_ctx.default_branch
+
+
 async def get_or_create_session_branch(ctx: Context) -> str:
     """Return the session branch, auto-creating it on the first write of the session.
 
@@ -237,7 +259,8 @@ async def convert_node_to_dict(  # noqa: C901
                 raise_when_missing=False,
             )
             data[rel_name] = _node_label(
-                related_node or peer_node, include_kind=hfid_include_kind,
+                related_node or peer_node,
+                include_kind=hfid_include_kind,
             )
         elif rel and isinstance(rel, RelationshipManager):
             peers: list[str] = []

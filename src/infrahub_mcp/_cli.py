@@ -18,10 +18,7 @@ def main() -> None:
         _config.auth_mode in {AUTH_MODE_OIDC, AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH}
         and args.transport == "stdio"
     ):
-        msg = (
-            f"Auth mode {_config.auth_mode!r} requires streamable-http transport. "
-            "Stdio has no HTTP headers."
-        )
+        msg = f"Auth mode {_config.auth_mode!r} requires streamable-http transport. Stdio has no HTTP headers."
         raise SystemExit(msg)
 
     kwargs: dict[str, object] = {"transport": args.transport, "host": args.host, "port": args.port}

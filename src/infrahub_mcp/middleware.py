@@ -45,6 +45,7 @@ from fastmcp.server.middleware.response_limiting import (
     ResponseLimitingMiddleware,
 )
 from fastmcp.server.middleware.timing import DetailedTimingMiddleware
+from httpx import ConnectError as HttpxConnectError
 from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
 from mcp import McpError
 from mcp.types import ErrorData
@@ -73,9 +74,7 @@ logger = logging.getLogger("infrahub_mcp.middleware")
 WRITE_TAG = "write"
 
 # ContextVar for propagating the request ID to downstream middleware and log filters.
-current_request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "current_request_id", default=None
-)
+current_request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_request_id", default=None)
 
 
 # ---------------------------------------------------------------------------
@@ -154,12 +153,14 @@ class ReadOnlyMiddleware(Middleware):
     # Known read-only tools used as an allowlist when tag-based resolution
     # is unavailable (fastmcp_context is None).  Fail-closed: any tool NOT
     # in this set is blocked.
-    _KNOWN_READ_ONLY_TOOLS: frozenset[str] = frozenset({
-        "get_schema",
-        "query_graphql",
-        "get_nodes",
-        "search_nodes",
-    })
+    _KNOWN_READ_ONLY_TOOLS: frozenset[str] = frozenset(
+        {
+            "get_schema",
+            "query_graphql",
+            "get_nodes",
+            "search_nodes",
+        }
+    )
 
     @override
     async def on_list_tools(
@@ -186,13 +187,9 @@ class ReadOnlyMiddleware(Middleware):
         # Fall back to name-based check if resolution is unavailable.
         is_write = False
         if context.fastmcp_context is not None:
-            tool = await context.fastmcp_context.fastmcp.get_tool(
-                tool_name
-            )
+            tool = await context.fastmcp_context.fastmcp.get_tool(tool_name)
             is_write = (
-                WRITE_TAG in (tool.tags or set())
-                if tool is not None
-                else tool_name not in self._KNOWN_READ_ONLY_TOOLS
+                WRITE_TAG in (tool.tags or set()) if tool is not None else tool_name not in self._KNOWN_READ_ONLY_TOOLS
             )
         else:
             # Fail-closed: without context, only allow known read-only tools
@@ -273,9 +270,10 @@ class TokenPassthroughMiddleware(Middleware):
 class InfrahubConnectionMiddleware(Middleware):
     """Catch Infrahub SDK connection errors and return clean MCP errors.
 
-    Converts ``ServerNotReachableError``, ``ServerNotResponsiveError``, and
-    ``AuthenticationError`` into actionable ``McpError`` messages instead of
-    leaking raw stack traces to the client.
+    Converts ``ServerNotReachableError``, ``ServerNotResponsiveError``,
+    ``AuthenticationError``, ``ConnectionError``, and ``HttpxConnectError``
+    into actionable ``McpError`` messages instead of leaking raw stack traces
+    to the client.
     """
 
     @override
@@ -303,12 +301,26 @@ class InfrahubConnectionMiddleware(Middleware):
                 ErrorData(code=-32002, message=f"Infrahub is unreachable at {exc}. Check that the instance is running.")
             ) from exc
         except ServerNotResponsiveError as exc:
-            raise McpError(
-                ErrorData(code=-32002, message=f"Infrahub is not responding: {exc}")
-            ) from exc
+            raise McpError(ErrorData(code=-32002, message=f"Infrahub is not responding: {exc}")) from exc
         except AuthenticationError as exc:
             raise McpError(
-                ErrorData(code=-32001, message=f"Infrahub authentication failed: {exc}")
+                ErrorData(
+                    code=-32001,
+                    message=(
+                        f"The Infrahub MCP server returned a 401 Unauthorized error — {exc}. "
+                        "Check your credentials (API token, username/password, or passthrough header)."
+                    ),
+                )
+            ) from exc
+        except (ConnectionError, HttpxConnectError) as exc:
+            raise McpError(
+                ErrorData(
+                    code=-32002,
+                    message=(
+                        f"Cannot connect to Infrahub: {exc}. "
+                        "Check that INFRAHUB_ADDRESS is correct and the instance is reachable."
+                    ),
+                )
             ) from exc
 
 
@@ -390,18 +402,14 @@ class MetricsMiddleware(Middleware):
             raise
         finally:
             elapsed = (time.perf_counter() - start) * 1000
-            self._latency_ms[method] = (
-                self._latency_ms.get(method, 0.0) + elapsed
-            )
+            self._latency_ms[method] = self._latency_ms.get(method, 0.0) + elapsed
 
     def snapshot(self) -> dict[str, Any]:
         """Return a JSON-serializable metrics snapshot."""
         return {
             "requests": dict(self._requests),
             "errors": dict(self._errors),
-            "latency_ms": {
-                k: round(v, 2) for k, v in self._latency_ms.items()
-            },
+            "latency_ms": {k: round(v, 2) for k, v in self._latency_ms.items()},
         }
 
     def prometheus_text(self) -> str:
@@ -414,24 +422,30 @@ class MetricsMiddleware(Middleware):
         """
         lines: list[str] = []
 
-        lines.extend((
-            "# HELP infrahub_mcp_requests_total Total MCP requests by method.",
-            "# TYPE infrahub_mcp_requests_total counter",
-        ))
+        lines.extend(
+            (
+                "# HELP infrahub_mcp_requests_total Total MCP requests by method.",
+                "# TYPE infrahub_mcp_requests_total counter",
+            )
+        )
         for method, count in sorted(self._requests.items()):
             lines.append(f'infrahub_mcp_requests_total{{method="{method}"}} {count}')
 
-        lines.extend((
-            "# HELP infrahub_mcp_errors_total Total MCP errors by method.",
-            "# TYPE infrahub_mcp_errors_total counter",
-        ))
+        lines.extend(
+            (
+                "# HELP infrahub_mcp_errors_total Total MCP errors by method.",
+                "# TYPE infrahub_mcp_errors_total counter",
+            )
+        )
         for method, count in sorted(self._errors.items()):
             lines.append(f'infrahub_mcp_errors_total{{method="{method}"}} {count}')
 
-        lines.extend((
-            "# HELP infrahub_mcp_latency_ms_total Cumulative latency in milliseconds by method.",
-            "# TYPE infrahub_mcp_latency_ms_total counter",
-        ))
+        lines.extend(
+            (
+                "# HELP infrahub_mcp_latency_ms_total Cumulative latency in milliseconds by method.",
+                "# TYPE infrahub_mcp_latency_ms_total counter",
+            )
+        )
         for method, ms in sorted(self._latency_ms.items()):
             lines.append(f'infrahub_mcp_latency_ms_total{{method="{method}"}} {ms:.2f}')
 
@@ -515,15 +529,11 @@ class SafeRetryMiddleware(RetryMiddleware):
         # Check if the tool is marked idempotent before applying retries
         tool = None
         if context.fastmcp_context is not None:
-            tool = await context.fastmcp_context.fastmcp.get_tool(
-                context.message.name
-            )
+            tool = await context.fastmcp_context.fastmcp.get_tool(context.message.name)
 
         is_safe_to_retry = False
         if tool is not None and tool.annotations is not None:
-            is_safe_to_retry = bool(
-                tool.annotations.idempotentHint or tool.annotations.readOnlyHint
-            )
+            is_safe_to_retry = bool(tool.annotations.idempotentHint or tool.annotations.readOnlyHint)
 
         if not is_safe_to_retry:
             # Skip retry logic — call through directly
@@ -668,9 +678,7 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
     if config.auth_mode == AUTH_MODE_OIDC:
         scopes_raw = config.auth_scopes_write
         scopes = [s.strip() for s in scopes_raw.split(",") if s.strip()]
-        mcp.add_middleware(
-            AuthMiddleware(auth=restrict_tag(WRITE_TAG, scopes=scopes))
-        )
+        mcp.add_middleware(AuthMiddleware(auth=restrict_tag(WRITE_TAG, scopes=scopes)))
         logger.info(
             "auth_middleware enabled=true auth_mode=%s write_scopes=%s",
             config.auth_mode,

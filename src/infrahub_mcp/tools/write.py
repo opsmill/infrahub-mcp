@@ -10,7 +10,12 @@ from pydantic import Field
 
 from infrahub_mcp.auth import assert_writable_branch
 from infrahub_mcp.schema import get_valid_kinds_summary
-from infrahub_mcp.utils import AppContext, _log_and_raise_error, get_client, get_or_create_session_branch
+from infrahub_mcp.utils import (
+    _log_and_raise_error,
+    get_client,
+    get_default_branch,
+    get_or_create_session_branch,
+)
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
@@ -38,7 +43,7 @@ async def node_upsert(  # pylint: disable=too-many-locals
         Field(
             description=(
                 "Flat {attribute: value} map. See infrahub://schema/{kind} for valid names. "
-                "Scalar attributes only; use query_graphql for relationships."
+                "Scalar attributes only; use mutate_graphql for relationships."
             )
         ),
     ],
@@ -70,7 +75,7 @@ async def node_upsert(  # pylint: disable=too-many-locals
     - **Update**: supply either ``id`` or ``hfid`` to identify the target node.
 
     Only scalar attribute fields are accepted in ``data``. To set relationship
-    fields, use ``query_graphql`` with an appropriate GraphQL mutation.
+    fields, use ``mutate_graphql`` with an appropriate GraphQL mutation.
 
     Parameters:
         kind: Node kind to create or update.
@@ -343,13 +348,13 @@ async def mutate_graphql(
         The result of the mutation.
     """
     client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
-    app_ctx: AppContext = ctx.request_context.lifespan_context  # type: ignore[union-attr]
 
     if branch is None:
         branch = await get_or_create_session_branch(ctx)
     else:
         try:
-            assert_writable_branch(branch, protected=app_ctx.config.branch_protected)
+            default_branch = await get_default_branch(ctx)
+            assert_writable_branch(branch, default_branch=default_branch)
         except ValueError as exc:
             await _log_and_raise_error(ctx=ctx, error=str(exc))
 

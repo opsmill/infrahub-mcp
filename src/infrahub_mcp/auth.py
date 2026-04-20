@@ -10,8 +10,6 @@ from typing import TYPE_CHECKING
 from infrahub_mcp.constants import AUTH_MODE_OIDC
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from fastmcp.server.auth import OIDCProxy
 
     from infrahub_mcp.config import ServerConfig
@@ -112,16 +110,17 @@ _SLASH_DOT = re.compile(r"/\.")
 _DOT_LOCK_END = re.compile(r"\.lock$")
 
 
-def assert_writable_branch(branch: str, *, protected: Sequence[str]) -> None:
-    """Reject writes targeting a protected branch.
+def assert_writable_branch(branch: str, *, default_branch: str) -> None:
+    """Reject writes targeting the Infrahub default branch.
 
     Session branches (``mcp/session-...``) and feature branches bypass this
-    guard. Only the names listed in ``INFRAHUB_MCP_BRANCH_PROTECTED`` are
-    blocked — ``["main"]`` by default.
+    guard — only the instance's default branch (typically ``main``) is
+    blocked. The default branch is resolved from the Infrahub server via
+    ``client.branch.all()`` and cached on the ``AppContext``.
     """
-    if branch in protected:
+    if branch == default_branch:
         msg = (
-            f"Writes to protected branch {branch!r} are not allowed. "
+            f"Writes to the default branch {branch!r} are not allowed. "
             "Use the auto-created session branch or a feature branch; "
             "merge via propose_changes."
         )

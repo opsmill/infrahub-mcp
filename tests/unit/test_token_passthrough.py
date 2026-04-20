@@ -19,7 +19,7 @@ from infrahub_mcp.auth import (
     set_passthrough_token,
 )
 from infrahub_mcp.config import ServerConfig
-from infrahub_mcp.server import _CredentialsPassthroughASGI, _OAuthDiscoveryInterceptASGI, get_asgi_middleware
+from infrahub_mcp.server import _CredentialsPassthroughASGI, _OAuthDiscoveryInterceptASGI, _decode_basic, get_asgi_middleware
 from infrahub_mcp.utils import AppContext, get_client
 
 
@@ -412,26 +412,38 @@ def _make_ctx(app_ctx: AppContext) -> MagicMock:
     return ctx
 
 
+@pytest.fixture()
+def infrahub_env() -> Generator[None]:
+    """Provide a minimal INFRAHUB_ADDRESS env for passthrough tests."""
+    with patch.dict(os.environ, {"INFRAHUB_ADDRESS": "http://localhost:8000"}):
+        yield
+
+
+@pytest.fixture()
+def token_passthrough_ctx() -> MagicMock:
+    """Mock Context wired for token-passthrough mode."""
+    config = ServerConfig(auth_mode="token-passthrough")
+    return _make_ctx(AppContext(client=None, config=config))
+
+
+@pytest.fixture()
+def basic_passthrough_ctx() -> MagicMock:
+    """Mock Context wired for basic-passthrough mode."""
+    config = ServerConfig(auth_mode="basic-passthrough")
+    return _make_ctx(AppContext(client=None, config=config))
+
+
 class TestGetClientPassthrough:
-    def test_raises_without_token(self) -> None:
-        config = ServerConfig(auth_mode="token-passthrough")
-        app_ctx = AppContext(client=None, config=config)
-        ctx = _make_ctx(app_ctx)
-
+    def test_raises_without_token(self, infrahub_env: None, token_passthrough_ctx: MagicMock) -> None:
         with pytest.raises(ToolError, match="Authentication required"):
-            get_client(ctx)
+            get_client(token_passthrough_ctx)
 
-    def test_creates_client_with_token(self) -> None:
-        config = ServerConfig(auth_mode="token-passthrough")
-        app_ctx = AppContext(client=None, config=config)
-        ctx = _make_ctx(app_ctx)
-
+    def test_creates_client_with_token(self, infrahub_env: None, token_passthrough_ctx: MagicMock) -> None:
         set_passthrough_token("test-api-token")
-        with patch.dict(os.environ, {"INFRAHUB_ADDRESS": "http://localhost:8000"}):
-            with patch("infrahub_mcp.utils.InfrahubClient") as mock_cls:
-                mock_client = MagicMock()
-                mock_cls.return_value = mock_client
-                result = get_client(ctx)
+        with patch("infrahub_mcp.utils.InfrahubClient") as mock_cls:
+            mock_client = MagicMock()
+            mock_cls.return_value = mock_client
+            result = get_client(token_passthrough_ctx)
 
         assert result is mock_client
         mock_cls.assert_called_once_with(
@@ -439,21 +451,16 @@ class TestGetClientPassthrough:
             config={"api_token": "test-api-token"},
         )
 
-    def test_creates_fresh_client_per_call(self) -> None:
+    def test_creates_fresh_client_per_call(self, infrahub_env: None, token_passthrough_ctx: MagicMock) -> None:
         """Each get_client() call creates a new InfrahubClient so different
         tokens are never mixed across requests."""
-        config = ServerConfig(auth_mode="token-passthrough")
-        app_ctx = AppContext(client=None, config=config)
-        ctx = _make_ctx(app_ctx)
-
         set_passthrough_token("token-a")
-        with patch.dict(os.environ, {"INFRAHUB_ADDRESS": "http://localhost:8000"}):
-            with patch("infrahub_mcp.utils.InfrahubClient") as mock_cls:
-                client_a = MagicMock()
-                client_b = MagicMock()
-                mock_cls.side_effect = [client_a, client_b]
-                first = get_client(ctx)
-                second = get_client(ctx)
+        with patch("infrahub_mcp.utils.InfrahubClient") as mock_cls:
+            client_a = MagicMock()
+            client_b = MagicMock()
+            mock_cls.side_effect = [client_a, client_b]
+            first = get_client(token_passthrough_ctx)
+            second = get_client(token_passthrough_ctx)
 
         assert first is not second
         assert mock_cls.call_count == 2
@@ -461,31 +468,21 @@ class TestGetClientPassthrough:
     def test_shared_client_in_non_passthrough_mode(self) -> None:
         config = ServerConfig(auth_mode="none")
         shared_client = MagicMock()
-        app_ctx = AppContext(client=shared_client, config=config)
-        ctx = _make_ctx(app_ctx)
+        ctx = _make_ctx(AppContext(client=shared_client, config=config))
 
         result = get_client(ctx)
         assert result is shared_client
 
-    def test_raises_without_basic_credentials(self) -> None:
-        config = ServerConfig(auth_mode="basic-passthrough")
-        app_ctx = AppContext(client=None, config=config)
-        ctx = _make_ctx(app_ctx)
-
+    def test_raises_without_basic_credentials(self, infrahub_env: None, basic_passthrough_ctx: MagicMock) -> None:
         with pytest.raises(ToolError, match="Basic credentials"):
-            get_client(ctx)
+            get_client(basic_passthrough_ctx)
 
-    def test_creates_client_with_basic_credentials(self) -> None:
-        config = ServerConfig(auth_mode="basic-passthrough")
-        app_ctx = AppContext(client=None, config=config)
-        ctx = _make_ctx(app_ctx)
-
+    def test_creates_client_with_basic_credentials(self, infrahub_env: None, basic_passthrough_ctx: MagicMock) -> None:
         set_passthrough_basic(("alice", "s3cret"))
-        with patch.dict(os.environ, {"INFRAHUB_ADDRESS": "http://localhost:8000"}):
-            with patch("infrahub_mcp.utils.InfrahubClient") as mock_cls:
-                mock_client = MagicMock()
-                mock_cls.return_value = mock_client
-                result = get_client(ctx)
+        with patch("infrahub_mcp.utils.InfrahubClient") as mock_cls:
+            mock_client = MagicMock()
+            mock_cls.return_value = mock_client
+            result = get_client(basic_passthrough_ctx)
 
         assert result is mock_client
         mock_cls.assert_called_once_with(
@@ -493,10 +490,60 @@ class TestGetClientPassthrough:
             config={"username": "alice", "password": "s3cret"},
         )
 
+    @pytest.mark.parametrize("mode", ["token-passthrough", "basic-passthrough"])
+    def test_raises_without_infrahub_address(self, mode: str) -> None:
+        config = ServerConfig(auth_mode=mode)
+        ctx = _make_ctx(AppContext(client=None, config=config))
+
+        if mode == "token-passthrough":
+            set_passthrough_token("some-token")
+        else:
+            set_passthrough_basic(("user", "pass"))
+
+        with patch.dict(os.environ, {}, clear=True):
+            with pytest.raises(ToolError, match="INFRAHUB_ADDRESS is required"):
+                get_client(ctx)
+
     def test_raises_when_shared_client_is_none(self) -> None:
         config = ServerConfig(auth_mode="none")
-        app_ctx = AppContext(client=None, config=config)
-        ctx = _make_ctx(app_ctx)
+        ctx = _make_ctx(AppContext(client=None, config=config))
 
         with pytest.raises(ToolError, match="No Infrahub client available"):
             get_client(ctx)
+
+
+# ---------------------------------------------------------------------------
+# _decode_basic — Base64 credential parsing
+# ---------------------------------------------------------------------------
+
+
+class TestDecodeBasic:
+    def test_valid_credentials(self) -> None:
+        import base64  # noqa: PLC0415
+
+        encoded = base64.b64encode(b"alice:s3cret").decode("ascii")
+        assert _decode_basic(encoded) == ("alice", "s3cret")
+
+    def test_password_with_colons(self) -> None:
+        import base64  # noqa: PLC0415
+
+        encoded = base64.b64encode(b"admin:pass:with:colons").decode("ascii")
+        assert _decode_basic(encoded) == ("admin", "pass:with:colons")
+
+    def test_empty_password(self) -> None:
+        import base64  # noqa: PLC0415
+
+        encoded = base64.b64encode(b"user:").decode("ascii")
+        assert _decode_basic(encoded) == ("user", "")
+
+    def test_invalid_base64_returns_none(self) -> None:
+        assert _decode_basic("!!!not-base64!!!") is None
+
+    def test_missing_colon_returns_none(self) -> None:
+        import base64  # noqa: PLC0415
+
+        encoded = base64.b64encode(b"nocolon").decode("ascii")
+        assert _decode_basic(encoded) is None
+
+    def test_empty_string_returns_none(self) -> None:
+        assert _decode_basic("") is None

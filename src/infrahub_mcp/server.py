@@ -11,7 +11,6 @@ from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from infrahub_app import app as infrahub_app
 from infrahub_mcp.auth import (
     create_auth_provider,
     reset_passthrough_basic,
@@ -66,37 +65,13 @@ def _validate_env() -> None:
         raise RuntimeError(msg)
 
 
-def _inject_kind_enum(kinds: list[str]) -> None:
-    """Inject available kinds as enum into explore tool schemas for dev UI dropdowns."""
-    for tool_name in ("explore", "fetch_explore_data"):
-        tool = infrahub_app._local._components.get(f"tool:{tool_name}")  # noqa: SLF001
-        if tool is None:
-            continue
-        params = getattr(tool, "parameters", None)
-        if isinstance(params, dict):
-            props = params.get("properties", {})
-            if "kind" in props:
-                props["kind"]["enum"] = kinds
-
-
 @asynccontextmanager
-async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: ARG001
+async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: ARG001, RUF029
     """Manage the application lifecycle: validate config, create client, yield context."""
     _validate_env()
     client = (
-        None
-        if _config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH}
-        else InfrahubClient()
+        None if _config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH} else InfrahubClient()
     )
-
-    # Populate kind dropdowns in the dev UI with available schema kinds
-    if client is not None:
-        try:
-            all_schemas = await client.schema.all()
-            _inject_kind_enum(sorted(all_schemas.keys()))
-        except Exception:
-            logger.debug("Could not fetch schema for kind enum injection", exc_info=True)
-
     yield AppContext(client=client, config=_config)
 
 
@@ -120,35 +95,41 @@ configure_middleware(mcp, _config)
 async def health_check(request: Request) -> JSONResponse:  # noqa: ARG001
     """Health check endpoint for container orchestration probes.
 
-    Uses the SDK's ``get_version()`` to validate Infrahub connectivity.
-    Returns 200 when healthy, 503 when Infrahub is unreachable.
+    In shared-credential modes (``none``, ``oidc``), validates Infrahub
+    connectivity via ``get_version()``. In passthrough modes, no server-side
+    credentials exist so we only verify the Infrahub address is configured.
+    Returns 200 when healthy, 503 when unhealthy.
     """
-    address = os.environ.get("INFRAHUB_ADDRESS", "unknown")
+    address = os.environ.get("INFRAHUB_ADDRESS", "")
+
+    if _config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH}:
+        if not address:
+            return JSONResponse(
+                {"status": "unhealthy", "reason": "INFRAHUB_ADDRESS is not configured"},
+                status_code=503,
+            )
+        return JSONResponse({"status": "healthy", "auth_mode": _config.auth_mode})
+
     try:
         client = InfrahubClient()
         await client.get_version()
-        return JSONResponse({"status": "healthy"})
     except ServerNotReachableError:
         logger.warning("Health check failed: Infrahub unreachable at %s", address)
         return JSONResponse(
             {"status": "unhealthy", "reason": f"Infrahub unreachable at {address}"},
             status_code=503,
         )
-    except ServerNotResponsiveError as exc:
+    except (ServerNotResponsiveError, AuthenticationError) as exc:
         logger.warning("Health check failed: %s", exc)
         return JSONResponse(
-            {"status": "unhealthy", "reason": f"Infrahub not responding: {exc}"},
-            status_code=503,
-        )
-    except AuthenticationError as exc:
-        logger.warning("Health check failed: authentication error — %s", exc)
-        return JSONResponse(
-            {"status": "unhealthy", "reason": f"Authentication failed: {exc}"},
+            {"status": "unhealthy", "reason": str(exc)},
             status_code=503,
         )
     except Exception:
         logger.exception("Health check failed")
         return JSONResponse({"status": "unhealthy"}, status_code=503)
+    else:
+        return JSONResponse({"status": "healthy"})
 
 
 @mcp.custom_route("/metrics", methods=["GET"])
@@ -270,9 +251,6 @@ mcp.mount(schema_tools_mcp)
 if not _config.read_only:
     mcp.mount(write_mcp)
 
-# Infrahub App — generic visualization tools (FastMCPApp)
-mcp.add_provider(infrahub_app)
-
 
 # ---------------------------------------------------------------------------
 # Token passthrough — ASGI-level header extraction
@@ -309,14 +287,12 @@ class _CredentialsPassthroughASGI:
             raw = headers.get(self._header, b"").decode("latin-1").strip()
             lowered = raw[: len(_BASIC_PREFIX)].lower()
             if lowered == _BASIC_PREFIX:
-                credentials = _decode_basic(raw[len(_BASIC_PREFIX):].strip())
+                credentials = _decode_basic(raw[len(_BASIC_PREFIX) :].strip())
                 if credentials is not None:
                     basic_reset = set_passthrough_basic(credentials)
             else:
                 token = (
-                    raw[len(_BEARER_PREFIX):].strip()
-                    if raw[: len(_BEARER_PREFIX)].lower() == _BEARER_PREFIX
-                    else raw
+                    raw[len(_BEARER_PREFIX) :].strip() if raw[: len(_BEARER_PREFIX)].lower() == _BEARER_PREFIX else raw
                 )
                 if token:
                     token_reset = set_passthrough_token(token)
@@ -394,9 +370,7 @@ def get_asgi_middleware() -> list[object]:
 
     middlewares: list[object] = []
     if _config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH}:
-        middlewares.append(
-            StarletteMiddleware(_CredentialsPassthroughASGI, header=_config.token_passthrough_header)
-        )
+        middlewares.append(StarletteMiddleware(_CredentialsPassthroughASGI, header=_config.token_passthrough_header))
     if _config.auth_mode != AUTH_MODE_OIDC:
         middlewares.append(StarletteMiddleware(_OAuthDiscoveryInterceptASGI))
     return middlewares
