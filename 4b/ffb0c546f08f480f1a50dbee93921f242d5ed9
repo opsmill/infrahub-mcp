@@ -1,0 +1,33 @@
+docs/docs/use-cases/cross-system-correlation.mdx
+  6eadb2027e92fbcf 39,42-47,91
+docs/docs/integrations/claude-desktop.mdx
+  6eadb2027e92fbcf 67
+tasks.py
+  6eadb2027e92fbcf 205
+docs/docs/use-cases/natural-language-graphql.mdx
+  6eadb2027e92fbcf 68
+docs/docs/use-cases/troubleshooting-queries.mdx
+  6eadb2027e92fbcf 54,57,59-61
+server.json
+  6eadb2027e92fbcf 53-171
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "4bffb0c546f08f480f1a50dbee93921f242d5ed9",
+  "prompts": {
+    "6eadb2027e92fbcf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f25905aa-7923-45a1-a5ef-a369c46af18d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 135,
+      "total_deletions": 12,
+      "accepted_lines": 685,
+      "overriden_lines": 0
+    }
+  }
+}
