@@ -1,0 +1,25 @@
+.github/workflows/workflow-publish.yml
+  6eadb2027e92fbcf 41-45,77-79,81-84,86-88,90-92,94-95,97-113
+.github/workflows/ci-docker-image.yml
+  6eadb2027e92fbcf 1-238
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "4f91e3801e7afcc98aa5faa2e767bb48aee5c3fd",
+  "prompts": {
+    "6eadb2027e92fbcf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f25905aa-7923-45a1-a5ef-a369c46af18d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 306,
+      "total_deletions": 58,
+      "accepted_lines": 289,
+      "overriden_lines": 0
+    }
+  }
+}
