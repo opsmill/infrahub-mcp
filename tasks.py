@@ -83,7 +83,7 @@ def docs_build(context: Context) -> None:
     with context.cd(DOCUMENTATION_DIRECTORY):
         output = context.run(exec_cmd)
 
-    if output.exited != 0:
+    if output is not None and output.exited != 0:
         sys.exit(-1)
 
 
@@ -343,7 +343,7 @@ def check_capabilities(context: Context) -> None:
     with context.cd(MAIN_DIRECTORY_PATH):
         context.run(f"bash scripts/update-capabilities.sh {tmp_path}")
         result = context.run(f"diff -u CAPABILITIES.md {tmp_path}", warn=True)
-    if result.exited != 0:
+    if result is not None and result.exited != 0:
         print(
             "::error::CAPABILITIES.md is out of date. Run 'uv run invoke update-capabilities' and commit the result.",
             file=sys.stderr,

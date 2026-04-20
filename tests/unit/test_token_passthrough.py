@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Generator
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock, patch
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 import pytest
 from fastmcp.exceptions import ToolError
@@ -18,11 +21,11 @@ from infrahub_mcp.auth import (
     set_passthrough_basic,
     set_passthrough_token,
 )
-from infrahub_mcp.config import ServerConfig
+from infrahub_mcp.config import AuthMode, ServerConfig
 from infrahub_mcp.server import (
     _CredentialsPassthroughASGI,
-    _OAuthDiscoveryInterceptASGI,
     _decode_basic,
+    _OAuthDiscoveryInterceptASGI,
     get_asgi_middleware,
 )
 from infrahub_mcp.utils import AppContext, get_client
@@ -48,7 +51,7 @@ class TestCredentialsPassthroughASGI:
     async def test_extracts_bearer_token(self) -> None:
         captured: list[str | None] = []
 
-        async def capture_app(scope: dict, receive: object, send: object) -> None:
+        async def capture_app(_scope: dict, _receive: object, _send: object) -> None:  # noqa: RUF029
             captured.append(get_passthrough_token())
 
         mw = _CredentialsPassthroughASGI(capture_app, header="Authorization")
@@ -65,7 +68,7 @@ class TestCredentialsPassthroughASGI:
     async def test_extracts_raw_token_without_bearer_prefix(self) -> None:
         captured: list[str | None] = []
 
-        async def capture_app(scope: dict, receive: object, send: object) -> None:
+        async def capture_app(_scope: dict, _receive: object, _send: object) -> None:  # noqa: RUF029
             captured.append(get_passthrough_token())
 
         mw = _CredentialsPassthroughASGI(capture_app, header="X-Infrahub-Token")
@@ -84,7 +87,7 @@ class TestCredentialsPassthroughASGI:
         space must NOT have the scheme stripped — that would corrupt them."""
         captured: list[str | None] = []
 
-        async def capture_app(scope: dict, receive: object, send: object) -> None:
+        async def capture_app(_scope: dict, _receive: object, _send: object) -> None:  # noqa: RUF029
             captured.append(get_passthrough_token())
 
         mw = _CredentialsPassthroughASGI(capture_app, header="Authorization")
@@ -166,7 +169,7 @@ class TestCredentialsPassthroughASGI:
     async def test_resets_contextvar_on_inner_app_error(self) -> None:
         """Token must be cleared even when the inner app raises."""
 
-        async def failing_app(scope: dict, receive: object, send: object) -> None:
+        async def failing_app(_scope: dict, _receive: object, _send: object) -> None:  # noqa: RUF029
             msg = "boom"
             raise RuntimeError(msg)
 
@@ -187,7 +190,7 @@ class TestCredentialsPassthroughASGI:
 
         captured: list[tuple[str, str] | None] = []
 
-        async def capture_app(scope: dict, receive: object, send: object) -> None:
+        async def capture_app(_scope: dict, _receive: object, _send: object) -> None:  # noqa: RUF029
             captured.append(get_passthrough_basic())
 
         mw = _CredentialsPassthroughASGI(capture_app, header="Authorization")
@@ -261,7 +264,7 @@ class TestOAuthDiscoveryInterceptASGI:
 
         sent_parts: list[dict] = []
 
-        async def capture_send(message: dict) -> None:
+        async def capture_send(message: dict) -> None:  # noqa: RUF029
             sent_parts.append(message)
 
         scope = {"type": "http", "path": "/.well-known/oauth-authorization-server"}
@@ -280,7 +283,7 @@ class TestOAuthDiscoveryInterceptASGI:
 
         sent_parts: list[dict] = []
 
-        async def capture_send(message: dict) -> None:
+        async def capture_send(message: dict) -> None:  # noqa: RUF029
             sent_parts.append(message)
 
         scope = {"type": "http", "path": "/.well-known/oauth-authorization-server/mcp"}
@@ -295,7 +298,7 @@ class TestOAuthDiscoveryInterceptASGI:
 
         sent_parts: list[dict] = []
 
-        async def capture_send(message: dict) -> None:
+        async def capture_send(message: dict) -> None:  # noqa: RUF029
             sent_parts.append(message)
 
         scope = {"type": "http", "path": "/.well-known/openid-configuration"}
@@ -310,7 +313,7 @@ class TestOAuthDiscoveryInterceptASGI:
 
         sent_parts: list[dict] = []
 
-        async def capture_send(message: dict) -> None:
+        async def capture_send(message: dict) -> None:  # noqa: RUF029
             sent_parts.append(message)
 
         scope = {"type": "http", "path": "/mcp/.well-known/openid-configuration"}
@@ -325,7 +328,7 @@ class TestOAuthDiscoveryInterceptASGI:
 
         sent_parts: list[dict] = []
 
-        async def capture_send(message: dict) -> None:
+        async def capture_send(message: dict) -> None:  # noqa: RUF029
             sent_parts.append(message)
 
         scope = {"type": "http", "path": "/register"}
@@ -381,16 +384,16 @@ class TestGetAsgiMiddleware:
             result = get_asgi_middleware()
         assert len(result) == 2
         assert all(isinstance(m, StarletteMiddleware) for m in result)
-        assert result[0].cls is _CredentialsPassthroughASGI  # type: ignore[attr-defined]
-        assert result[1].cls is _OAuthDiscoveryInterceptASGI  # type: ignore[attr-defined]
+        assert result[0].cls is _CredentialsPassthroughASGI  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+        assert result[1].cls is _OAuthDiscoveryInterceptASGI  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
 
     def test_returns_both_middlewares_in_basic_passthrough_mode(self) -> None:
         with patch("infrahub_mcp.server._config", ServerConfig(auth_mode="basic-passthrough")):
             result = get_asgi_middleware()
         assert len(result) == 2
         assert all(isinstance(m, StarletteMiddleware) for m in result)
-        assert result[0].cls is _CredentialsPassthroughASGI  # type: ignore[attr-defined]
-        assert result[1].cls is _OAuthDiscoveryInterceptASGI  # type: ignore[attr-defined]
+        assert result[0].cls is _CredentialsPassthroughASGI  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+        assert result[1].cls is _OAuthDiscoveryInterceptASGI  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
 
     def test_returns_oauth_intercept_in_none_mode(self) -> None:
         with patch("infrahub_mcp.server._config", ServerConfig(auth_mode="none")):
@@ -417,21 +420,21 @@ def _make_ctx(app_ctx: AppContext) -> MagicMock:
     return ctx
 
 
-@pytest.fixture()
+@pytest.fixture
 def infrahub_env() -> Generator[None]:
     """Provide a minimal INFRAHUB_ADDRESS env for passthrough tests."""
     with patch.dict(os.environ, {"INFRAHUB_ADDRESS": "http://localhost:8000"}):
         yield
 
 
-@pytest.fixture()
+@pytest.fixture
 def token_passthrough_ctx() -> MagicMock:
     """Mock Context wired for token-passthrough mode."""
     config = ServerConfig(auth_mode="token-passthrough")
     return _make_ctx(AppContext(client=None, config=config))
 
 
-@pytest.fixture()
+@pytest.fixture
 def basic_passthrough_ctx() -> MagicMock:
     """Mock Context wired for basic-passthrough mode."""
     config = ServerConfig(auth_mode="basic-passthrough")
@@ -497,7 +500,7 @@ class TestGetClientPassthrough:
 
     @pytest.mark.parametrize("mode", ["token-passthrough", "basic-passthrough"])
     def test_raises_without_infrahub_address(self, mode: str) -> None:
-        config = ServerConfig(auth_mode=mode)
+        config = ServerConfig(auth_mode=cast("AuthMode", mode))
         ctx = _make_ctx(AppContext(client=None, config=config))
 
         if mode == "token-passthrough":

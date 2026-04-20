@@ -19,10 +19,10 @@ class TestServerConfig:
         assert config.branch_pattern == "mcp/session-{date}-{hex}"
         assert config.max_branch_retries == 5
         assert config.log_level_debug is False
-        assert config.rate_limit_rps == 0.0
+        assert config.rate_limit_rps == pytest.approx(0.0)
         assert config.rate_limit_burst == 0
         assert config.retry_max_attempts == 0
-        assert config.retry_base_delay == 1.0
+        assert config.retry_base_delay == pytest.approx(1.0)
         assert config.cache_enabled is False
         assert config.cache_list_ttl == 300
         assert config.cache_read_ttl == 3600
@@ -32,13 +32,13 @@ class TestServerConfig:
         assert config.ping_interval_ms == 0
         assert config.auth_scopes_write == "write"
         assert config.auth_mode == "none"
-        assert config.oidc_config_url == ""
-        assert config.oidc_client_id == ""
-        assert config.oidc_client_secret == ""
-        assert config.oidc_base_url == ""
-        assert config.oidc_audience == ""
+        assert not config.oidc_config_url
+        assert not config.oidc_client_id
+        assert not config.oidc_client_secret
+        assert not config.oidc_base_url
+        assert not config.oidc_audience
         assert config.oidc_user_claim == "email"
-        assert config.token_passthrough_header == "Authorization"
+        assert config.token_passthrough_header == "Authorization"  # noqa: S105
 
     def test_frozen(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
@@ -47,7 +47,7 @@ class TestServerConfig:
             config.read_only = True  # type: ignore[misc]
 
 
-class TestLoadConfig:
+class TestLoadConfig:  # noqa: PLR0904
     def test_defaults_no_env(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             config = load_config()
@@ -126,7 +126,7 @@ class TestLoadConfig:
     def test_rate_limit_rps(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_RATE_LIMIT_RPS": "50"}, clear=True):
             config = load_config()
-        assert config.rate_limit_rps == 50.0
+        assert config.rate_limit_rps == pytest.approx(50.0)
 
     def test_rate_limit_rps_invalid(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_RATE_LIMIT_RPS": "abc"}, clear=True):
@@ -163,7 +163,7 @@ class TestLoadConfig:
     def test_retry_base_delay(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_RETRY_BASE_DELAY": "0.5"}, clear=True):
             config = load_config()
-        assert config.retry_base_delay == 0.5
+        assert config.retry_base_delay == pytest.approx(0.5)
 
     def test_retry_base_delay_zero(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_RETRY_BASE_DELAY": "0"}, clear=True):
@@ -265,10 +265,10 @@ class TestLoadConfig:
         assert config.branch_pattern == "test/{hex}"
         assert config.max_branch_retries == 3
         assert config.log_level_debug is True
-        assert config.rate_limit_rps == 10.0
+        assert config.rate_limit_rps == pytest.approx(10.0)
         assert config.rate_limit_burst == 20
         assert config.retry_max_attempts == 3
-        assert config.retry_base_delay == 0.5
+        assert config.retry_base_delay == pytest.approx(0.5)
         assert config.cache_enabled is True
         assert config.cache_list_ttl == 60
         assert config.cache_read_ttl == 120
@@ -280,7 +280,7 @@ class TestLoadConfig:
         assert config.auth_mode == "oidc"
         assert config.oidc_config_url == "https://idp.example.com/.well-known/openid-configuration"
         assert config.oidc_client_id == "my-client"
-        assert config.oidc_client_secret == "s3cret"
+        assert config.oidc_client_secret == "s3cret"  # noqa: S105
         assert config.oidc_base_url == "https://mcp.example.com"
         assert config.oidc_audience == "infrahub"
         assert config.oidc_user_claim == "sub"
@@ -369,7 +369,7 @@ class TestAuthModeConfig:
         }
         with patch.dict(os.environ, env, clear=True):
             config = load_config()
-        assert config.oidc_client_secret == "secret"
+        assert config.oidc_client_secret == "secret"  # noqa: S105
         assert config.oidc_audience == "my-audience"
         assert config.oidc_user_claim == "preferred_username"
 
@@ -390,7 +390,7 @@ class TestAuthModeConfig:
         }
         with patch.dict(os.environ, env, clear=True):
             config = load_config()
-        assert config.token_passthrough_header == "X-Infrahub-Token"
+        assert config.token_passthrough_header == "X-Infrahub-Token"  # noqa: S105
 
     def test_auth_mode_token_passthrough_without_address_loads(self) -> None:
         """Passthrough modes defer the INFRAHUB_ADDRESS check to request time."""

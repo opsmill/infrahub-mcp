@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 import toon
 from fastmcp import Context, FastMCP
 from infrahub_sdk.exceptions import GraphQLError, SchemaNotFoundError
-from infrahub_sdk.schema import MainSchemaTypes
+from infrahub_sdk.schema import MainSchemaTypesAPI
 from infrahub_sdk.types import Order
 from mcp.types import ToolAnnotations
 from pydantic import Field
@@ -43,7 +43,7 @@ _RESERVED_FILTER_KEYS: frozenset[str] = frozenset(
 
 async def _fetch_nodes(  # noqa: PLR0913, PLR0917
     client: "InfrahubClient",
-    schema: MainSchemaTypes,
+    schema: MainSchemaTypesAPI,
     branch: str | None,
     filters: dict[str, Any] | None,
     partial_match: bool,
@@ -87,7 +87,7 @@ async def _get_total_count(
 async def _validate_filters(  # noqa: PLR0913, PLR0917
     ctx: Context,
     client: "InfrahubClient",
-    schema: MainSchemaTypes,
+    schema: MainSchemaTypesAPI,
     kind: str,
     branch: str | None,
     filters: dict[str, Any],
@@ -367,6 +367,6 @@ async def search_nodes(
     except GraphQLError as exc:
         await _log_and_raise_error(ctx=ctx, error=exc)
 
-    results = [obj.display_label for obj in nodes[:limit]]
+    results: list[str] = [obj.display_label or obj.id or "unknown" for obj in nodes[:limit]]
     await ctx.debug(f"Found {len(results)} matches in {kind}: query_len={len(query)} (request_id={req_id!r})")
     return results

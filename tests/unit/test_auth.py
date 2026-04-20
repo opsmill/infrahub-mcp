@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 import pytest
 
@@ -53,7 +56,7 @@ class TestCreateAuthProvider:
             auth_mode="oidc",
             oidc_config_url="https://example.com/.well-known/openid-configuration",
             oidc_client_id="my-client",
-            oidc_client_secret="my-secret",
+            oidc_client_secret="my-secret",  # noqa: S106
             oidc_base_url="https://mcp.example.com",
             oidc_audience="my-api",
         )
@@ -64,7 +67,7 @@ class TestCreateAuthProvider:
         mock_cls.assert_called_once_with(
             config_url="https://example.com/.well-known/openid-configuration",
             client_id="my-client",
-            client_secret="my-secret",
+            client_secret="my-secret",  # noqa: S106
             base_url="https://mcp.example.com",
             audience="my-api",
         )

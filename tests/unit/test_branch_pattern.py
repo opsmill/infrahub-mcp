@@ -5,8 +5,6 @@ from __future__ import annotations
 import re
 from unittest.mock import patch
 
-import pytest
-
 from infrahub_mcp.utils import _has_placeholders, expand_branch_pattern
 
 

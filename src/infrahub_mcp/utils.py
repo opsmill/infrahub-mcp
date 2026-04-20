@@ -43,7 +43,10 @@ def get_client(ctx: Context) -> InfrahubClient:
 
     In other modes, returns the shared lifespan client.
     """
-    app_ctx: AppContext = ctx.request_context.lifespan_context  # type: ignore[union-attr]
+    if ctx.request_context is None:
+        msg = "request_context must not be None"
+        raise RuntimeError(msg)
+    app_ctx: AppContext = ctx.request_context.lifespan_context
 
     if app_ctx.config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH}:
         address = os.environ.get("INFRAHUB_ADDRESS")
@@ -171,7 +174,10 @@ async def get_default_branch(ctx: Context) -> str:
     pay the round-trip once per session. Falls back to ``main`` if the server
     does not advertise a default branch.
     """
-    app_ctx: AppContext = ctx.request_context.lifespan_context  # type: ignore[union-attr]
+    if ctx.request_context is None:
+        msg = "request_context must not be None"
+        raise RuntimeError(msg)
+    app_ctx: AppContext = ctx.request_context.lifespan_context
     async with app_ctx._default_branch_lock:  # noqa: SLF001
         if app_ctx.default_branch is None:
             client = get_client(ctx)
@@ -193,7 +199,10 @@ async def get_or_create_session_branch(ctx: Context) -> str:
     Branch creation is attempted directly to avoid TOCTOU races between
     checking existence and creating.
     """
-    app_ctx: AppContext = ctx.request_context.lifespan_context  # type: ignore[union-attr]
+    if ctx.request_context is None:
+        msg = "request_context must not be None"
+        raise RuntimeError(msg)
+    app_ctx: AppContext = ctx.request_context.lifespan_context
     async with app_ctx._session_branch_lock:  # noqa: SLF001
         if app_ctx.session_branch is None:
             if _has_placeholders(app_ctx.config.branch_pattern):
@@ -220,7 +229,7 @@ def _node_label(node: InfrahubNode, *, include_kind: bool = True) -> str:
     if node.display_label:
         return str(node.display_label)
     if node.hfid:
-        return node.get_human_friendly_id_as_string(include_kind=include_kind)
+        return node.get_human_friendly_id_as_string(include_kind=include_kind) or "unknown"
     return node.id or "unknown"
 
 

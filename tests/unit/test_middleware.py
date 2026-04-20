@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Generator, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
+
+if TYPE_CHECKING:
+    from collections.abc import Generator, Sequence
 
 import mcp.types as mt
 import pytest
@@ -104,7 +106,7 @@ class TestRequestIdMiddleware:
         middleware = RequestIdMiddleware()
         ctx = _make_tool_context("get_schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> str:
+        async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
             return "ok"
 
         with caplog.at_level(logging.INFO, logger="infrahub_mcp.middleware"):
@@ -120,7 +122,7 @@ class TestRequestIdMiddleware:
         middleware = RequestIdMiddleware()
         ctx = _make_tool_context("get_schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> str:
+        async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
             msg = "boom"
             raise RuntimeError(msg)
 
@@ -148,8 +150,8 @@ class TestReadOnlyMiddleware:
             _make_tool("query_graphql", tags={"graphql", "retrieve"}),
         ]
 
-        async def call_next(
-            c: MiddlewareContext[Any],
+        async def call_next(  # noqa: RUF029
+            context: MiddlewareContext[Any],
         ) -> Sequence[Any]:
             return all_tools
 
@@ -171,7 +173,7 @@ class TestReadOnlyMiddleware:
             _make_tool("write_report", tags={"reports", "generate"}),
         ]
 
-        async def call_next(c: MiddlewareContext[Any]) -> Sequence[Any]:
+        async def call_next(context: MiddlewareContext[Any]) -> Sequence[Any]:  # noqa: RUF029
             return all_tools
 
         ctx = _make_list_tools_context()
@@ -184,7 +186,7 @@ class TestReadOnlyMiddleware:
         middleware = ReadOnlyMiddleware()
         ctx = _make_tool_context("node_upsert")
 
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             msg = "should not reach here"
             raise AssertionError(msg)
 
@@ -197,7 +199,7 @@ class TestReadOnlyMiddleware:
         ctx = _make_tool_context("get_schema")
         expected = ToolResult(content=[])
 
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             return expected
 
         result = await middleware.on_call_tool(ctx, call_next)
@@ -213,7 +215,7 @@ class TestReadOnlyMiddleware:
         middleware = ReadOnlyMiddleware()
         ctx = _make_tool_context(tool_name)
 
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             msg = "should not reach here"
             raise AssertionError(msg)
 
@@ -226,7 +228,7 @@ class TestReadOnlyMiddleware:
         middleware = ReadOnlyMiddleware()
         ctx = _make_tool_context("some_future_write_tool")
 
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             msg = "should not reach here"
             raise AssertionError(msg)
 
@@ -244,7 +246,7 @@ class TestReadOnlyMiddleware:
         ctx = _make_tool_context(tool_name)
         expected = ToolResult(content=[])
 
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             return expected
 
         result = await middleware.on_call_tool(ctx, call_next)
@@ -263,7 +265,7 @@ class TestAuditMiddleware:
         ctx = _make_tool_context("get_nodes")
         expected = ToolResult(content=[])
 
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             return expected
 
         with caplog.at_level(logging.INFO, logger="infrahub_mcp.middleware"):
@@ -278,7 +280,7 @@ class TestAuditMiddleware:
         middleware = AuditMiddleware()
         ctx = _make_resource_context("infrahub://schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> str:
+        async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
             return "data"
 
         with caplog.at_level(logging.INFO, logger="infrahub_mcp.middleware"):
@@ -299,7 +301,7 @@ class TestMetricsMiddleware:
         middleware = MetricsMiddleware()
         ctx = _make_tool_context("get_schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> str:
+        async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
             return "ok"
 
         await middleware.on_message(ctx, call_next)
@@ -314,7 +316,7 @@ class TestMetricsMiddleware:
         middleware = MetricsMiddleware()
         ctx = _make_tool_context("get_schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> str:
+        async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
             msg = "fail"
             raise RuntimeError(msg)
 
@@ -330,7 +332,7 @@ class TestMetricsMiddleware:
         middleware = MetricsMiddleware()
         ctx = _make_tool_context("get_schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> str:
+        async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
             return "ok"
 
         await middleware.on_message(ctx, call_next)
@@ -350,7 +352,7 @@ class TestMetricsMiddleware:
         middleware = MetricsMiddleware()
         ctx = _make_tool_context("get_schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> str:
+        async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
             return "ok"
 
         await middleware.on_message(ctx, call_next)
@@ -366,7 +368,7 @@ class TestMetricsMiddleware:
         middleware = MetricsMiddleware()
         ctx = _make_tool_context("get_schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> str:
+        async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
             msg = "fail"
             raise RuntimeError(msg)
 
@@ -395,7 +397,7 @@ class TestOTelTracingMiddleware:
         middleware = OTelTracingMiddleware()
         ctx = _make_tool_context("get_schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> str:
+        async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
             return "ok"
 
         # Even if otel is not installed, this should work
@@ -408,7 +410,7 @@ class TestOTelTracingMiddleware:
         middleware = OTelTracingMiddleware()
         ctx = _make_tool_context("get_schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> str:
+        async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
             msg = "fail"
             raise RuntimeError(msg)
 
@@ -772,7 +774,7 @@ class TestModuleLevelGetters:
     def test_get_metrics_after_configure(self) -> None:
         mock_mcp = MagicMock()
         mock_mcp.middleware = []
-        mock_mcp.add_middleware.side_effect = lambda mw: mock_mcp.middleware.append(mw)
+        mock_mcp.add_middleware.side_effect = mock_mcp.middleware.append
 
         config = ServerConfig()
         configure_middleware(mock_mcp, config)
@@ -782,7 +784,7 @@ class TestModuleLevelGetters:
     def test_get_error_handling_after_configure(self) -> None:
         mock_mcp = MagicMock()
         mock_mcp.middleware = []
-        mock_mcp.add_middleware.side_effect = lambda mw: mock_mcp.middleware.append(mw)
+        mock_mcp.add_middleware.side_effect = mock_mcp.middleware.append
 
         config = ServerConfig()
         configure_middleware(mock_mcp, config)
@@ -792,7 +794,7 @@ class TestModuleLevelGetters:
     def test_get_caching_middleware_when_disabled(self) -> None:
         mock_mcp = MagicMock()
         mock_mcp.middleware = []
-        mock_mcp.add_middleware.side_effect = lambda mw: mock_mcp.middleware.append(mw)
+        mock_mcp.add_middleware.side_effect = mock_mcp.middleware.append
 
         config = ServerConfig(cache_enabled=False)
         configure_middleware(mock_mcp, config)
@@ -804,7 +806,7 @@ class TestModuleLevelGetters:
     def test_get_caching_middleware_when_enabled(self) -> None:
         mock_mcp = MagicMock()
         mock_mcp.middleware = []
-        mock_mcp.add_middleware.side_effect = lambda mw: mock_mcp.middleware.append(mw)
+        mock_mcp.add_middleware.side_effect = mock_mcp.middleware.append
 
         config = ServerConfig(cache_enabled=True)
         configure_middleware(mock_mcp, config)
@@ -825,7 +827,7 @@ class TestAuditMiddlewareUser:
         ctx = _make_tool_context("get_nodes")
         expected = ToolResult(content=[])
 
-        async def fake_call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def fake_call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             return expected
 
         with patch("infrahub_mcp.middleware.get_user_from_token", return_value="alice-example.com"):
@@ -841,7 +843,7 @@ class TestAuditMiddlewareUser:
         middleware = AuditMiddleware(user_claim="email")
         ctx = _make_resource_context("infrahub://schema")
 
-        async def fake_call_next(c: MiddlewareContext[Any]) -> str:
+        async def fake_call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
             return "data"
 
         with patch("infrahub_mcp.middleware.get_user_from_token", return_value="bob-example.com"):
@@ -862,7 +864,7 @@ class TestAuditMiddlewareUser:
         ctx = _make_tool_context("get_nodes")
         expected = ToolResult(content=[])
 
-        async def fake_call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def fake_call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             return expected
 
         with patch("infrahub_mcp.middleware.get_user_from_token", return_value="jdoe") as mock_get_user:
@@ -876,7 +878,7 @@ class TestAuditMiddlewareUser:
         ctx = _make_tool_context("get_nodes")
         expected = ToolResult(content=[])
 
-        async def fake_call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def fake_call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             return expected
 
         with patch("infrahub_mcp.middleware.get_user_from_token") as mock_get_user:
@@ -979,7 +981,7 @@ class TestSafeRetryMiddlewareRouting:
 
         call_next_called = False
 
-        async def call_next(_: Any) -> ToolResult:
+        async def call_next(context: Any) -> ToolResult:  # noqa: RUF029
             nonlocal call_next_called
             call_next_called = True
             return ToolResult(content=[])
@@ -1015,7 +1017,7 @@ class TestSafeRetryMiddlewareRouting:
 
         sentinel = ToolResult(content=[])
 
-        async def call_next(_: Any) -> ToolResult:
+        async def call_next(context: Any) -> ToolResult:  # noqa: RUF029
             return sentinel
 
         result = await mw.on_call_tool(ctx, call_next)
@@ -1030,7 +1032,7 @@ class TestSafeRetryMiddlewareRouting:
 
         sentinel = ToolResult(content=[])
 
-        async def call_next(_: Any) -> ToolResult:
+        async def call_next(context: Any) -> ToolResult:  # noqa: RUF029
             return sentinel
 
         result = await mw.on_call_tool(ctx, call_next)
@@ -1054,7 +1056,7 @@ class TestTokenPassthroughMiddleware:
         middleware = TokenPassthroughMiddleware()
         ctx = _make_tool_context("get_schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             msg = "should not reach here"
             raise AssertionError(msg)
 
@@ -1066,7 +1068,7 @@ class TestTokenPassthroughMiddleware:
         middleware = TokenPassthroughMiddleware()
         ctx = _make_resource_context("infrahub://schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> str:
+        async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
             msg = "should not reach here"
             raise AssertionError(msg)
 
@@ -1079,7 +1081,7 @@ class TestTokenPassthroughMiddleware:
         ctx = _make_tool_context("get_schema")
         expected = ToolResult(content=[])
 
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             return expected
 
         set_passthrough_token("valid-token")
@@ -1091,7 +1093,7 @@ class TestTokenPassthroughMiddleware:
         middleware = TokenPassthroughMiddleware()
         ctx = _make_resource_context("infrahub://schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> str:
+        async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
             return "data"
 
         set_passthrough_token("valid-token")
@@ -1147,7 +1149,7 @@ class TestInfrahubConnectionMiddleware:
         middleware = InfrahubConnectionMiddleware()
         ctx = _make_tool_context("get_schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             raise ServerNotReachableError(address="http://infrahub:8000")
 
         with pytest.raises(McpError, match="Infrahub is unreachable"):
@@ -1158,7 +1160,7 @@ class TestInfrahubConnectionMiddleware:
         middleware = InfrahubConnectionMiddleware()
         ctx = _make_resource_context("infrahub://schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> str:
+        async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
             raise ServerNotReachableError(address="http://infrahub:8000")
 
         with pytest.raises(McpError, match="Infrahub is unreachable"):
@@ -1169,7 +1171,7 @@ class TestInfrahubConnectionMiddleware:
         middleware = InfrahubConnectionMiddleware()
         ctx = _make_tool_context("get_schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             raise ServerNotResponsiveError(url="http://infrahub:8000/api/schema")
 
         with pytest.raises(McpError, match="Infrahub is not responding"):
@@ -1180,8 +1182,9 @@ class TestInfrahubConnectionMiddleware:
         middleware = InfrahubConnectionMiddleware()
         ctx = _make_tool_context("get_schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
-            raise AuthenticationError("Invalid API token")
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
+            msg = "Invalid API token"
+            raise AuthenticationError(msg)
 
         with pytest.raises(McpError, match="401 Unauthorized"):
             await middleware.on_call_tool(ctx, call_next)
@@ -1193,8 +1196,9 @@ class TestInfrahubConnectionMiddleware:
         middleware = InfrahubConnectionMiddleware()
         ctx = _make_tool_context("get_schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
-            raise httpx.ConnectError("Connection refused")
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
+            msg = "Connection refused"
+            raise httpx.ConnectError(msg)
 
         with pytest.raises(McpError, match="Cannot connect to Infrahub"):
             await middleware.on_call_tool(ctx, call_next)
@@ -1205,7 +1209,7 @@ class TestInfrahubConnectionMiddleware:
         ctx = _make_tool_context("get_schema")
         expected = ToolResult(content=[])
 
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             return expected
 
         result = await middleware.on_call_tool(ctx, call_next)
@@ -1216,7 +1220,7 @@ class TestInfrahubConnectionMiddleware:
         middleware = InfrahubConnectionMiddleware()
         ctx = _make_tool_context("get_schema")
 
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             msg = "some other error"
             raise ValueError(msg)
 
@@ -1226,7 +1230,7 @@ class TestInfrahubConnectionMiddleware:
     def test_always_in_middleware_stack(self) -> None:
         mock_mcp = MagicMock()
         mock_mcp.middleware = []
-        mock_mcp.add_middleware.side_effect = lambda mw: mock_mcp.middleware.append(mw)
+        mock_mcp.add_middleware.side_effect = mock_mcp.middleware.append
 
         config = ServerConfig()
         configure_middleware(mock_mcp, config)
@@ -1247,7 +1251,7 @@ class TestStrictResponseLimitingMiddleware:
         ctx = _make_tool_context("get_nodes")
         expected = ToolResult(content=[TextContent(type="text", text="small")])
 
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             return expected
 
         result = await middleware.on_call_tool(ctx, call_next)
@@ -1260,7 +1264,7 @@ class TestStrictResponseLimitingMiddleware:
         big_text = "x" * 5_000
         oversized = ToolResult(content=[TextContent(type="text", text=big_text)])
 
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             return oversized
 
         with pytest.raises(ToolError) as excinfo:
@@ -1283,7 +1287,7 @@ class TestStrictResponseLimitingMiddleware:
         big_text = "x" * 5_000
         oversized = ToolResult(content=[TextContent(type="text", text=big_text)])
 
-        async def call_next(c: MiddlewareContext[Any]) -> ToolResult:
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             return oversized
 
         result = await middleware.on_call_tool(ctx, call_next)
@@ -1292,7 +1296,7 @@ class TestStrictResponseLimitingMiddleware:
     def test_registered_in_middleware_stack(self) -> None:
         mock_mcp = MagicMock()
         mock_mcp.middleware = []
-        mock_mcp.add_middleware.side_effect = lambda mw: mock_mcp.middleware.append(mw)
+        mock_mcp.add_middleware.side_effect = mock_mcp.middleware.append
 
         config = ServerConfig()
         configure_middleware(mock_mcp, config)

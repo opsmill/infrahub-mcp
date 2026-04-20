@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from contextvars import ContextVar, Token
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from infrahub_mcp.constants import AUTH_MODE_OIDC
 
@@ -35,7 +35,7 @@ def create_auth_provider(config: ServerConfig) -> OIDCProxy | None:
 
     from fastmcp.server.auth import OIDCProxy  # noqa: PLC0415
 
-    kwargs: dict[str, object] = {
+    kwargs: dict[str, Any] = {
         "config_url": config.oidc_config_url,
         "client_id": config.oidc_client_id,
         "base_url": config.oidc_base_url,
@@ -50,7 +50,7 @@ def create_auth_provider(config: ServerConfig) -> OIDCProxy | None:
         config.oidc_config_url,
         config.oidc_client_id,
     )
-    return OIDCProxy(**kwargs)  # type: ignore[arg-type]
+    return OIDCProxy(**kwargs)
 
 
 # ---------------------------------------------------------------------------

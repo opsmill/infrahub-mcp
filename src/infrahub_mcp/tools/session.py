@@ -28,7 +28,10 @@ async def get_session_info(ctx: Context) -> dict[str, Any]:
     Returns:
         Dict with ``session_branch`` (str or null), ``infrahub_address``, and ``has_session_branch``.
     """
-    app_ctx = ctx.request_context.lifespan_context  # type: ignore[union-attr]
+    if ctx.request_context is None:
+        msg = "request_context must not be None"
+        raise RuntimeError(msg)
+    app_ctx = ctx.request_context.lifespan_context
     await ctx.debug("Returning session info")
     return {
         "session_branch": app_ctx.session_branch,

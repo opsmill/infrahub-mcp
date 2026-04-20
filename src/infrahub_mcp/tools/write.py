@@ -270,16 +270,19 @@ async def propose_changes(
         Dict with proposed change id and branch details on success.
     """
     client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
-    app_ctx = ctx.request_context.lifespan_context  # type: ignore[union-attr]
+    if ctx.request_context is None:
+        msg = "request_context must not be None"
+        raise RuntimeError(msg)
+    app_ctx = ctx.request_context.lifespan_context
 
-    if app_ctx.session_branch is None:  # type: ignore[union-attr]
+    if app_ctx.session_branch is None:
         await _log_and_raise_error(
             ctx=ctx,
             error="No session branch exists yet.",
             remediation="Make at least one write (node_upsert / node_delete) before proposing changes.",
         )
 
-    session_branch: str = app_ctx.session_branch  # type: ignore[union-attr]
+    session_branch: str = app_ctx.session_branch
 
     if destination_branch is None:
         branches = await client.branch.all()

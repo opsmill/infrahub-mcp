@@ -3,7 +3,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib.metadata import version
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastmcp import FastMCP
 from infrahub_sdk.client import InfrahubClient
@@ -41,7 +41,10 @@ from infrahub_mcp.tools.write import mcp as write_mcp
 from infrahub_mcp.utils import AppContext
 
 if TYPE_CHECKING:
-    from asgiref.typing import ASGIApplication as ASGIApp
+    from collections.abc import Awaitable, Callable
+
+    # ASGI 3.0 application callable type — avoids a runtime dependency on asgiref.
+    ASGIApp = Callable[..., Awaitable[None]]
 
 _config: ServerConfig = load_config()
 
@@ -281,7 +284,7 @@ class _CredentialsPassthroughASGI:
         self._app = app
         self._header = header.lower().encode("latin-1")
 
-    async def __call__(self, scope: dict, receive: object, send: object) -> None:  # type: ignore[type-arg]
+    async def __call__(self, scope: dict, receive: Any, send: Any) -> None:  # type: ignore[type-arg]
         token_reset = None
         basic_reset = None
         if scope["type"] == "http":
@@ -299,7 +302,7 @@ class _CredentialsPassthroughASGI:
                 if token:
                     token_reset = set_passthrough_token(token)
         try:
-            await self._app(scope, receive, send)  # type: ignore[arg-type]
+            await self._app(scope, receive, send)
         finally:
             if token_reset is not None:
                 reset_passthrough_token(token_reset)
@@ -353,7 +356,7 @@ class _OAuthDiscoveryInterceptASGI:
             return True
         return any(segment in normalized for segment in _OAUTH_DISCOVERY_SEGMENTS)
 
-    async def __call__(self, scope: dict, receive: object, send: object) -> None:  # type: ignore[type-arg]
+    async def __call__(self, scope: dict, receive: Any, send: Any) -> None:  # type: ignore[type-arg]
         if scope["type"] == "http":
             path: str = scope.get("path", "")
             if self._is_oauth_probe(path):
@@ -361,9 +364,9 @@ class _OAuthDiscoveryInterceptASGI:
                     {"error": "invalid_request", "error_description": "OAuth is not enabled on this server."},
                     status_code=404,
                 )
-                await response(scope, receive, send)  # type: ignore[arg-type]
+                await response(scope, receive, send)
                 return
-        await self._app(scope, receive, send)  # type: ignore[arg-type]
+        await self._app(scope, receive, send)
 
 
 def get_asgi_middleware() -> list[object]:

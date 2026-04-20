@@ -17,6 +17,7 @@ infrahub-mcp = "infrahub_mcp:main"
 
 [dependency-groups]
 dev = [
+    "ty==0.0.32",
     "rumdl>=0.1.68",
     "invoke>=2.2.0",
     "mypy>=1.17.0",
@@ -100,10 +101,19 @@ max-line-length = 150
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
     "S101",    # Allow assert in test files
+    "ARG001",  # Unused function args (protocol-matching callback stubs)
     "ARG002",  # Unused method args (required by @patch decorators)
     "PLC2701", # Private name imports (testing internal helpers)
     "PLR2004", # Magic values in comparisons (expected in assertions)
     "PLR6301", # Method could be static (standard test-class pattern)
+]
+"scripts/**/*.py" = [
+    "BLE001",  # Broad exception catch (acceptable in scripts)
+    "EXE001",  # Shebang without executable bit
+    "PLC0415", # Import not at top level (lazy imports in scripts)
+    "PLR0914", # Too many local variables
+    "PLR0915", # Too many statements
+    "PLR2004", # Magic values
 ]
 
 
