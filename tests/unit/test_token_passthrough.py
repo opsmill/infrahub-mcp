@@ -10,26 +10,35 @@ import pytest
 from fastmcp.exceptions import ToolError
 from starlette.middleware import Middleware as StarletteMiddleware
 
-from infrahub_mcp.auth import _passthrough_token, get_passthrough_token, set_passthrough_token
+from infrahub_mcp.auth import (
+    _passthrough_basic,
+    _passthrough_token,
+    get_passthrough_basic,
+    get_passthrough_token,
+    set_passthrough_basic,
+    set_passthrough_token,
+)
 from infrahub_mcp.config import ServerConfig
-from infrahub_mcp.server import _OAuthDiscoveryInterceptASGI, _TokenPassthroughASGI, get_asgi_middleware
+from infrahub_mcp.server import _CredentialsPassthroughASGI, _OAuthDiscoveryInterceptASGI, get_asgi_middleware
 from infrahub_mcp.utils import AppContext, get_client
 
 
 @pytest.fixture(autouse=True)
-def _clean_passthrough_token() -> Generator[None]:
-    """Isolate ContextVar between tests so failures don't leak."""
+def _clean_passthrough_contextvars() -> Generator[None]:
+    """Isolate ContextVars between tests so failures don't leak."""
     token = _passthrough_token.set(None)
+    basic = _passthrough_basic.set(None)
     yield
     _passthrough_token.reset(token)
+    _passthrough_basic.reset(basic)
 
 
 # ---------------------------------------------------------------------------
-# _TokenPassthroughASGI — header extraction
+# _CredentialsPassthroughASGI — header extraction
 # ---------------------------------------------------------------------------
 
 
-class TestTokenPassthroughASGI:
+class TestCredentialsPassthroughASGI:
     @pytest.mark.anyio
     async def test_extracts_bearer_token(self) -> None:
         captured: list[str | None] = []
@@ -37,7 +46,7 @@ class TestTokenPassthroughASGI:
         async def capture_app(scope: dict, receive: object, send: object) -> None:
             captured.append(get_passthrough_token())
 
-        mw = _TokenPassthroughASGI(capture_app, header="Authorization")
+        mw = _CredentialsPassthroughASGI(capture_app, header="Authorization")
 
         scope = {
             "type": "http",
@@ -54,7 +63,7 @@ class TestTokenPassthroughASGI:
         async def capture_app(scope: dict, receive: object, send: object) -> None:
             captured.append(get_passthrough_token())
 
-        mw = _TokenPassthroughASGI(capture_app, header="X-Infrahub-Token")
+        mw = _CredentialsPassthroughASGI(capture_app, header="X-Infrahub-Token")
 
         scope = {
             "type": "http",
@@ -73,7 +82,7 @@ class TestTokenPassthroughASGI:
         async def capture_app(scope: dict, receive: object, send: object) -> None:
             captured.append(get_passthrough_token())
 
-        mw = _TokenPassthroughASGI(capture_app, header="Authorization")
+        mw = _CredentialsPassthroughASGI(capture_app, header="Authorization")
 
         scope = {
             "type": "http",
@@ -86,7 +95,7 @@ class TestTokenPassthroughASGI:
     @pytest.mark.anyio
     async def test_no_token_header_leaves_contextvar_none(self) -> None:
         app = AsyncMock()
-        mw = _TokenPassthroughASGI(app, header="Authorization")
+        mw = _CredentialsPassthroughASGI(app, header="Authorization")
 
         scope = {
             "type": "http",
@@ -99,7 +108,7 @@ class TestTokenPassthroughASGI:
     @pytest.mark.anyio
     async def test_empty_bearer_leaves_contextvar_none(self) -> None:
         app = AsyncMock()
-        mw = _TokenPassthroughASGI(app, header="Authorization")
+        mw = _CredentialsPassthroughASGI(app, header="Authorization")
 
         scope = {
             "type": "http",
@@ -112,7 +121,7 @@ class TestTokenPassthroughASGI:
     @pytest.mark.anyio
     async def test_non_http_scope_skipped(self) -> None:
         app = AsyncMock()
-        mw = _TokenPassthroughASGI(app, header="Authorization")
+        mw = _CredentialsPassthroughASGI(app, header="Authorization")
 
         scope = {
             "type": "websocket",
@@ -125,7 +134,7 @@ class TestTokenPassthroughASGI:
     @pytest.mark.anyio
     async def test_calls_inner_app(self) -> None:
         app = AsyncMock()
-        mw = _TokenPassthroughASGI(app, header="Authorization")
+        mw = _CredentialsPassthroughASGI(app, header="Authorization")
 
         scope = {"type": "http", "headers": []}
         receive = MagicMock()
@@ -137,7 +146,7 @@ class TestTokenPassthroughASGI:
     async def test_resets_contextvar_after_request(self) -> None:
         """Token must not leak to subsequent requests."""
         app = AsyncMock()
-        mw = _TokenPassthroughASGI(app, header="Authorization")
+        mw = _CredentialsPassthroughASGI(app, header="Authorization")
 
         scope = {
             "type": "http",
@@ -156,7 +165,7 @@ class TestTokenPassthroughASGI:
             msg = "boom"
             raise RuntimeError(msg)
 
-        mw = _TokenPassthroughASGI(failing_app, header="Authorization")
+        mw = _CredentialsPassthroughASGI(failing_app, header="Authorization")
 
         scope = {
             "type": "http",
@@ -166,6 +175,72 @@ class TestTokenPassthroughASGI:
             await mw(scope, MagicMock(), MagicMock())
 
         assert get_passthrough_token() is None
+
+    @pytest.mark.anyio
+    async def test_extracts_basic_credentials(self) -> None:
+        import base64  # noqa: PLC0415
+
+        captured: list[tuple[str, str] | None] = []
+
+        async def capture_app(scope: dict, receive: object, send: object) -> None:
+            captured.append(get_passthrough_basic())
+
+        mw = _CredentialsPassthroughASGI(capture_app, header="Authorization")
+        encoded = base64.b64encode(b"alice:s3cret").decode("ascii")
+
+        scope = {
+            "type": "http",
+            "headers": [(b"authorization", f"Basic {encoded}".encode("latin-1"))],
+        }
+        await mw(scope, MagicMock(), MagicMock())
+
+        assert captured == [("alice", "s3cret")]
+
+    @pytest.mark.anyio
+    async def test_malformed_basic_leaves_contextvar_none(self) -> None:
+        app = AsyncMock()
+        mw = _CredentialsPassthroughASGI(app, header="Authorization")
+
+        scope = {
+            "type": "http",
+            "headers": [(b"authorization", b"Basic !!!not-base64!!!")],
+        }
+        await mw(scope, MagicMock(), MagicMock())
+
+        assert get_passthrough_basic() is None
+        assert get_passthrough_token() is None
+
+    @pytest.mark.anyio
+    async def test_basic_missing_colon_leaves_contextvar_none(self) -> None:
+        import base64  # noqa: PLC0415
+
+        app = AsyncMock()
+        mw = _CredentialsPassthroughASGI(app, header="Authorization")
+        encoded = base64.b64encode(b"no-colon-here").decode("ascii")
+
+        scope = {
+            "type": "http",
+            "headers": [(b"authorization", f"Basic {encoded}".encode("latin-1"))],
+        }
+        await mw(scope, MagicMock(), MagicMock())
+
+        assert get_passthrough_basic() is None
+
+    @pytest.mark.anyio
+    async def test_resets_basic_contextvar_after_request(self) -> None:
+        import base64  # noqa: PLC0415
+
+        app = AsyncMock()
+        mw = _CredentialsPassthroughASGI(app, header="Authorization")
+        encoded = base64.b64encode(b"u:p").decode("ascii")
+
+        scope = {
+            "type": "http",
+            "headers": [(b"authorization", f"Basic {encoded}".encode("latin-1"))],
+        }
+        await mw(scope, MagicMock(), MagicMock())
+
+        assert get_passthrough_basic() is None
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +376,15 @@ class TestGetAsgiMiddleware:
             result = get_asgi_middleware()
         assert len(result) == 2
         assert all(isinstance(m, StarletteMiddleware) for m in result)
-        assert result[0].cls is _TokenPassthroughASGI  # type: ignore[attr-defined]
+        assert result[0].cls is _CredentialsPassthroughASGI  # type: ignore[attr-defined]
+        assert result[1].cls is _OAuthDiscoveryInterceptASGI  # type: ignore[attr-defined]
+
+    def test_returns_both_middlewares_in_basic_passthrough_mode(self) -> None:
+        with patch("infrahub_mcp.server._config", ServerConfig(auth_mode="basic-passthrough")):
+            result = get_asgi_middleware()
+        assert len(result) == 2
+        assert all(isinstance(m, StarletteMiddleware) for m in result)
+        assert result[0].cls is _CredentialsPassthroughASGI  # type: ignore[attr-defined]
         assert result[1].cls is _OAuthDiscoveryInterceptASGI  # type: ignore[attr-defined]
 
     def test_returns_oauth_intercept_in_none_mode(self) -> None:
@@ -383,6 +466,32 @@ class TestGetClientPassthrough:
 
         result = get_client(ctx)
         assert result is shared_client
+
+    def test_raises_without_basic_credentials(self) -> None:
+        config = ServerConfig(auth_mode="basic-passthrough")
+        app_ctx = AppContext(client=None, config=config)
+        ctx = _make_ctx(app_ctx)
+
+        with pytest.raises(ToolError, match="Basic credentials"):
+            get_client(ctx)
+
+    def test_creates_client_with_basic_credentials(self) -> None:
+        config = ServerConfig(auth_mode="basic-passthrough")
+        app_ctx = AppContext(client=None, config=config)
+        ctx = _make_ctx(app_ctx)
+
+        set_passthrough_basic(("alice", "s3cret"))
+        with patch.dict(os.environ, {"INFRAHUB_ADDRESS": "http://localhost:8000"}):
+            with patch("infrahub_mcp.utils.InfrahubClient") as mock_cls:
+                mock_client = MagicMock()
+                mock_cls.return_value = mock_client
+                result = get_client(ctx)
+
+        assert result is mock_client
+        mock_cls.assert_called_once_with(
+            address="http://localhost:8000",
+            config={"username": "alice", "password": "s3cret"},
+        )
 
     def test_raises_when_shared_client_is_none(self) -> None:
         config = ServerConfig(auth_mode="none")

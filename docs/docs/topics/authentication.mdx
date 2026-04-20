@@ -5,9 +5,9 @@ title: Authentication architecture
 The MCP server sits between AI clients (Claude, Cursor, VS Code Copilot) and the Infrahub API. Authentication happens at two separate layers:
 
 1. **MCP layer** — controls *who* can reach the MCP server and *what* they can do (read-only vs read-write). Configured via `INFRAHUB_MCP_AUTH_MODE`.
-2. **Infrahub layer** — controls *what* the MCP server can do in Infrahub. Configured via `INFRAHUB_API_TOKEN` or `INFRAHUB_USERNAME`/`INFRAHUB_PASSWORD` (for `none` and `oidc` modes), or via the client's own token (for `token-passthrough` mode).
+2. **Infrahub layer** — controls *what* the MCP server can do in Infrahub. Configured via `INFRAHUB_API_TOKEN` or `INFRAHUB_USERNAME`/`INFRAHUB_PASSWORD` (for `none` and `oidc` modes), or via the client's own credentials (for `token-passthrough` and `basic-passthrough` modes).
 
-In `none` and `oidc` modes, the Infrahub credentials are shared across all MCP sessions — they define the ceiling of what any client can do, and the MCP auth layer narrows that ceiling per-user. In `token-passthrough` mode, each client provides their own Infrahub API token, so there are no shared credentials.
+In `none` and `oidc` modes, the Infrahub credentials are shared across all MCP sessions — they define the ceiling of what any client can do, and the MCP auth layer narrows that ceiling per-user. In `token-passthrough` and `basic-passthrough` modes, each client provides their own Infrahub credentials, so there are no shared credentials.
 
 ## Auth modes
 
@@ -97,6 +97,30 @@ Token passthrough is **fail-closed**: every request must carry a valid token. If
 
 Token passthrough requires the **Streamable HTTP transport** — it is not supported over stdio (no HTTP headers available). The server rejects this combination at startup.
 
+### `basic-passthrough` — client's own Infrahub username + password
+
+```mermaid
+sequenceDiagram
+    participant Client as AI Client
+    participant MCP as MCP Server
+    participant Infrahub as Infrahub API
+
+    Note over MCP: No server-side credentials
+    Client->>MCP: MCP request + Authorization: Basic <base64(user:pass)>
+    MCP->>MCP: Decode header into (user, pass)
+    alt No credentials in header
+        MCP-->>Client: Error: Authentication required
+    else Credentials present
+        MCP->>Infrahub: API call with client's user/pass
+        Infrahub-->>MCP: Response
+        MCP-->>Client: MCP response
+    end
+```
+
+Same fail-closed per-request model as `token-passthrough`, but clients authenticate with their Infrahub username and password via the standard HTTP `Basic` scheme. Each request constructs a fresh `InfrahubClient` — credentials are never cached or shared between requests. Use this mode when clients hold Infrahub user accounts rather than API tokens.
+
+Like `token-passthrough`, this mode requires the **Streamable HTTP transport**.
+
 ## User identity and branch naming
 
 When OIDC is enabled, the authenticated user identity flows into two features:
@@ -142,7 +166,7 @@ Read-only mode and OIDC scope-based authorization can be combined. Use read-only
 
 ## How auth modes interact with transports
 
-| Transport | `none` | `oidc` | `token-passthrough` |
-| --- | --- | --- | --- |
-| **stdio** | Full access via shared credentials. | Not supported — no HTTP headers. | Not supported — no HTTP headers. |
-| **Streamable HTTP** | Full access via shared credentials. No identity tracking. | Full OIDC flow. Identity in audit logs. Scope-based write gating. | Per-request token. Each client uses their own Infrahub credentials. |
+| Transport | `none` | `oidc` | `token-passthrough` | `basic-passthrough` |
+| --- | --- | --- | --- | --- |
+| **stdio** | Full access via shared credentials. | Not supported — no HTTP headers. | Not supported — no HTTP headers. | Not supported — no HTTP headers. |
+| **Streamable HTTP** | Full access via shared credentials. No identity tracking. | Full OIDC flow. Identity in audit logs. Scope-based write gating. | Per-request token. Each client uses their own Infrahub credentials. | Per-request username/password. Each client uses their own Infrahub credentials. |

@@ -49,8 +49,13 @@ from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError
 from mcp import McpError
 from mcp.types import ErrorData
 
-from infrahub_mcp.auth import get_passthrough_token, get_user_from_token
-from infrahub_mcp.constants import AUTH_MODE_OIDC, AUTH_MODE_TOKEN_PASSTHROUGH
+from infrahub_mcp.auth import get_passthrough_basic, get_passthrough_token, get_user_from_token
+from infrahub_mcp.constants import (
+    _PASSTHROUGH_AUTH_MODES,
+    AUTH_MODE_BASIC_PASSTHROUGH,
+    AUTH_MODE_OIDC,
+    AUTH_MODE_TOKEN_PASSTHROUGH,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -214,13 +219,30 @@ class ReadOnlyMiddleware(Middleware):
 
 
 class TokenPassthroughMiddleware(Middleware):
-    """Fail-closed gate for token-passthrough auth mode.
+    """Fail-closed gate for request-level passthrough auth modes.
 
-    Rejects tool calls and resource reads when no passthrough token is set
-    in the current request context.  The token itself is extracted by the
-    ASGI-level ``_TokenPassthroughASGI`` middleware and stored in a
-    ``ContextVar``; this middleware just enforces its presence.
+    Rejects tool calls and resource reads when no passthrough credential is
+    present in the current request context. Credentials are extracted by the
+    ASGI-level ``_CredentialsPassthroughASGI`` middleware and stored in one of
+    two ``ContextVar`` instances (Bearer token or Basic user/password). This
+    middleware simply enforces their presence.
     """
+
+    def __init__(self, mode: str = AUTH_MODE_TOKEN_PASSTHROUGH) -> None:
+        self._mode = mode
+
+    def _missing_credential(self) -> bool:
+        if self._mode == AUTH_MODE_BASIC_PASSTHROUGH:
+            return get_passthrough_basic() is None
+        return get_passthrough_token() is None
+
+    def _error_message(self) -> str:
+        if self._mode == AUTH_MODE_BASIC_PASSTHROUGH:
+            return (
+                "Authentication required: no Basic credentials in request header. "
+                "Send Authorization: Basic <base64(user:pass)>."
+            )
+        return "Authentication required: no Infrahub API token in request header."
 
     @override
     async def on_call_tool(
@@ -228,13 +250,8 @@ class TokenPassthroughMiddleware(Middleware):
         context: MiddlewareContext[mt.CallToolRequestParams],
         call_next: CallNext[mt.CallToolRequestParams, ToolResult],
     ) -> ToolResult:
-        if get_passthrough_token() is None:
-            raise McpError(
-                ErrorData(
-                    code=-32001,
-                    message="Authentication required: no Infrahub API token in request header.",
-                )
-            )
+        if self._missing_credential():
+            raise McpError(ErrorData(code=-32001, message=self._error_message()))
         return await call_next(context)
 
     @override
@@ -243,13 +260,8 @@ class TokenPassthroughMiddleware(Middleware):
         context: MiddlewareContext[Any],
         call_next: CallNext[Any, Any],
     ) -> Any:
-        if get_passthrough_token() is None:
-            raise McpError(
-                ErrorData(
-                    code=-32001,
-                    message="Authentication required: no Infrahub API token in request header.",
-                )
-            )
+        if self._missing_credential():
+            raise McpError(ErrorData(code=-32001, message=self._error_message()))
         return await call_next(context)
 
 
@@ -665,10 +677,10 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
             scopes,
         )
 
-    # Token passthrough — fail-closed gate (conditional)
-    if config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH:
-        mcp.add_middleware(TokenPassthroughMiddleware())
-        logger.info("token_passthrough_middleware enabled=true")
+    # Passthrough — fail-closed gate (conditional)
+    if config.auth_mode in _PASSTHROUGH_AUTH_MODES:
+        mcp.add_middleware(TokenPassthroughMiddleware(mode=config.auth_mode))
+        logger.info("passthrough_middleware enabled=true mode=%s", config.auth_mode)
 
     # Read-only enforcement — tag-based, defense-in-depth (conditional)
     if config.read_only:

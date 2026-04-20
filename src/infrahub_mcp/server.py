@@ -12,9 +12,19 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from infrahub_app import app as infrahub_app
-from infrahub_mcp.auth import create_auth_provider, reset_passthrough_token, set_passthrough_token
+from infrahub_mcp.auth import (
+    create_auth_provider,
+    reset_passthrough_basic,
+    reset_passthrough_token,
+    set_passthrough_basic,
+    set_passthrough_token,
+)
 from infrahub_mcp.config import ServerConfig, load_config
-from infrahub_mcp.constants import AUTH_MODE_OIDC, AUTH_MODE_TOKEN_PASSTHROUGH
+from infrahub_mcp.constants import (
+    AUTH_MODE_BASIC_PASSTHROUGH,
+    AUTH_MODE_OIDC,
+    AUTH_MODE_TOKEN_PASSTHROUGH,
+)
 from infrahub_mcp.middleware import (
     configure_middleware,
     get_caching_middleware,
@@ -38,8 +48,8 @@ _config: ServerConfig = load_config()
 
 def _validate_env() -> None:
     """Validate required environment variables at startup and raise with clear guidance."""
-    # Token-passthrough mode: credentials come from the client, not env vars.
-    if _config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH:
+    # Passthrough modes: credentials come from the client, not env vars.
+    if _config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH}:
         return
 
     address = os.environ.get("INFRAHUB_ADDRESS")
@@ -73,7 +83,11 @@ def _inject_kind_enum(kinds: list[str]) -> None:
 async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: ARG001
     """Manage the application lifecycle: validate config, create client, yield context."""
     _validate_env()
-    client = None if _config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH else InfrahubClient()
+    client = (
+        None
+        if _config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH}
+        else InfrahubClient()
+    )
 
     # Populate kind dropdowns in the dev UI with available schema kinds
     if client is not None:
@@ -266,13 +280,21 @@ mcp.add_provider(infrahub_app)
 
 
 _BEARER_PREFIX = "bearer "
+_BASIC_PREFIX = "basic "
 
 
-class _TokenPassthroughASGI:
-    """ASGI middleware that extracts a token from an HTTP header into a ContextVar.
+class _CredentialsPassthroughASGI:
+    """ASGI middleware that extracts caller credentials from an HTTP header.
 
-    Supports both ``Bearer <token>`` and raw token values.  Non-HTTP scopes
-    (e.g. websocket lifespan) are passed through unchanged.
+    Recognised header shapes:
+
+    - ``Bearer <token>`` or raw token → stored in the token ContextVar.
+    - ``Basic <base64(user:pass)>`` → decoded into a ``(user, pass)`` tuple
+      and stored in the basic-auth ContextVar.
+
+    Non-HTTP scopes (e.g. websocket lifespan) are passed through unchanged.
+    Both ContextVars are reset in ``finally`` so values cannot leak between
+    requests sharing the same async context.
     """
 
     def __init__(self, app: "ASGIApp", *, header: str = "Authorization") -> None:
@@ -280,23 +302,50 @@ class _TokenPassthroughASGI:
         self._header = header.lower().encode("latin-1")
 
     async def __call__(self, scope: dict, receive: object, send: object) -> None:  # type: ignore[type-arg]
-        reset = None
+        token_reset = None
+        basic_reset = None
         if scope["type"] == "http":
             headers = dict(scope.get("headers", []))
-            raw = headers.get(self._header, b"").decode("latin-1")
-            stripped = raw.strip()
-            token = (
-                stripped[len(_BEARER_PREFIX):].strip()
-                if stripped[: len(_BEARER_PREFIX)].lower() == _BEARER_PREFIX
-                else stripped
-            )
-            if token:
-                reset = set_passthrough_token(token)
+            raw = headers.get(self._header, b"").decode("latin-1").strip()
+            lowered = raw[: len(_BASIC_PREFIX)].lower()
+            if lowered == _BASIC_PREFIX:
+                credentials = _decode_basic(raw[len(_BASIC_PREFIX):].strip())
+                if credentials is not None:
+                    basic_reset = set_passthrough_basic(credentials)
+            else:
+                token = (
+                    raw[len(_BEARER_PREFIX):].strip()
+                    if raw[: len(_BEARER_PREFIX)].lower() == _BEARER_PREFIX
+                    else raw
+                )
+                if token:
+                    token_reset = set_passthrough_token(token)
         try:
             await self._app(scope, receive, send)  # type: ignore[arg-type]
         finally:
-            if reset is not None:
-                reset_passthrough_token(reset)
+            if token_reset is not None:
+                reset_passthrough_token(token_reset)
+            if basic_reset is not None:
+                reset_passthrough_basic(basic_reset)
+
+
+def _decode_basic(encoded: str) -> tuple[str, str] | None:
+    """Decode a Base64 ``Basic`` credential into ``(username, password)``.
+
+    Returns ``None`` when the value is not valid Base64 or does not contain
+    a ``:`` separator; the caller treats that as "no credential present".
+    """
+    import base64  # noqa: PLC0415
+    import binascii  # noqa: PLC0415
+
+    try:
+        decoded = base64.b64decode(encoded, validate=True).decode("utf-8")
+    except (ValueError, binascii.Error, UnicodeDecodeError):
+        return None
+    user, sep, password = decoded.partition(":")
+    if not sep:
+        return None
+    return user, password
 
 
 _OAUTH_DISCOVERY_SEGMENTS = (
@@ -344,8 +393,10 @@ def get_asgi_middleware() -> list[object]:
     from starlette.middleware import Middleware as StarletteMiddleware  # noqa: PLC0415
 
     middlewares: list[object] = []
-    if _config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH:
-        middlewares.append(StarletteMiddleware(_TokenPassthroughASGI, header=_config.token_passthrough_header))
+    if _config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH}:
+        middlewares.append(
+            StarletteMiddleware(_CredentialsPassthroughASGI, header=_config.token_passthrough_header)
+        )
     if _config.auth_mode != AUTH_MODE_OIDC:
         middlewares.append(StarletteMiddleware(_OAuthDiscoveryInterceptASGI))
     return middlewares

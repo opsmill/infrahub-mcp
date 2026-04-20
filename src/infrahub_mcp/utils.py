@@ -13,9 +13,9 @@ from infrahub_sdk.exceptions import Error as SdkError
 from infrahub_sdk.exceptions import GraphQLError, NodeNotFoundError
 from infrahub_sdk.node import Attribute, InfrahubNode, RelatedNode, RelationshipManager
 
-from infrahub_mcp.auth import get_passthrough_token, get_user_from_token
+from infrahub_mcp.auth import get_passthrough_basic, get_passthrough_token, get_user_from_token
 from infrahub_mcp.config import ServerConfig
-from infrahub_mcp.constants import AUTH_MODE_TOKEN_PASSTHROUGH
+from infrahub_mcp.constants import AUTH_MODE_BASIC_PASSTHROUGH, AUTH_MODE_TOKEN_PASSTHROUGH
 
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 
@@ -51,6 +51,20 @@ def get_client(ctx: Context) -> InfrahubClient:
         return InfrahubClient(
             address=os.environ["INFRAHUB_ADDRESS"],
             config={"api_token": token},
+        )
+
+    if app_ctx.config.auth_mode == AUTH_MODE_BASIC_PASSTHROUGH:
+        credentials = get_passthrough_basic()
+        if credentials is None:
+            msg = (
+                "Authentication required: no Basic credentials in request header. "
+                "Send Authorization: Basic <base64(user:pass)>."
+            )
+            raise ToolError(msg)
+        username, password = credentials
+        return InfrahubClient(
+            address=os.environ["INFRAHUB_ADDRESS"],
+            config={"username": username, "password": password},
         )
 
     if app_ctx.client is None:

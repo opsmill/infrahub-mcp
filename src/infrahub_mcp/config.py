@@ -9,11 +9,15 @@ from typing import Annotated, Literal
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from infrahub_mcp.constants import _ALLOWED_PLACEHOLDERS, AUTH_MODE_OIDC, AUTH_MODE_TOKEN_PASSTHROUGH
+from infrahub_mcp.constants import (
+    _ALLOWED_PLACEHOLDERS,
+    _PASSTHROUGH_AUTH_MODES,
+    AUTH_MODE_OIDC,
+)
 
-AuthMode = Literal["none", "oidc", "token-passthrough"]
+AuthMode = Literal["none", "oidc", "token-passthrough", "basic-passthrough"]
 
-_VALID_AUTH_MODES = {"none", "oidc", "token-passthrough"}
+_VALID_AUTH_MODES = {"none", "oidc", "token-passthrough", "basic-passthrough"}
 _VALID_LOG_LEVELS = {"debug", "info", "warning", "error"}
 _BRANCH_PATTERN_HELP = "Allowed placeholders are {date}, {hex}, {user}."
 
@@ -175,9 +179,9 @@ def _validate_auth_requirements(config: ServerConfig) -> None:
     required OIDC field — the env-driven requirement lives at the
     :func:`load_config` boundary, not inside the model.
     """
-    if config.auth_mode == AUTH_MODE_TOKEN_PASSTHROUGH and not os.environ.get("INFRAHUB_ADDRESS", "").strip():
+    if config.auth_mode in _PASSTHROUGH_AUTH_MODES and not os.environ.get("INFRAHUB_ADDRESS", "").strip():
         msg = (
-            "Token-passthrough auth mode requires INFRAHUB_ADDRESS. "
+            f"{config.auth_mode} auth mode requires INFRAHUB_ADDRESS. "
             "Set it to the URL of your Infrahub instance (e.g. http://localhost:8000)."
         )
         raise ValueError(msg)

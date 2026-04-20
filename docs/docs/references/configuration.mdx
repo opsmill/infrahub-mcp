@@ -64,7 +64,7 @@ Only the `get_schema` tool is cached for tool calls — node queries and writes 
 
 ## Authentication and authorization
 
-The MCP server supports three authentication modes controlled by `INFRAHUB_MCP_AUTH_MODE`:
+The MCP server supports four authentication modes controlled by `INFRAHUB_MCP_AUTH_MODE`:
 
 ### `none` (default)
 
@@ -90,17 +90,24 @@ Each client sends their own Infrahub API token in the HTTP request header. The s
 per-request `InfrahubClient` using that token — no shared server-side credentials required. Every
 request must carry a valid token (fail-closed). Streamable HTTP transport is required.
 
-| Variable                                | Required   | Default         | Description                                                          |
-| --------------------------------------- | ---------- | --------------- | -------------------------------------------------------------------- |
-| `INFRAHUB_MCP_AUTH_MODE`                | No         | `none`          | Authentication mode (`none`, `oidc`, or `token-passthrough`)         |
-| `INFRAHUB_MCP_OIDC_CONFIG_URL`          | Yes (oidc) |                 | OIDC discovery endpoint URL                                          |
-| `INFRAHUB_MCP_OIDC_CLIENT_ID`           | Yes (oidc) |                 | OAuth client ID registered with the IdP                              |
-| `INFRAHUB_MCP_OIDC_CLIENT_SECRET`       | No         |                 | OAuth client secret (omit for PKCE flow)                             |
-| `INFRAHUB_MCP_OIDC_BASE_URL`            | Yes (oidc) |                 | Public URL where the MCP server is accessible                        |
-| `INFRAHUB_MCP_OIDC_AUDIENCE`            | No         |                 | Token audience claim                                                 |
-| `INFRAHUB_MCP_OIDC_USER_CLAIM`          | No         | `email`         | JWT claim used for user identity                                     |
-| `INFRAHUB_MCP_AUTH_SCOPES_WRITE`        | No         | `write`         | Scopes required for write operations (comma-separated)               |
-| `INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER` | No         | `Authorization` | HTTP header carrying the Infrahub API token (token-passthrough mode) |
+### `basic-passthrough`
+
+Same fail-closed per-request model as `token-passthrough`, but the client sends an
+`Authorization: Basic <base64(user:pass)>` header. The server decodes the header and
+constructs a fresh `InfrahubClient` with those credentials for each request. Streamable
+HTTP transport is required.
+
+| Variable                                | Required   | Default         | Description                                                                    |
+| --------------------------------------- | ---------- | --------------- | ------------------------------------------------------------------------------ |
+| `INFRAHUB_MCP_AUTH_MODE`                | No         | `none`          | Authentication mode (`none`, `oidc`, `token-passthrough`, `basic-passthrough`) |
+| `INFRAHUB_MCP_OIDC_CONFIG_URL`          | Yes (oidc) |                 | OIDC discovery endpoint URL                                                    |
+| `INFRAHUB_MCP_OIDC_CLIENT_ID`           | Yes (oidc) |                 | OAuth client ID registered with the IdP                                        |
+| `INFRAHUB_MCP_OIDC_CLIENT_SECRET`       | No         |                 | OAuth client secret (omit for PKCE flow)                                       |
+| `INFRAHUB_MCP_OIDC_BASE_URL`            | Yes (oidc) |                 | Public URL where the MCP server is accessible                                  |
+| `INFRAHUB_MCP_OIDC_AUDIENCE`            | No         |                 | Token audience claim                                                           |
+| `INFRAHUB_MCP_OIDC_USER_CLAIM`          | No         | `email`         | JWT claim used for user identity                                               |
+| `INFRAHUB_MCP_AUTH_SCOPES_WRITE`        | No         | `write`         | Scopes required for write operations (comma-separated)                         |
+| `INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER` | No         | `Authorization` | HTTP header carrying the Infrahub API token (token-passthrough mode)           |
 
 ### Scope-based write authorization
 
@@ -166,7 +173,7 @@ The server applies middleware in registration order. The full stack when all fea
 | 8 | **StructuredLoggingMiddleware** — JSON logs with token estimates | yes |
 | 9 | **DetailedTimingMiddleware** — per-operation timing breakdown | yes |
 | 10 | **AuthMiddleware** — scope-based write tool authorization (HTTP only) | no |
-| 11 | **TokenPassthroughMiddleware** — fail-closed gate for token-passthrough mode | no |
+| 11 | **TokenPassthroughMiddleware** — fail-closed gate for token/basic passthrough modes | no |
 | 12 | **ReadOnlyMiddleware** — tag-based write tool blocking | no |
 | 13 | **AuditMiddleware** — structured audit trail for tool/resource access | yes |
 | 14 | **ResponseCachingMiddleware** — TTL-based response caching | no |

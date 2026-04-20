@@ -44,6 +44,30 @@ export INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER=X-Infrahub-Token
 Token passthrough requires Streamable HTTP transport. The server rejects `--transport stdio` at startup since stdio has no HTTP headers.
 :::
 
+## Basic passthrough
+
+Same fail-closed passthrough model as token passthrough, but clients send Infrahub username and password via the standard HTTP `Basic` scheme:
+
+```bash
+export INFRAHUB_ADDRESS=https://infrahub.example.com
+export INFRAHUB_MCP_AUTH_MODE=basic-passthrough
+
+# No INFRAHUB_USERNAME/INFRAHUB_PASSWORD needed — credentials come from the client
+infrahub-mcp --transport streamable-http
+```
+
+Clients include their credentials in the request header:
+
+```text
+Authorization: Basic <base64(username:password)>
+```
+
+The server decodes the header per request, constructs a fresh `InfrahubClient` with those credentials, and resets the per-request context after the call so credentials are never shared between requests.
+
+:::note
+Basic passthrough requires Streamable HTTP transport, same as token passthrough.
+:::
+
 ## OIDC
 
 <!-- vale Infrahub.sentence-case = NO -->

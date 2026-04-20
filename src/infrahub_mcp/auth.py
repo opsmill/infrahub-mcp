@@ -60,6 +60,7 @@ def create_auth_provider(config: ServerConfig) -> OIDCProxy | None:
 # ---------------------------------------------------------------------------
 
 _passthrough_token: ContextVar[str | None] = ContextVar("_passthrough_token", default=None)
+_passthrough_basic: ContextVar[tuple[str, str] | None] = ContextVar("_passthrough_basic", default=None)
 
 
 def set_passthrough_token(token: str) -> Token[str | None]:
@@ -81,6 +82,21 @@ def reset_passthrough_token(token: Token[str | None]) -> None:
 def get_passthrough_token() -> str | None:
     """Read the passthrough token for the current async task."""
     return _passthrough_token.get()
+
+
+def set_passthrough_basic(credentials: tuple[str, str]) -> Token[tuple[str, str] | None]:
+    """Store the passthrough (username, password) pair for the current async task."""
+    return _passthrough_basic.set(credentials)
+
+
+def reset_passthrough_basic(token: Token[tuple[str, str] | None]) -> None:
+    """Restore the basic-passthrough ContextVar to its previous value."""
+    _passthrough_basic.reset(token)
+
+
+def get_passthrough_basic() -> tuple[str, str] | None:
+    """Read the passthrough (username, password) pair for the current async task."""
+    return _passthrough_basic.get()
 
 
 # ---------------------------------------------------------------------------
