@@ -1,150 +1,84 @@
 # Changelog
 
-## [0.2.5](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.2.4...v0.2.5) (2026-01-03)
+All notable changes to this project are documented in this file.
 
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### 🐛 Bug Fixes
+## [Unreleased]
 
-* Broken md template, update examples ([#32](https://github.com/rust-mcp-stack/mcp-discovery/issues/32)) ([a68fd76](https://github.com/rust-mcp-stack/mcp-discovery/commit/a68fd762c3d31b1fe173d57ebec59e3c028f9c05))
+### Added
 
-## [0.2.4](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.2.3...v0.2.4) (2026-01-03)
+- OAuth/OIDC authentication mode with per-request token verification.
+- Token-passthrough authentication mode: clients can forward an Infrahub API token via the `Authorization` header.
+- Username/password (Basic) request passthrough mode.
+- 17-layer middleware stack: structured logging, timing, error handling, audit, read-only enforcement, rate limiting, retry with exponential backoff, response caching, OpenTelemetry tracing, Prometheus metrics.
+- `/health` endpoint for container orchestration probes.
+- `/metrics` endpoint exposing JSON or Prometheus text format.
+- `infrahub_app` FastMCPApp: `explore` and `overview` tools with auto-detect panels, charts, and ER diagrams.
+- Schema query depth parameter (`INFRAHUB_MCP_MAX_QUERY_DEPTH`) with cycle detection in nested peer expansion.
+- Configurable protected branches list (`INFRAHUB_MCP_BRANCH_PROTECTED`) — writes to `main` are rejected by default.
+- Multi-arch Docker image publication to `registry.opsmill.io/opsmill/infrahub-mcp-server` for `linux/amd64` and `linux/arm64`.
+- Documentation for authentication modes with Mermaid flow diagrams.
 
+### Changed
 
-### ⚙️ Miscellaneous Chores
+- Configuration loading rewritten on top of `pydantic-settings` with grouped per-subsystem `BaseSettings` classes. All existing `INFRAHUB_MCP_*` environment variables remain compatible.
+- `AUTH_SCOPES_WRITE` default is now `"write"` (previously resolved via a runtime fallback).
+- Replaced root `README.md` and `CHANGELOG.md`, which carried upstream template content.
 
-* Release 0.2.4 ([0eb19ea](https://github.com/rust-mcp-stack/mcp-discovery/commit/0eb19ea3eee7e6334ee8d1edcfaf22f3fa06cdba))
+### Fixed
 
-## [0.2.3](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.2.2...v0.2.3) (2026-01-02)
+- `ReadOnlyMiddleware` now fails closed when the operation type cannot be determined.
+- Passthrough credentials are reset on the way out of every request; a fresh Infrahub client is created per call.
+- RFC 6749 JSON `404` is returned for well-known OAuth/OIDC discovery probes when OIDC is disabled, so clients do not trip on plain-text responses.
+- Infrahub SDK connection errors are caught inside middleware and surfaced as clean MCP errors.
 
+## [1.0.2] - 2026-04-10
 
-### 🚀 Features
+### Fixed
 
-* Upgrade to rust-mcp-sdk 0.8, add multi-protocol fallback, icons, and task capability support ([#29](https://github.com/rust-mcp-stack/mcp-discovery/issues/29)) ([5239aee](https://github.com/rust-mcp-stack/mcp-discovery/commit/5239aeee566b3580275513a44d3e116d2a7296f0))
+- CI: prevent shell injection in the auto-bump guard step.
+- CI: extract the `mcp-discovery` release binary with `--strip-components=1`.
 
-## [0.2.2](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.2.1...v0.2.2) (2025-09-24)
+### Changed
 
+- Added the CI/CD versioning and release process.
 
-### 🐛 Bug Fixes
+## [1.0.1] - 2026-04-07
 
-* Improve documentation ([a23aee5](https://github.com/rust-mcp-stack/mcp-discovery/commit/a23aee514a039126d7a9bfa4dbe9dc7cdb157e7f))
+### Added
 
-## [0.2.1](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.2.0...v0.2.1) (2025-09-22)
+- `feat: enrich MCP error messages with schema discovery hints` (#54).
 
+### Changed
 
-### 🚀 Features
+- Dependency upgrades: `fastmcp` 3.2.0, `aiohttp` 3.13.4, `pygments` 2.20.0, `cryptography` 46.0.7, and several docs dependency bumps.
 
-* Npm package publish ([#26](https://github.com/rust-mcp-stack/mcp-discovery/issues/26)) ([149f587](https://github.com/rust-mcp-stack/mcp-discovery/commit/149f587266da2edba789cf16070acf8114109fe1))
+### Fixed
 
-## [0.2.0](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.1.12...v0.2.0) (2025-09-22)
+- Resolved Dependabot security alerts (#40).
 
+## [1.0.0] - 2026-03-26
 
-### ⚠ BREAKING CHANGES
+### Added
 
-* upgrade to mcp 2025-06-18 ([#24](https://github.com/rust-mcp-stack/mcp-discovery/issues/24))
+- Branch-per-session write workflow: writes land on an auto-created session branch, never the default branch.
+- Schema and branches exposed as MCP resources alongside the existing tools.
+- `query_graphql` tool now supports a `branch` parameter.
+- TOON encoding for structured arrays, reducing token usage by 33–45%.
+- Integration tests migrated from the OpenAI Agents SDK to the Anthropic SDK.
 
-### 🚀 Features
+### Changed
 
-* Upgrade to mcp 2025-06-18 ([#24](https://github.com/rust-mcp-stack/mcp-discovery/issues/24)) ([5a67018](https://github.com/rust-mcp-stack/mcp-discovery/commit/5a67018a3b18e4b284f215024cf6c1c408da69e6))
+- Tool surface consolidated to a 6-tool design with schema/branch as resources.
 
-## [0.1.12](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.1.11...v0.1.12) (2025-06-21)
+## [0.1.1] - 2025-09-26
 
+Initial public release of the Infrahub MCP Server.
 
-### 🚀 Features
-
-* Add $ref support to JSON Schema parser ([#22](https://github.com/rust-mcp-stack/mcp-discovery/issues/22)) ([41abe75](https://github.com/rust-mcp-stack/mcp-discovery/commit/41abe75dedb160b2ac13b3df2f21543f4dbdd136))
-
-## [0.1.11](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.1.10...v0.1.11) (2025-06-20)
-
-
-### 🚀 Features
-
-* Improve templates and dependencies ([#20](https://github.com/rust-mcp-stack/mcp-discovery/issues/20)) ([aed96ef](https://github.com/rust-mcp-stack/mcp-discovery/commit/aed96ef700344989086c4572d3370045bcc4e155))
-
-## [0.1.10](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.1.9...v0.1.10) (2025-06-18)
-
-
-### 🐛 Bug Fixes
-
-* Update templates to hide empty capabilities ([#18](https://github.com/rust-mcp-stack/mcp-discovery/issues/18)) ([29276fe](https://github.com/rust-mcp-stack/mcp-discovery/commit/29276fe9aa149467f37db882944b6d4f4bafb4ae))
-
-## [0.1.9](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.1.8...v0.1.9) (2025-05-09)
-
-
-### 🚀 Features
-
-* Add support for advanced JSON Schema types such as anyOf and allOf, oneOf ([#16](https://github.com/rust-mcp-stack/mcp-discovery/issues/16)) ([adb8787](https://github.com/rust-mcp-stack/mcp-discovery/commit/adb87875c3f3340021ca88ffe94e930b3c2f4248))
-
-## [0.1.8](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.1.7...v0.1.8) (2025-05-01)
-
-
-### 📚 Documentation
-
-* Docs.rs documentation ([f87d947](https://github.com/rust-mcp-stack/mcp-discovery/commit/f87d947a2de6a14f3b106c7f5d449a04663330e1))
-
-## [0.1.7](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.1.6...v0.1.7) (2025-05-01)
-
-
-### 🐛 Bug Fixes
-
-* Update crate metadata ([4d326fe](https://github.com/rust-mcp-stack/mcp-discovery/commit/4d326feb9e0acb0b42612812242dcf35344ef104))
-
-## [0.1.6](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.1.5...v0.1.6) (2025-05-01)
-
-
-### 🐛 Bug Fixes
-
-* Update metadata ([1031033](https://github.com/rust-mcp-stack/mcp-discovery/commit/1031033ccbfda7891514d6daa3f7beab40a345c1))
-
-## [0.1.5](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.1.4...v0.1.5) (2025-05-01)
-
-
-### 🚀 Features
-
-* Update mcp discovery to support library crate ([#10](https://github.com/rust-mcp-stack/mcp-discovery/issues/10)) ([14c8e31](https://github.com/rust-mcp-stack/mcp-discovery/commit/14c8e3154d7acd2f1a348f93e9c786079a6d7c04))
-
-## [0.1.4](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.1.3...v0.1.4) (2025-04-30)
-
-
-### 🚀 Features
-
-* Add tracing and logging option ([#8](https://github.com/rust-mcp-stack/mcp-discovery/issues/8)) ([39701f4](https://github.com/rust-mcp-stack/mcp-discovery/commit/39701f46b660d6c310906bf08f655e9928d5ed89))
-* Improve builting templates ([86d2062](https://github.com/rust-mcp-stack/mcp-discovery/commit/86d2062abcafd6821cde1f507499c185000fd290))
-* Improve templates with new handlebars helper ([#9](https://github.com/rust-mcp-stack/mcp-discovery/issues/9)) ([c81e85a](https://github.com/rust-mcp-stack/mcp-discovery/commit/c81e85aa5a7def42e6ffcea7ddfd4b1500b91b36))
-
-
-### 🐛 Bug Fixes
-
-* Listing resource templates error when not supported ([#7](https://github.com/rust-mcp-stack/mcp-discovery/issues/7)) ([38c1b25](https://github.com/rust-mcp-stack/mcp-discovery/commit/38c1b259c2268566b05c5ebc92b2f60d1c36ea6e))
-
-
-### 📚 Documentation
-
-* Update documentation ([29a12b7](https://github.com/rust-mcp-stack/mcp-discovery/commit/29a12b7b08b5b2789857f9e0529b12b527271766))
-
-## [0.1.3](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.1.2...v0.1.3) (2025-04-28)
-
-
-### 🚀 Features
-
-* Add mcp discovery GitHub action ([#4](https://github.com/rust-mcp-stack/mcp-discovery/issues/4)) ([ed2d734](https://github.com/rust-mcp-stack/mcp-discovery/commit/ed2d73475f85cb07b274b3dd5a4d7ea7d55f3364))
-
-## [0.1.2](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.1.1...v0.1.2) (2025-04-27)
-
-
-### ⚙️ Miscellaneous Chores
-
-* Release 0.1.2 ([6f9e3a7](https://github.com/rust-mcp-stack/mcp-discovery/commit/6f9e3a73131ae53def17b6cb253751076374f4eb))
-
-## [0.1.1](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.1.0...v0.1.1) (2025-04-27)
-
-
-### ⚙️ Miscellaneous Chores
-
-* Release 0.1.0 ([0a16fd7](https://github.com/rust-mcp-stack/mcp-discovery/commit/0a16fd7fdac82b8c96c68295b4782dad1fdfcda7))
-
-## [0.1.0](https://github.com/rust-mcp-stack/mcp-discovery/compare/v0.1.0...v0.1.0) (2025-04-27)
-
-
-### ⚙️ Miscellaneous Chores
-
-* Release 0.1.0 ([5eba142](https://github.com/rust-mcp-stack/mcp-discovery/commit/5eba142ca05356ce681aeed87ac4858c121c267c))
+[Unreleased]: https://github.com/opsmill/infrahub-mcp/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/opsmill/infrahub-mcp/compare/v1.0.1...v1.0.2
+[1.0.1]: https://github.com/opsmill/infrahub-mcp/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/opsmill/infrahub-mcp/compare/v0.1.1...v1.0.0
+[0.1.1]: https://github.com/opsmill/infrahub-mcp/releases/tag/v0.1.1
