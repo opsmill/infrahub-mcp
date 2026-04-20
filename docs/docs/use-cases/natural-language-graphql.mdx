@@ -65,7 +65,7 @@ The agent summarizes in natural language: "8 prefixes in EU have less than 50% u
 | --- | --- |
 | "Show me all X where attribute = Y" | `get_nodes` with filters |
 | "Find X whose name contains Y" | `search_nodes` |
-| "What relationships does X have?" | `get_related_nodes` |
+| "What relationships does X have?" | `get_nodes` with `prefetch_relationships=True` |
 | "Aggregate, join, or compute across kinds" | `query_graphql` |
 | "Build a custom change pipeline" | `mutate_graphql` (write) |
 

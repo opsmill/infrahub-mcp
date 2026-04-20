@@ -50,6 +50,125 @@
           "isRequired": false,
           "format": "string",
           "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_READ_ONLY",
+          "description": "Disable write operations (default: false).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_LOG_LEVEL",
+          "description": "Logging verbosity: debug, info, warning, error (default: info).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_BRANCH_PATTERN",
+          "description": "Naming pattern for session branches. Supports {date}, {hex}, {user} placeholders (default: mcp/session-{date}-{hex}).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_RATE_LIMIT_RPS",
+          "description": "Max sustained requests per second; 0 disables (default: 0).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_RATE_LIMIT_BURST",
+          "description": "Token-bucket burst capacity; 0 = auto (default: 0).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_RETRY_MAX_ATTEMPTS",
+          "description": "Max retry attempts for transient failures; 0 disables (default: 0).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_RETRY_BASE_DELAY",
+          "description": "Initial delay between retries in seconds (default: 1.0).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_CACHE_ENABLED",
+          "description": "Enable response caching for schema/list operations (default: false).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_CACHE_LIST_TTL",
+          "description": "TTL in seconds for list operations (default: 300).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_CACHE_READ_TTL",
+          "description": "TTL in seconds for read-resource and cacheable tool calls (default: 3600).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_OTEL_ENABLED",
+          "description": "Enable OpenTelemetry tracing spans (default: false).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_PROMETHEUS_ENABLED",
+          "description": "Expose Prometheus-format metrics at /metrics (default: false).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_DEREFERENCE_SCHEMAS",
+          "description": "Inline $ref in JSON schemas for client compatibility (default: false).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_PING_INTERVAL_MS",
+          "description": "Ping interval in ms for HTTP sessions; 0 disables (default: 0, max: 300000).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_AUTH_MODE",
+          "description": "Authentication mode: none, oidc, token-passthrough, or basic-passthrough (default: none).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_AUTH_SCOPES_WRITE",
+          "description": "OAuth scopes required for write operations, comma-separated (default: write).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER",
+          "description": "HTTP header carrying per-request credentials in passthrough modes (default: Authorization).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
         }
       ]
     }

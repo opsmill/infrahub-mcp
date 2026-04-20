@@ -64,7 +64,7 @@ See [Your first agent run](../getting-started/first-agent-run.mdx) for the full 
 | Symptom | Fix |
 | --- | --- |
 | Server shows red status | Check logs at **Developer → Open Logs Folder** — the server prints startup errors there. |
-| `command not found: uv` | Claude Desktop doesn't inherit your shell's PATH. Use an absolute path to `uv` in `command`. |
+| `command not found: uvx` | Claude Desktop doesn't inherit your shell's PATH. Use an absolute path to `uvx` in `command`. |
 | Connection keeps dropping | Enable [ping middleware](../references/configuration.mdx#client-compatibility) — set `INFRAHUB_MCP_PING_INTERVAL_MS=30000`. |
 | No tools appear in the UI | The server is starting but failing to register. Check `INFRAHUB_MCP_LOG_LEVEL=debug` for the full traceback. |
 

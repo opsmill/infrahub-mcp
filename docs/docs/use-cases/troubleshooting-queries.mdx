@@ -51,13 +51,14 @@ This returns up to 10 display labels containing the substring. If it returns one
 
 ### 4. Traverse relationships
 
-If the engineer actually wants *interfaces on leaf-01*, the agent should chain `get_related_nodes`:
+If the engineer actually wants *interfaces on leaf-01*, the agent can use `get_nodes` with `prefetch_relationships` to pull the device and its interfaces in one call:
 
 ```text
-get_related_nodes(
+get_nodes(
     kind="DcimDevice",
-    id="<uuid-of-leaf-01>",
-    relation="interfaces",
+    filters={"name__value": "leaf-01"},
+    prefetch_relationships=True,
+    include_attributes=True,
 )
 ```
 

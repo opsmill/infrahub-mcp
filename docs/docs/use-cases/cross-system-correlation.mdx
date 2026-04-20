@@ -36,11 +36,15 @@ get_nodes(
 
 ### 3. Walk the relationships
 
-The interesting context lives in related nodes — interfaces, connected circuits, upstream/downstream peers, the rack, the site, any services that reference this device.
+The interesting context lives in related nodes — interfaces, connected circuits, upstream/downstream peers, the rack, the site, any services that reference this device. Use `get_nodes` with `prefetch_relationships` to pull related objects in a single call, or drop to `query_graphql` for multi-hop traversals:
 
 ```text
-get_related_nodes(kind="DcimDevice", id="<uuid>", relation="interfaces")
-get_related_nodes(kind="DcimDevice", id="<uuid>", relation="site")
+get_nodes(
+    kind="DcimDevice",
+    filters={"name__value": "spine-03"},
+    prefetch_relationships=True,
+    include_attributes=True,
+)
 ```
 
 For the specific interface:
@@ -84,7 +88,7 @@ The agent synthesizes:
 
 - **Name → ID**: always resolve human-friendly names to UUIDs before fetching related data. Use `search_nodes` for fuzzy names, `get_nodes` with exact filters for clean ones.
 - **Relationship names are schema-defined**: use `infrahub://schema/{kind}` to discover the exact relationship field names (`interfaces`, `connected_endpoint`, `site`, etc.) rather than guessing.
-- **GraphQL for multi-hop**: if you need to cross 3+ relationships in one call, write a GraphQL query — it's cheaper than chaining `get_related_nodes` calls.
+- **GraphQL for multi-hop**: if you need to cross 3+ relationships in one call, write a GraphQL query via `query_graphql` — it's cheaper than chaining multiple `get_nodes` calls.
 - **Branch awareness**: if the ticket is about a pending change, pass `branch=...` to your queries. The same device can have different state on different branches.
 
 ## Related reading

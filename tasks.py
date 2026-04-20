@@ -202,8 +202,7 @@ def check_capabilities(context: Context) -> None:
         result = context.run(f"diff -u CAPABILITIES.md {tmp_path}", warn=True)
     if result.exited != 0:
         print(
-            "::error::CAPABILITIES.md is out of date. "
-            "Run 'uv run invoke update-capabilities' and commit the result.",
+            "::error::CAPABILITIES.md is out of date. Run 'uv run invoke update-capabilities' and commit the result.",
             file=sys.stderr,
         )
         sys.exit(1)
