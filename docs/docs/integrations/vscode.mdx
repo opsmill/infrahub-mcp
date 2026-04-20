@@ -4,10 +4,9 @@ title: VS Code
 
 VS Code supports MCP through its extension API — the Infrahub MCP server shows up as a tool provider alongside Copilot. This page covers the `code --add-mcp` setup and the VS Code Copilot compatibility flag.
 
-## Prerequisites
+## Quick start
 
-- VS Code installed with an MCP-capable extension (GitHub Copilot Chat or another MCP client extension).
-- `uv` installed and the `infrahub-mcp` repository cloned locally.
+See the [Installation guide](../guides/installation.mdx#add-to-your-mcp-client) for the minimal VS Code config snippet. This page covers VS Code-specific details and the Copilot compatibility flag.
 
 ## Register via CLI
 
@@ -18,11 +17,9 @@ code --add-mcp '{
   "type": "stdio",
   "name": "infrahub-mcp",
   "description": "MCP server to interact with Infrahub",
-  "command": "uv",
-  "args": ["run", "fastmcp", "run", "src/infrahub_mcp/server.py:mcp"],
+  "command": "uvx",
+  "args": ["infrahub-mcp"],
   "env": {
-    "MCP_HOST": "0.0.0.0",
-    "MCP_PORT": "8001",
     "INFRAHUB_ADDRESS": "http://localhost:8000",
     "INFRAHUB_API_TOKEN": "placeholder-token"
   }
@@ -30,8 +27,6 @@ code --add-mcp '{
 ```
 
 Then open the MCP user configuration (**Cmd/Ctrl+Shift+P → MCP: Open User Configuration**) and replace `placeholder-token` with your real API token.
-
-Open the Extensions view, find **Infrahub MCP** in the list, right-click, and choose **Start Server**.
 
 ## Remote (HTTP) transport
 

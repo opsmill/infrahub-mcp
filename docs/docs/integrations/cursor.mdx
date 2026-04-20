@@ -4,10 +4,9 @@ title: Cursor
 
 [Cursor](https://cursor.com) supports MCP servers via its **Tools & Integrations** panel. This page shows the Infrahub MCP server configuration and notes specific to Cursor's tool-approval UX.
 
-## Prerequisites
+## Quick start
 
-- Cursor installed.
-- `uv` installed and the `infrahub-mcp` repository cloned locally.
+See the [Installation guide](../guides/installation.mdx#add-to-your-mcp-client) for the minimal Cursor config snippet. This page covers Cursor-specific UX tuning beyond the basics.
 
 ## Configure
 
@@ -19,13 +18,8 @@ title: Cursor
 {
   "mcpServers": {
     "infrahub_mcp": {
-      "command": "uv",
-      "args": [
-        "run",
-        "fastmcp",
-        "run",
-        "src/infrahub_mcp/server.py:mcp"
-      ],
+      "command": "uvx",
+      "args": ["infrahub-mcp"],
       "env": {
         "INFRAHUB_ADDRESS": "http://localhost:8000",
         "INFRAHUB_API_TOKEN": "your-api-token"

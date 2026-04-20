@@ -4,10 +4,9 @@ title: Claude Code
 
 [Claude Code](https://claude.com/claude-code) is Anthropic's CLI/IDE agent. It auto-detects `.mcp.json` files at project roots and loads the servers on startup — a perfect fit for the Infrahub MCP server when you're working inside a specific Infrahub consumer repository (IaC, Ansible, Python clients, etc.).
 
-## Prerequisites
+## Quick start
 
-- Claude Code installed (`npm install -g @anthropic-ai/claude-code`, or via the desktop app).
-- `uv` installed and the `infrahub-mcp` repository cloned locally.
+See the [Installation guide](../guides/installation.mdx#add-to-your-mcp-client) for the minimal Claude Code config snippet. This page covers Claude Code-specific workflows.
 
 ## Project-scoped setup
 
@@ -17,13 +16,8 @@ Create `.mcp.json` at the root of the repository where you want the Infrahub ser
 {
   "mcpServers": {
     "infrahub": {
-      "command": "uv",
-      "args": [
-        "run",
-        "fastmcp",
-        "run",
-        "src/infrahub_mcp/server.py:mcp"
-      ],
+      "command": "uvx",
+      "args": ["infrahub-mcp"],
       "env": {
         "INFRAHUB_ADDRESS": "http://localhost:8000",
         "INFRAHUB_API_TOKEN": "your-api-token"

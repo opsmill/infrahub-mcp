@@ -4,11 +4,9 @@ title: Claude Desktop
 
 Claude Desktop is the default starting point for most users — it speaks MCP over stdio and can spawn the Infrahub MCP server locally without any infrastructure.
 
-## Prerequisites
+## Quick start
 
-- [Claude Desktop](https://claude.ai/download) installed.
-- `uv` installed and the `infrahub-mcp` repository cloned locally (see [Installation](../getting-started/installation.mdx)).
-- An Infrahub instance reachable from the machine running Claude Desktop.
+See the [Installation guide](../guides/installation.mdx#add-to-your-mcp-client) for the minimal Claude Desktop config snippet. This page covers Claude Desktop-specific details.
 
 ## Configure
 
@@ -19,13 +17,8 @@ Open **Settings → Developer**, then click `Edit config`. Claude Desktop opens 
   "mcpServers": {
     "infrahub_mcp": {
       "transport": "stdio",
-      "command": "uv",
-      "args": [
-        "run",
-        "fastmcp",
-        "run",
-        "src/infrahub_mcp/server.py:mcp"
-      ],
+      "command": "uvx",
+      "args": ["infrahub-mcp"],
       "env": {
         "INFRAHUB_ADDRESS": "http://localhost:8000",
         "INFRAHUB_API_TOKEN": "your-api-token"
@@ -36,8 +29,6 @@ Open **Settings → Developer**, then click `Edit config`. Claude Desktop opens 
 ```
 
 Save and restart Claude Desktop. The `infrahub_mcp` server appears under **Developer → MCP servers** with a green status indicator once the handshake succeeds.
-
-The `command` is run from Claude Desktop's working directory. If you installed the server somewhere other than your home directory, either set an absolute `cwd` or wrap the command in a shell script that `cd`s into the repository first.
 
 ## Connect to a remote server
 

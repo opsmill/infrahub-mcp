@@ -19,13 +19,25 @@ For a containerized deployment (Docker Compose, sidecar alongside Infrahub), see
 
 ## Install
 
+The recommended way is via `uvx` (no clone needed):
+
+```bash
+uvx infrahub-mcp --help
+```
+
+Or install into an existing environment:
+
+```bash
+pip install infrahub-mcp
+```
+
+To develop or contribute, clone the repository:
+
 ```bash
 git clone https://github.com/opsmill/infrahub-mcp.git
 cd infrahub-mcp
 uv sync
 ```
-
-`uv sync` installs `fastmcp`, `infrahub-sdk`, `toonify`, and the rest of the runtime dependencies into an isolated virtual environment.
 
 ## Configure the connection
 
@@ -45,7 +57,7 @@ For the complete list of variables (rate limiting, caching, observability, auth)
 Stdio is the default transport for MCP clients that spawn the server as a subprocess (Claude Desktop, Claude Code with `.mcp.json`):
 
 ```bash
-uv run fastmcp run src/infrahub_mcp/server.py:mcp
+uvx infrahub-mcp
 ```
 
 ### Streamable HTTP transport (remote clients, Docker)
@@ -53,7 +65,7 @@ uv run fastmcp run src/infrahub_mcp/server.py:mcp
 HTTP is required for token pass-through, OIDC, or any client connecting over the network:
 
 ```bash
-uv run infrahub-mcp --transport streamable-http --host 0.0.0.0 --port 8001
+uvx infrahub-mcp --transport streamable-http --host 0.0.0.0 --port 8001
 ```
 
 The server exposes three endpoints on the configured port:
