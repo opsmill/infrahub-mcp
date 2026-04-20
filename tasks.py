@@ -91,6 +91,17 @@ EXTRA_ENV_VARS: dict[str, str] = {
     "INFRAHUB_API_TOKEN": "06438eb2-8019-4776-878c-0941b1f1d1ec",
 }
 
+AUTH_MODE_SPECIFIC_FIELDS: set[str] = {
+    "oidc_config_url",
+    "oidc_client_id",
+    "oidc_client_secret",
+    "oidc_base_url",
+    "oidc_audience",
+    "oidc_user_claim",
+    "token_passthrough_header",
+    "auth_scopes_write",
+}
+
 
 def _get_expected_env_vars() -> dict[str, str]:
     """Build the expected {VAR_NAME: default_value} map from ServerConfig + extras."""
@@ -98,6 +109,8 @@ def _get_expected_env_vars() -> dict[str, str]:
     env_vars: dict[str, str] = dict(EXTRA_ENV_VARS)
 
     for field_name in ServerConfig.model_fields:
+        if field_name in AUTH_MODE_SPECIFIC_FIELDS:
+            continue
         env_name = f"INFRAHUB_MCP_{field_name.upper()}"
         default = getattr(config, field_name)
         if isinstance(default, bool):
