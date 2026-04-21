@@ -1,0 +1,110 @@
+.specify/templates/plan-template.md
+  93cc5b7487c4b6c0 1-104
+pyproject.toml
+  8160925447b111fe 8,20,151
+.specify/extensions.yml
+  93cc5b7487c4b6c0 1-148
+.specify/integrations/speckit.manifest.json
+  93cc5b7487c4b6c0 1-16
+.specify/extensions/git/config-template.yml
+  93cc5b7487c4b6c0 1-62
+.specify/scripts/bash/setup-plan.sh
+  93cc5b7487c4b6c0 1-73
+.specify/scripts/bash/common.sh
+  93cc5b7487c4b6c0 1-375
+.specify/templates/checklist-template.md
+  93cc5b7487c4b6c0 1-40
+.specify/templates/spec-template.md
+  93cc5b7487c4b6c0 1-128
+.specify/extensions/git/scripts/bash/create-new-feature.sh
+  93cc5b7487c4b6c0 1-453
+.specify/feature.json
+  93cc5b7487c4b6c0 1-3
+.specify/extensions/git/scripts/bash/git-common.sh
+  93cc5b7487c4b6c0 1-54
+.specify/extensions/git/README.md
+  93cc5b7487c4b6c0 1-100
+.specify/workflows/speckit/workflow.yml
+  93cc5b7487c4b6c0 1-63
+.specify/workflows/workflow-registry.json
+  93cc5b7487c4b6c0 1-13
+.specify/extensions/git/scripts/bash/initialize-repo.sh
+  93cc5b7487c4b6c0 1-54
+.specify/extensions/git/scripts/bash/auto-commit.sh
+  93cc5b7487c4b6c0 1-140
+.specify/extensions/git/scripts/powershell/auto-commit.ps1
+  93cc5b7487c4b6c0 1-169
+.specify/integration.json
+  93cc5b7487c4b6c0 1-4
+.specify/integrations/claude.manifest.json
+  93cc5b7487c4b6c0 1-16
+.specify/templates/constitution-template.md
+  93cc5b7487c4b6c0 1-50
+.specify/extensions/git/commands/speckit.git.commit.md
+  93cc5b7487c4b6c0 1-48
+.specify/scripts/bash/check-prerequisites.sh
+  93cc5b7487c4b6c0 1-190
+.specify/extensions/git/extension.yml
+  93cc5b7487c4b6c0 1-140
+.specify/extensions/git/commands/speckit.git.validate.md
+  93cc5b7487c4b6c0 1-49
+.specify/extensions/git/commands/speckit.git.initialize.md
+  93cc5b7487c4b6c0 1-49
+.specify/extensions/git/scripts/powershell/create-new-feature.ps1
+  93cc5b7487c4b6c0 1-403
+.specify/templates/tasks-template.md
+  93cc5b7487c4b6c0 1-251
+.specify/extensions/git/commands/speckit.git.feature.md
+  93cc5b7487c4b6c0 1-67
+.specify/extensions/git/scripts/powershell/initialize-repo.ps1
+  93cc5b7487c4b6c0 1-69
+.specify/extensions/git/scripts/powershell/git-common.ps1
+  93cc5b7487c4b6c0 1-51
+.specify/scripts/bash/create-new-feature.sh
+  93cc5b7487c4b6c0 1-413
+.specify/templates/adr-template.md
+  93cc5b7487c4b6c0 1-39
+.specify/extensions/git/commands/speckit.git.remote.md
+  93cc5b7487c4b6c0 1-45
+.specify/extensions/.registry
+  93cc5b7487c4b6c0 1-23
+.specify/init-options.json
+  93cc5b7487c4b6c0 1-11
+.specify/extensions/git/git-config.yml
+  93cc5b7487c4b6c0 1-62
+.specify/memory/constitution.md
+  93cc5b7487c4b6c0 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "ed9c93584b829c3a75841c9182c18499511d747a",
+  "prompts": {
+    "8160925447b111fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2650cf1c-e40e-4828-b026-48922470984b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "93cc5b7487c4b6c0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d6a563e-35d5-48e9-ba69-0fa42b845f96",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 3922,
+      "total_deletions": 493,
+      "accepted_lines": 6632,
+      "overriden_lines": 0
+    }
+  }
+}
