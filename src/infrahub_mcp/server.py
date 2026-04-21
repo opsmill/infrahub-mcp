@@ -90,7 +90,6 @@ mcp: FastMCP = FastMCP(
     auth=_auth_provider,
 )
 
-
 # Middleware stack — structured logging, timing, error handling, audit, read-only enforcement
 configure_middleware(mcp, _config)
 

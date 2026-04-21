@@ -5,7 +5,7 @@ description = "MCP server to interact with Infrahub"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "fastmcp>=3.1.1",
+    "fastmcp>=3.2.0",
     "infrahub-sdk>=1.13.5",
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.6,<3",
@@ -17,7 +17,7 @@ infrahub-mcp = "infrahub_mcp:main"
 
 [dependency-groups]
 dev = [
-    "ty==0.0.32",
+    "ty>=0.0.32",
     "rumdl>=0.1.68",
     "invoke>=2.2.0",
     "mypy>=1.17.0",
@@ -148,6 +148,7 @@ constraint-dependencies = [
     "ujson>=5.12.0",
     "urllib3>=2.6.3",
     "wheel>=0.46.2",
+    "pygments>=2.20.0",
 ]
 
 [tool.rumdl]
