@@ -20,3 +20,4 @@ __pycache__
 .mcp.json
 .claude
 **/worktrees
+.token-savior-cache.json

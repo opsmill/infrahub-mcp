@@ -17,6 +17,7 @@ swap:
   (?:[Ii]nflux[Dd]b): InfluxDB
   (?<![\.|/|#])infrahub[\.!]?\s: Infrahub
   (?<![\.|/|#])InfraHub[\.!]?\s: Infrahub
+  (?<![\.|/|#])jinja(?!2)[\.!]?\s: Jinja
   (?:jinja2): Jinja2
   (?:k3s): K3s
   (?<![\.|/|#])k8s[\.!]?\s: K8s
@@ -26,7 +27,8 @@ swap:
   (?:[^/][Nn]ginx): NGINX
   (?:[Nn]odejs): Node.js
   (?:[^/][Oo]penapi): OpenAPI
-  (?:Openconfig): OpenConfig
+  (?:[Oo]penconfig): OpenConfig
+  (?:[Oo]pen[Tt]elemetry): OpenTelemetry
   (?<![\.|/|#])opsmill[\.!]?\s: OpsMill
   (?:[Pp]ostgre[Ss]ql): PostgreSQL
   (?:[^/]prometheus): Prometheus
