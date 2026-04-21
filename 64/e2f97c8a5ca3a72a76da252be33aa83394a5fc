@@ -1,0 +1,37 @@
+.specify/feature.json
+  93cc5b7487c4b6c0 2
+specs/archive/20260421-144953-production-ready-mcp-server/research.md
+  93cc5b7487c4b6c0 1-98
+specs/archive/20260421-144953-production-ready-mcp-server/data-model.md
+  93cc5b7487c4b6c0 1-95
+specs/archive/20260421-144953-production-ready-mcp-server/checklists/requirements.md
+  93cc5b7487c4b6c0 1-36
+specs/archive/20260421-144953-production-ready-mcp-server/.spec-context.json
+  93cc5b7487c4b6c0 1-34
+specs/archive/20260421-144953-production-ready-mcp-server/spec.md
+  93cc5b7487c4b6c0 1-181
+specs/archive/20260421-144953-production-ready-mcp-server/plan.md
+  93cc5b7487c4b6c0 1-132
+specs/archive/20260421-144953-production-ready-mcp-server/tasks.md
+  93cc5b7487c4b6c0 1-330
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "64e2f97c8a5ca3a72a76da252be33aa83394a5fc",
+  "prompts": {
+    "93cc5b7487c4b6c0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d6a563e-35d5-48e9-ba69-0fa42b845f96",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 907,
+      "total_deletions": 1,
+      "accepted_lines": 3563,
+      "overriden_lines": 0
+    }
+  }
+}
