@@ -1,0 +1,33 @@
+dev/adr/0007-hash-validated-schema-cache.md
+  dc8391d561ca7996 1-80
+server.json
+  dc8391d561ca7996 179-206
+AGENTS.md
+  dc8391d561ca7996 131
+development/docker-compose.yml
+  dc8391d561ca7996 25-28
+docker-compose.yml
+  dc8391d561ca7996 33-36
+docs/docs/references/configuration.mdx
+  dc8391d561ca7996 53,61-82,166-173,205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "55b1e0fa292bacdd7cc008c2bdb789018850c98f",
+  "prompts": {
+    "dc8391d561ca7996": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0846ae37-ccd8-4dae-89db-edf80c1b86ec",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 149,
+      "total_deletions": 5,
+      "accepted_lines": 149,
+      "overriden_lines": 0
+    }
+  }
+}
