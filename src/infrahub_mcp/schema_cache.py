@@ -149,8 +149,16 @@ async def _full_fetch(
     Returns a ``(branch_schema, graphql_sdl)`` tuple. The two fetches
     happen sequentially — they are different endpoints and a small
     sequence keeps error attribution clear.
+
+    The SDK's public ``client.schema.fetch()`` returns only the kinds
+    dict (``dict[str, MainSchemaTypes]``), not the ``BranchSchema``
+    object that carries the schema hash we need for hash-validated
+    revalidation. ``client.schema._fetch()`` is the inner method that
+    returns the full ``BranchSchema`` — same protected-member precedent
+    as the ``client._get`` calls used elsewhere in this module.
+    TODO: swap for a public SDK accessor when one lands.
     """
-    branch_schema: BranchSchema = await client.schema.fetch(branch=branch, populate_cache=True)
+    branch_schema: BranchSchema = await client.schema._fetch(branch=branch)  # noqa: SLF001  # pylint: disable=protected-access
     graphql_sdl = await _fetch_graphql_sdl(client)
     return branch_schema, graphql_sdl
 
@@ -432,7 +440,7 @@ async def get_cached_branch_schema(ctx: Context, branch: str | None = None) -> B
     if not app_ctx.config.schema_cache_enabled:
         client = get_client(ctx)
         resolved_branch = await _resolve_branch(ctx, branch)
-        return await client.schema.fetch(branch=resolved_branch, populate_cache=True)
+        return await client.schema._fetch(branch=resolved_branch)  # noqa: SLF001  # pylint: disable=protected-access
 
     entry = await _ensure_entry(ctx=ctx, branch=branch, force_revalidate=False)
     return entry.schema

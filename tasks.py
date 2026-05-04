@@ -56,6 +56,21 @@ def lint_pylint(context: Context) -> None:
 
 
 @task
+def lint_ty(context: Context) -> None:
+    """Run Astral's ``ty`` type checker across the whole tree.
+
+    Mirrors CI's ``ty check .`` step in .github/workflows/ci.yml.
+    Local mypy (``invoke lint-mypy``) only checks ``src/infrahub_mcp``,
+    so this catches the additional class of errors ty reports against
+    tests and project tooling.
+    """
+    print(" - Check code with ty")
+    exec_cmd = "uv run ty check ."
+    with context.cd(MAIN_DIRECTORY_PATH):
+        context.run(exec_cmd)
+
+
+@task
 def lint_ruff(context: Context) -> None:
     """Run ruff check and ruff format --check across the whole tree.
 
@@ -83,6 +98,7 @@ def lint_all(context: Context) -> None:
     lint_yaml(context)
     lint_ruff(context)
     lint_mypy(context)
+    lint_ty(context)
     lint_pylint(context)
 
 
