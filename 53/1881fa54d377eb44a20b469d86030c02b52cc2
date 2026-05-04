@@ -1,0 +1,37 @@
+src/infrahub_mcp/resources/schema.py
+  1a4e8dc17ee521a7 28,53,75
+src/infrahub_mcp/tools/schema.py
+  1a4e8dc17ee521a7 4,49
+tests/unit/test_token_passthrough.py
+  1a4e8dc17ee521a7 457-460,496-500
+src/infrahub_mcp/tools/nodes.py
+  1a4e8dc17ee521a7 228,337
+src/infrahub_mcp/tools/write.py
+  1a4e8dc17ee521a7 4,86,197,269,352
+src/infrahub_mcp/utils.py
+  1a4e8dc17ee521a7 11,66,76
+src/infrahub_mcp/resources/branches.py
+  1a4e8dc17ee521a7 4,33
+src/infrahub_mcp/tools/gql.py
+  1a4e8dc17ee521a7 3,62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "531881fa54d377eb44a20b469d86030c02b52cc2",
+  "prompts": {
+    "1a4e8dc17ee521a7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a4e124e5-dab3-43b9-b6a5-6780e632af7d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 28,
+      "total_deletions": 42,
+      "accepted_lines": 28,
+      "overriden_lines": 0
+    }
+  }
+}
