@@ -88,7 +88,7 @@ def mock_client() -> MagicMock:
     client = MagicMock()
     client.address = "http://infrahub.test"
     client.schema = MagicMock()
-    client.schema.fetch = AsyncMock()
+    client.schema._fetch = AsyncMock()
     client.schema.set_cache = MagicMock()
     client._get = AsyncMock()
     return client
@@ -142,7 +142,7 @@ class TestUS1ColdAndWarm:
         mock_metrics: MagicMock,
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1", kinds=["InfraDevice"])
-        mock_client.schema.fetch.return_value = schema
+        mock_client.schema._fetch.return_value = schema
         mock_client._get.return_value = _make_response(text="schema { Query }")
 
         result = await get_cached_branch_schema(mock_ctx)
@@ -150,7 +150,7 @@ class TestUS1ColdAndWarm:
         assert result is schema
         assert "main" in app_ctx.schema_cache
         assert app_ctx.schema_cache["main"].schema_hash == "H1"
-        mock_client.schema.fetch.assert_awaited_once_with(branch="main", populate_cache=True)
+        mock_client.schema._fetch.assert_awaited_once_with(branch="main")
         mock_client.schema.set_cache.assert_called_once_with(schema=schema, branch="main")
         mock_metrics.record_schema_cache_event.assert_any_call("miss")
 
@@ -175,7 +175,7 @@ class TestUS1ColdAndWarm:
         result = await get_cached_branch_schema(mock_ctx)
 
         assert result is schema
-        mock_client.schema.fetch.assert_not_awaited()
+        mock_client.schema._fetch.assert_not_awaited()
         mock_client._get.assert_not_awaited()
         mock_metrics.record_schema_cache_event.assert_any_call("hit")
 
@@ -188,13 +188,13 @@ class TestUS1ColdAndWarm:
     ) -> None:
         app_ctx.config = _make_config(schema_cache_enabled=False)
         schema = _make_branch_schema(schema_hash="H1")
-        mock_client.schema.fetch.return_value = schema
+        mock_client.schema._fetch.return_value = schema
 
         result = await get_cached_branch_schema(mock_ctx)
 
         assert result is schema
         assert "main" not in app_ctx.schema_cache  # nothing cached
-        mock_client.schema.fetch.assert_awaited_once_with(branch="main", populate_cache=True)
+        mock_client.schema._fetch.assert_awaited_once_with(branch="main")
 
 
 class TestSingleFlight:
@@ -209,13 +209,13 @@ class TestSingleFlight:
         slow_event = asyncio.Event()
         call_count = 0
 
-        async def slow_fetch(branch: str, populate_cache: bool = True) -> Any:
+        async def slow_fetch(branch: str) -> Any:
             nonlocal call_count
             call_count += 1
             await slow_event.wait()
             return schema
 
-        mock_client.schema.fetch.side_effect = slow_fetch
+        mock_client.schema._fetch.side_effect = slow_fetch
         mock_client._get.return_value = _make_response(text="sdl")
 
         async def runner() -> Any:
@@ -259,7 +259,7 @@ class TestUS2Revalidation:
         result = await get_cached_branch_schema(mock_ctx)
 
         assert result is schema
-        mock_client.schema.fetch.assert_not_awaited()
+        mock_client.schema._fetch.assert_not_awaited()
         assert app_ctx.schema_cache["main"].fetched_at_monotonic > old_time
         mock_metrics.record_schema_cache_event.assert_any_call("hash_match")
 
@@ -288,14 +288,14 @@ class TestUS2Revalidation:
             _make_response(json_body={"main": "H2"}),
             _make_response(text="new-sdl"),
         ]
-        mock_client.schema.fetch.return_value = new_schema
+        mock_client.schema._fetch.return_value = new_schema
 
         result = await get_cached_branch_schema(mock_ctx)
 
         assert result is new_schema
         assert app_ctx.schema_cache["main"].schema_hash == "H2"
         assert app_ctx.schema_cache["main"].graphql_sdl == "new-sdl"
-        mock_client.schema.fetch.assert_awaited_once()
+        mock_client.schema._fetch.assert_awaited_once()
         mock_metrics.record_schema_cache_event.assert_any_call("hash_diff")
 
     @pytest.mark.anyio
@@ -344,7 +344,7 @@ class TestUS2LazyOnMissingKind:
         kind = await get_cached_kind(mock_ctx, kind="InfraDevice")
 
         assert kind is schema.nodes["InfraDevice"]
-        mock_client.schema.fetch.assert_not_awaited()
+        mock_client.schema._fetch.assert_not_awaited()
 
     @pytest.mark.anyio
     async def test_missing_kind_with_unchanged_hash_propagates_not_found(
@@ -371,7 +371,7 @@ class TestUS2LazyOnMissingKind:
             await get_cached_kind(mock_ctx, kind="GhostKind")
 
         # Full schema fetch should NOT have been called (hash matched).
-        mock_client.schema.fetch.assert_not_awaited()
+        mock_client.schema._fetch.assert_not_awaited()
 
     @pytest.mark.anyio
     async def test_missing_kind_with_changed_hash_refetches_and_returns(
@@ -395,12 +395,12 @@ class TestUS2LazyOnMissingKind:
             _make_response(json_body={"main": "H2"}),
             _make_response(text="new-sdl"),
         ]
-        mock_client.schema.fetch.return_value = new_schema
+        mock_client.schema._fetch.return_value = new_schema
 
         kind = await get_cached_kind(mock_ctx, kind="NewKind")
 
         assert kind is new_schema.nodes["NewKind"]
-        mock_client.schema.fetch.assert_awaited_once()
+        mock_client.schema._fetch.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -459,7 +459,7 @@ class TestUS3Resilience:
             consecutive_failures=0,
         )
         mock_client._get.return_value = _make_response(json_body={"main": "H2"})
-        mock_client.schema.fetch.side_effect = httpx.NetworkError("refetch-boom")
+        mock_client.schema._fetch.side_effect = httpx.NetworkError("refetch-boom")
 
         result = await get_cached_branch_schema(mock_ctx)
 
@@ -475,7 +475,7 @@ class TestUS3Resilience:
         app_ctx: AppContext,
         mock_client: MagicMock,
     ) -> None:
-        mock_client.schema.fetch.side_effect = httpx.NetworkError("boom")
+        mock_client.schema._fetch.side_effect = httpx.NetworkError("boom")
 
         with pytest.raises(httpx.NetworkError):
             await get_cached_branch_schema(mock_ctx)
@@ -617,7 +617,7 @@ class TestMetrics:
     ) -> None:
         # Cold fetch.
         schema = _make_branch_schema(schema_hash="H1")
-        mock_client.schema.fetch.return_value = schema
+        mock_client.schema._fetch.return_value = schema
         mock_client._get.return_value = _make_response(text="sdl")
         await get_cached_branch_schema(mock_ctx)
 
@@ -682,7 +682,7 @@ class TestGraphQLSDL:
         mock_client: MagicMock,
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1")
-        mock_client.schema.fetch.return_value = schema
+        mock_client.schema._fetch.return_value = schema
         mock_client._get.return_value = _make_response(text="schema { Query }")
 
         sdl = await get_cached_graphql_sdl(mock_ctx)
@@ -712,7 +712,7 @@ class TestGraphQLSDL:
             _make_response(json_body={"main": "H2"}),
             _make_response(text="new-sdl"),
         ]
-        mock_client.schema.fetch.return_value = new_schema
+        mock_client.schema._fetch.return_value = new_schema
 
         sdl = await get_cached_graphql_sdl(mock_ctx)
 
@@ -742,7 +742,8 @@ class TestSchemaAwareCachingMiddleware:
 
         call_next_count = 0
 
-        async def call_next(_ctx: Any) -> str:  # noqa: RUF029  # FastMCP middleware contract requires async
+        async def call_next(context: Any) -> str:  # noqa: RUF029  # FastMCP middleware contract requires async
+            del context
             nonlocal call_next_count
             call_next_count += 1
             return "fresh-response"
