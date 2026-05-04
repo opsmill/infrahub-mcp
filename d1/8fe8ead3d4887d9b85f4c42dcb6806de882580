@@ -1,0 +1,29 @@
+.agents/commands/speckit.checkpoint.commit.md
+  590f2b20ec2f35f8 1-58
+.specify/extensions/checkpoint/commands/commit.md
+  590f2b20ec2f35f8 1-55
+.agents/commands/speckit.checkpoint.commit.agent.md
+  590f2b20ec2f35f8 1-58
+.specify/extensions/checkpoint/extension.yml
+  590f2b20ec2f35f8 1-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "d18fe8ead3d4887d9b85f4c42dcb6806de882580",
+  "prompts": {
+    "590f2b20ec2f35f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e2295bc1-da0b-4ec7-97c4-e0f93c871764",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 341,
+      "total_deletions": 0,
+      "accepted_lines": 1576,
+      "overriden_lines": 0
+    }
+  }
+}
