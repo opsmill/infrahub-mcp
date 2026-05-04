@@ -65,12 +65,16 @@ jobs:
           MCP_DISCOVERY_VERSION: "0.2.5"
           MCP_DISCOVERY_SHA256: "ede19b0e8a6d960ddb3cf0abd7d33e791ad94aecfe65d94c33c6011bd5291ba9"
         run: |
+          # Extract to a tmp dir so stray bundled files (LICENSE, README,
+          # etc.) never land in the working tree and get picked up by
+          # `git add -A` in the bump commit.
+          TMPDIR=$(mktemp -d)
           curl -sL "https://github.com/rust-mcp-stack/mcp-discovery/releases/download/v${MCP_DISCOVERY_VERSION}/mcp-discovery-x86_64-unknown-linux-gnu.tar.xz" \
-            -o mcp-discovery.tar.xz
-          echo "${MCP_DISCOVERY_SHA256}  mcp-discovery.tar.xz" | sha256sum -c
-          tar -xJf mcp-discovery.tar.xz --strip-components=1
-          sudo mv mcp-discovery /usr/local/bin/
-          rm mcp-discovery.tar.xz
+            -o "${TMPDIR}/mcp-discovery.tar.xz"
+          echo "${MCP_DISCOVERY_SHA256}  ${TMPDIR}/mcp-discovery.tar.xz" | sha256sum -c
+          tar -xJf "${TMPDIR}/mcp-discovery.tar.xz" -C "${TMPDIR}" --strip-components=1
+          sudo mv "${TMPDIR}/mcp-discovery" /usr/local/bin/
+          rm -rf "${TMPDIR}"
         # yamllint enable rule:line-length
 
       - name: Calculate next version from PR labels
@@ -118,7 +122,10 @@ jobs:
           VERSION="${{ steps.next.outputs.next-version }}"
           git config user.name "opsmill-bot"
           git config user.email "opsmill-bot@users.noreply.github.com"
-          git add -A
+          # Stage only the files version-sync + capabilities regen are
+          # allowed to touch. Avoids picking up stray files dropped by
+          # third-party tools (e.g. mcp-discovery tarball contents).
+          git add pyproject.toml server.json uv.lock CAPABILITIES.md
           git commit -m "chore(release): bump to v${VERSION}"
           git push origin stable
 
