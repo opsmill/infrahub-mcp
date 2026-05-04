@@ -12,9 +12,17 @@ MAIN_DIRECTORY_PATH = Path(__file__).parent
 
 @task(name="format")
 def format_all(context: Context) -> None:
-    """Run RUFF to format all Python files."""
+    """Run RUFF to format all Python files and apply autofixes.
 
-    exec_cmds = ["uv run ruff format ."]
+    Mirrors CI's ``ruff format`` step but with write-mode (CI uses
+    ``--check --diff``). The trailing ``ruff check . --fix`` applies
+    autofixable lint corrections so a developer running ``invoke format``
+    sees a clean tree before invoking the strict ``invoke lint`` gate.
+    """
+    exec_cmds = [
+        "uv run ruff format .",
+        "uv run ruff check . --fix",
+    ]
     with context.cd(MAIN_DIRECTORY_PATH):
         for cmd in exec_cmds:
             context.run(cmd)
@@ -49,11 +57,24 @@ def lint_pylint(context: Context) -> None:
 
 @task
 def lint_ruff(context: Context) -> None:
-    """Run Linter to check all Python files."""
+    """Run ruff check and ruff format --check across the whole tree.
+
+    Mirrors the two ruff steps that CI runs (see ``.github/workflows/ci.yml``):
+
+        uv run ruff check .
+        uv run ruff format --check --diff .
+
+    Strict by design — no ``--fix``. Use ``invoke format`` to auto-fix
+    formatting and lint issues before running ``invoke lint``.
+    """
     print(" - Check code with ruff")
-    exec_cmd = "uv run ruff check src/ --fix"
+    exec_cmds = [
+        "uv run ruff check .",
+        "uv run ruff format --check --diff .",
+    ]
     with context.cd(MAIN_DIRECTORY_PATH):
-        context.run(exec_cmd)
+        for cmd in exec_cmds:
+            context.run(cmd)
 
 
 @task(name="lint")
