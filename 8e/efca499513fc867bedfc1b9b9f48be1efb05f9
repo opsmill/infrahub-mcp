@@ -1,0 +1,49 @@
+.agents/commands/speckit.checklist.md
+  590f2b20ec2f35f8 1-294
+.agents/commands/speckit.git.feature.md
+  590f2b20ec2f35f8 1-70
+.agents/commands/speckit.git.validate.md
+  590f2b20ec2f35f8 1-52
+.agents/commands/speckit.git.initialize.md
+  590f2b20ec2f35f8 1-52
+.agents/commands/speckit.specify.md
+  590f2b20ec2f35f8 1-258
+.agents/commands/speckit.git.remote.md
+  590f2b20ec2f35f8 1-48
+.agents/commands/speckit.taskstoissues.md
+  590f2b20ec2f35f8 1-30
+.agents/commands/speckit.analyze.md
+  590f2b20ec2f35f8 1-184
+.agents/commands/speckit.clarify.md
+  590f2b20ec2f35f8 1-181
+.agents/commands/speckit.git.commit.md
+  590f2b20ec2f35f8 1-51
+.agents/commands/speckit.plan.md
+  590f2b20ec2f35f8 1-89
+.agents/commands/speckit.implement.md
+  590f2b20ec2f35f8 1-135
+.agents/commands/speckit.tasks.md
+  590f2b20ec2f35f8 1-137
+.agents/commands/speckit.constitution.md
+  590f2b20ec2f35f8 1-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "8eefca499513fc867bedfc1b9b9f48be1efb05f9",
+  "prompts": {
+    "590f2b20ec2f35f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e2295bc1-da0b-4ec7-97c4-e0f93c871764",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 1663,
+      "total_deletions": 0,
+      "accepted_lines": 1663,
+      "overriden_lines": 0
+    }
+  }
+}
