@@ -1,14 +1,11 @@
 """Branch resources for the Infrahub MCP server."""
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from fastmcp import Context, FastMCP
 
 from infrahub_mcp.utils import get_client
-
-if TYPE_CHECKING:
-    from infrahub_sdk.client import InfrahubClient
 
 mcp: FastMCP = FastMCP(name="Infrahub Branch Resources")
 
@@ -33,7 +30,7 @@ async def branches(ctx: Context) -> str:
         Compact JSON object keyed by branch name, where each value contains
         ``is_default`` (bool) and ``description`` (str) fields.
     """
-    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
+    client = get_client(ctx)
 
     raw = await client.branch.all()
 

@@ -1,7 +1,6 @@
 """Schema resources for the Infrahub MCP server."""
 
 import json
-from typing import TYPE_CHECKING
 
 import toon
 from fastmcp import Context, FastMCP
@@ -10,9 +9,6 @@ from infrahub_sdk.exceptions import BranchNotFoundError, SchemaNotFoundError
 
 from infrahub_mcp.schema import get_schema_catalog, get_schema_detail
 from infrahub_mcp.utils import get_client
-
-if TYPE_CHECKING:
-    from infrahub_sdk.client import InfrahubClient
 
 mcp: FastMCP = FastMCP(name="Infrahub Schema Resources")
 
@@ -29,7 +25,7 @@ mcp: FastMCP = FastMCP(name="Infrahub Schema Resources")
 )
 async def schema_catalog(ctx: Context) -> str:
     """Return the complete non-internal schema kind catalog."""
-    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
+    client = get_client(ctx)
 
     try:
         result = await get_schema_catalog(client)
@@ -54,7 +50,7 @@ async def schema_catalog(ctx: Context) -> str:
 )
 async def schema_kind_detail(kind: str, ctx: Context) -> str:
     """Return full schema definition and available filters for *kind* encoded as TOON."""
-    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
+    client = get_client(ctx)
 
     try:
         payload = await get_schema_detail(client, kind=kind)
@@ -76,7 +72,7 @@ async def schema_kind_detail(kind: str, ctx: Context) -> str:
 )
 async def graphql_schema(ctx: Context) -> str:
     """Return the raw GraphQL SDL from Infrahub."""
-    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
+    client = get_client(ctx)
     # infrahub_sdk has no public API to fetch the raw GraphQL SDL;
     # using private _get() as a workaround.
     # TODO: open an issue with infrahub_sdk maintainers requesting a public schema-retrieval method.

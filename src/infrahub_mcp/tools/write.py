@@ -1,7 +1,7 @@
 """Write tools for the Infrahub MCP server."""
 
 import logging
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
 from fastmcp import Context, FastMCP
 from infrahub_sdk.exceptions import GraphQLError, NodeNotFoundError, SchemaNotFoundError
@@ -16,9 +16,6 @@ from infrahub_mcp.utils import (
     get_default_branch,
     get_or_create_session_branch,
 )
-
-if TYPE_CHECKING:
-    from infrahub_sdk.client import InfrahubClient
 
 # pylint: disable=duplicate-code
 mcp: FastMCP = FastMCP(name="Infrahub Write")
@@ -86,7 +83,7 @@ async def node_upsert(  # pylint: disable=too-many-locals
     Returns:
         Dict with node id, display_label, and branch on success.
     """
-    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
+    client = get_client(ctx)
     session_branch = await get_or_create_session_branch(ctx)
 
     # Validate kind exists
@@ -197,7 +194,7 @@ async def node_delete(
             remediation=_NO_IDENTIFIER_MSG,
         )
 
-    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
+    client = get_client(ctx)
     session_branch = await get_or_create_session_branch(ctx)
 
     try:
@@ -269,7 +266,7 @@ async def propose_changes(
     Returns:
         Dict with proposed change id and branch details on success.
     """
-    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
+    client = get_client(ctx)
     if ctx.request_context is None:
         msg = "request_context must not be None"
         raise RuntimeError(msg)
@@ -352,7 +349,7 @@ async def mutate_graphql(
     Returns:
         The result of the mutation.
     """
-    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
+    client = get_client(ctx)
 
     if branch is None:
         branch = await get_or_create_session_branch(ctx)

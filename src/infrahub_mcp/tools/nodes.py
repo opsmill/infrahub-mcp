@@ -225,7 +225,7 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
     Raises:
         RuntimeError: Via ``_log_and_raise_error`` when the schema is not found or the query fails.
     """
-    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
+    client = get_client(ctx)
     req_id = ctx.request_id
     await ctx.info(
         f"Fetching {kind} nodes: request_id={req_id!r}, branch={branch!r}, "
@@ -334,7 +334,7 @@ async def search_nodes(
     Raises:
         RuntimeError: Via ``_log_and_raise_error`` when the schema is not found or the query fails.
     """
-    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
+    client = get_client(ctx)
     req_id = ctx.request_id
     query = query.strip()
     if not query:

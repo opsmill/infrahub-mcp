@@ -1,7 +1,7 @@
 """Schema discovery tool for the Infrahub MCP server."""
 
 import json
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 import toon
 from fastmcp import Context, FastMCP
@@ -11,9 +11,6 @@ from pydantic import Field
 
 from infrahub_mcp.schema import get_schema_catalog, get_schema_detail, get_valid_kinds_summary
 from infrahub_mcp.utils import _log_and_raise_error, get_client
-
-if TYPE_CHECKING:
-    from infrahub_sdk.client import InfrahubClient
 
 mcp: FastMCP = FastMCP(name="Infrahub Schema")
 
@@ -49,7 +46,7 @@ async def get_schema(
     Returns:
         JSON catalog (no kind) or TOON-encoded schema detail (with kind).
     """
-    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
+    client = get_client(ctx)
 
     if kind is None:
         catalog = await get_schema_catalog(client, branch=branch)

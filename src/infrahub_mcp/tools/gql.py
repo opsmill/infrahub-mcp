@@ -1,6 +1,6 @@
 """GraphQL query tool for the Infrahub MCP server (read-only)."""
 
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
@@ -12,9 +12,6 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from infrahub_mcp.utils import _log_and_raise_error, get_client
-
-if TYPE_CHECKING:
-    from infrahub_sdk import InfrahubClient
 
 mcp: FastMCP = FastMCP(name="Infrahub GraphQL")
 
@@ -62,7 +59,7 @@ async def query_graphql(
             msg = "Mutations are not allowed in query_graphql. Use mutate_graphql instead."
             raise ToolError(msg)
 
-    client: InfrahubClient = get_client(ctx)  # type: ignore[assignment]
+    client = get_client(ctx)
     try:
         data = await client.execute_graphql(query=query, branch_name=branch)
     except GraphQLError as exc:

@@ -454,10 +454,10 @@ class TestGetClientPassthrough:
             result = get_client(token_passthrough_ctx)
 
         assert result is mock_client
-        mock_cls.assert_called_once_with(
-            address="http://localhost:8000",
-            config={"api_token": "test-api-token"},
-        )
+        assert mock_cls.call_count == 1
+        config = mock_cls.call_args.kwargs["config"]
+        assert config.address == "http://localhost:8000"
+        assert config.api_token == "test-api-token"
 
     def test_creates_fresh_client_per_call(self, infrahub_env: None, token_passthrough_ctx: MagicMock) -> None:
         """Each get_client() call creates a new InfrahubClient so different
@@ -493,10 +493,11 @@ class TestGetClientPassthrough:
             result = get_client(basic_passthrough_ctx)
 
         assert result is mock_client
-        mock_cls.assert_called_once_with(
-            address="http://localhost:8000",
-            config={"username": "alice", "password": "s3cret"},
-        )
+        assert mock_cls.call_count == 1
+        config = mock_cls.call_args.kwargs["config"]
+        assert config.address == "http://localhost:8000"
+        assert config.username == "alice"
+        assert config.password == "s3cret"
 
     @pytest.mark.parametrize("mode", ["token-passthrough", "basic-passthrough"])
     def test_raises_without_infrahub_address(self, mode: str) -> None:

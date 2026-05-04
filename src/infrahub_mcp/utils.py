@@ -8,6 +8,7 @@ from typing import Any, NoReturn
 
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
+from infrahub_sdk import Config
 from infrahub_sdk.client import InfrahubClient
 from infrahub_sdk.exceptions import Error as SdkError
 from infrahub_sdk.exceptions import GraphQLError, NodeNotFoundError
@@ -62,7 +63,7 @@ def get_client(ctx: Context) -> InfrahubClient:
             if token is None:
                 msg = "Authentication required: no Infrahub API token in request header."
                 raise ToolError(msg)
-            return InfrahubClient(address=address, config={"api_token": token})
+            return InfrahubClient(config=Config(address=address, api_token=token))
 
         credentials = get_passthrough_basic()
         if credentials is None:
@@ -72,7 +73,7 @@ def get_client(ctx: Context) -> InfrahubClient:
             )
             raise ToolError(msg)
         username, password = credentials
-        return InfrahubClient(address=address, config={"username": username, "password": password})
+        return InfrahubClient(config=Config(address=address, username=username, password=password))
 
     if app_ctx.client is None:
         msg = "No Infrahub client available."
