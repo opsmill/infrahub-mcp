@@ -1,0 +1,27 @@
+server.json
+  7f0aac4a610b7dee 9,14
+CAPABILITIES.md
+  7f0aac4a610b7dee 1
+pyproject.toml
+  7f0aac4a610b7dee 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "5da28356a9785f5ae75647583fd421f7d1ffd8ea",
+  "prompts": {
+    "7f0aac4a610b7dee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d3b4cfb-60c1-4375-b464-d7f48f731625",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}
