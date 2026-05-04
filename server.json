@@ -176,6 +176,34 @@
           "isRequired": false,
           "format": "string",
           "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_SCHEMA_CACHE_ENABLED",
+          "description": "Enable the hash-validated schema cache for passthrough modes (default: true).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_SCHEMA_CACHE_TTL",
+          "description": "Skip-window in seconds; reads serve from cache without contacting Infrahub within this window (default: 30).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_SCHEMA_CACHE_MAX_CONSECUTIVE_FAILURES",
+          "description": "Consecutive revalidation failures before reads fail closed; 0 disables (default: 10).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_SCHEMA_CACHE_MAX_STALENESS_SECONDS",
+          "description": "Maximum seconds since last successful revalidation before reads fail closed; 0 disables (default: 900).",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
         }
       ]
     }
