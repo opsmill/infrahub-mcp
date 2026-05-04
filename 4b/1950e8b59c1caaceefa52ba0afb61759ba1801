@@ -1,0 +1,23 @@
+.github/workflows/release.yml
+  d897892782180e73 11-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "4b1950e8b59c1caaceefa52ba0afb61759ba1801",
+  "prompts": {
+    "d897892782180e73": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9b9a1e78-1b3a-4db3-aa57-69cabf9648e5",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}
