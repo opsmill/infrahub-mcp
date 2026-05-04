@@ -5,6 +5,25 @@
 name-template: "Version $RESOLVED_VERSION"
 tag-template: "v$RESOLVED_VERSION"
 
+version-resolver:
+  major:
+    labels:
+      - "changes/major"
+      - "type/breaking-change"
+  minor:
+    labels:
+      - "changes/minor"
+      - "type/feature"
+  patch:
+    labels:
+      - "changes/patch"
+      - "type/bug"
+      - "type/refactoring"
+      - "type/housekeeping"
+      - "type/tech-debt"
+      - "type/documentation"
+  default: patch
+
 template: |
   ## What's Changed
 
