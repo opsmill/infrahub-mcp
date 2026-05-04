@@ -4,7 +4,7 @@ import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
@@ -17,6 +17,9 @@ from infrahub_sdk.node import Attribute, InfrahubNode, RelatedNode, Relationship
 from infrahub_mcp.auth import get_passthrough_basic, get_passthrough_token, get_user_from_token
 from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.constants import AUTH_MODE_BASIC_PASSTHROUGH, AUTH_MODE_TOKEN_PASSTHROUGH
+
+if TYPE_CHECKING:
+    from infrahub_mcp.schema_cache import CachedSchemaEntry
 
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 
@@ -31,6 +34,8 @@ class AppContext:
     default_branch: str | None = field(default=None)
     _session_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     _default_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    schema_cache: dict[str, "CachedSchemaEntry"] = field(default_factory=dict)
+    _schema_cache_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 def get_client(ctx: Context) -> InfrahubClient:

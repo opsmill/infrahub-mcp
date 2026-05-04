@@ -10,7 +10,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from infrahub_mcp.schema import get_schema_catalog, get_schema_detail, get_valid_kinds_summary
-from infrahub_mcp.utils import _log_and_raise_error, get_client
+from infrahub_mcp.utils import _log_and_raise_error
 
 mcp: FastMCP = FastMCP(name="Infrahub Schema")
 
@@ -46,16 +46,14 @@ async def get_schema(
     Returns:
         JSON catalog (no kind) or TOON-encoded schema detail (with kind).
     """
-    client = get_client(ctx)
-
     if kind is None:
-        catalog = await get_schema_catalog(client, branch=branch)
+        catalog = await get_schema_catalog(ctx, branch=branch)
         return json.dumps(catalog, separators=(",", ":"))
 
     try:
-        detail = await get_schema_detail(client, kind=kind, branch=branch)
+        detail = await get_schema_detail(ctx, kind=kind, branch=branch)
     except SchemaNotFoundError:
-        valid = await get_valid_kinds_summary(client, branch=branch)
+        valid = await get_valid_kinds_summary(ctx, branch=branch)
         await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",

@@ -128,5 +128,6 @@ When modifying middleware, you **must**:
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan
+shell commands, and other important information, read the current plan:
+[specs/20260504-203256-schema-cache/plan.md](specs/20260504-203256-schema-cache/plan.md)
 <!-- SPECKIT END -->
