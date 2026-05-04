@@ -1,0 +1,23 @@
+tests/unit/test_token_passthrough.py
+  1a4e8dc17ee521a7 460,500
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "de10511d021b6683d20bae87515f37d504136b30",
+  "prompts": {
+    "1a4e8dc17ee521a7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a4e124e5-dab3-43b9-b6a5-6780e632af7d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}
