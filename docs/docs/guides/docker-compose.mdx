@@ -1,0 +1,174 @@
+---
+title: Docker Compose deployment
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+This guide covers running the Infrahub MCP server as a container — standalone for development, or as a sidecar alongside Infrahub in the same Docker Compose stack for production.
+
+Kubernetes/Helm deployment is planned. Until then, you can run the MCP server as a plain `Deployment` next to an Infrahub installation managed by [`opsmill/infrahub-helm`](https://github.com/opsmill/infrahub-helm).
+
+## Build the image
+
+From the repository root:
+
+```bash
+docker build -t infrahub-mcp .
+```
+
+The `Dockerfile` is a two-stage build: Python 3.13 + `uv` installs dependencies into `/opt/venv`, and the runtime stage copies them into a minimal `python:3.13-slim` image running as a non-root `app` user. The container exposes port 8001 and runs `infrahub-mcp --transport streamable-http --host 0.0.0.0 --port 8001` by default.
+
+## Run standalone
+
+```bash
+docker run --rm -p 8001:8001 \
+  -e INFRAHUB_ADDRESS=http://your-infrahub-host:8000 \
+  -e INFRAHUB_API_TOKEN=your-token \
+  infrahub-mcp
+```
+
+The server listens on `http://localhost:8001/mcp` using the [MCP Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http).
+
+Verify it's up:
+
+```bash
+curl -s http://localhost:8001/health
+# {"status":"healthy"}
+```
+
+## Deploy as a sidecar to Infrahub
+
+The repository ships a `docker-compose.yml` that uses a YAML anchor (`x-infrahub-mcp-config`) to centralize the env-var list. This is the recommended starting point for real deployments — drop it next to (or merge it into) your existing Infrahub Compose file.
+
+```yaml
+---
+x-infrahub-mcp-config: &infrahub_mcp_config
+  INFRAHUB_ADDRESS: ${INFRAHUB_ADDRESS:-http://infrahub-server:8000}
+  INFRAHUB_API_TOKEN: ${INFRAHUB_INITIAL_AGENT_TOKEN:-44af444d-3b26-410d-9546-b758657e026c}
+  INFRAHUB_MCP_AUTH_MODE: ${INFRAHUB_MCP_AUTH_MODE:-none}
+  INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER: ${INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER:-Authorization}
+  INFRAHUB_MCP_READ_ONLY: ${INFRAHUB_MCP_READ_ONLY:-false}
+  INFRAHUB_MCP_BRANCH_PATTERN: ${INFRAHUB_MCP_BRANCH_PATTERN:-mcp/session-{date}-{hex}}
+  INFRAHUB_MCP_MAX_BRANCH_RETRIES: ${INFRAHUB_MCP_MAX_BRANCH_RETRIES:-5}
+  INFRAHUB_MCP_LOG_LEVEL: ${INFRAHUB_MCP_LOG_LEVEL:-info}
+  INFRAHUB_MCP_RATE_LIMIT_RPS: ${INFRAHUB_MCP_RATE_LIMIT_RPS:-0}
+  INFRAHUB_MCP_RATE_LIMIT_BURST: ${INFRAHUB_MCP_RATE_LIMIT_BURST:-0}
+  INFRAHUB_MCP_RETRY_MAX_ATTEMPTS: ${INFRAHUB_MCP_RETRY_MAX_ATTEMPTS:-0}
+  INFRAHUB_MCP_RETRY_BASE_DELAY: ${INFRAHUB_MCP_RETRY_BASE_DELAY:-1.0}
+  INFRAHUB_MCP_CACHE_ENABLED: ${INFRAHUB_MCP_CACHE_ENABLED:-false}
+  INFRAHUB_MCP_CACHE_LIST_TTL: ${INFRAHUB_MCP_CACHE_LIST_TTL:-300}
+  INFRAHUB_MCP_CACHE_READ_TTL: ${INFRAHUB_MCP_CACHE_READ_TTL:-3600}
+  INFRAHUB_MCP_OTEL_ENABLED: ${INFRAHUB_MCP_OTEL_ENABLED:-false}
+  INFRAHUB_MCP_PROMETHEUS_ENABLED: ${INFRAHUB_MCP_PROMETHEUS_ENABLED:-false}
+  INFRAHUB_MCP_DEREFERENCE_SCHEMAS: ${INFRAHUB_MCP_DEREFERENCE_SCHEMAS:-false}
+  INFRAHUB_MCP_PING_INTERVAL_MS: ${INFRAHUB_MCP_PING_INTERVAL_MS:-0}
+  INFRAHUB_MCP_AUTH_SCOPES_WRITE: ${INFRAHUB_MCP_AUTH_SCOPES_WRITE:-}
+
+services:
+  infrahub-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      <<: [*infrahub_mcp_config]
+    depends_on:
+      - infrahub-server
+    restart: unless-stopped
+```
+
+Replace `infrahub-server` with the service name of your Infrahub instance. Every variable falls back to a sensible default; override the ones you care about in a `.env` file or your deployment pipeline.
+
+## Choose a credential model
+
+The Compose file defaults to shared API-token auth (`INFRAHUB_MCP_AUTH_MODE=none`, `INFRAHUB_API_TOKEN` set from `INFRAHUB_INITIAL_AGENT_TOKEN`). Switch to token pass-through or OIDC for multi-user deployments — see [Set up authentication](../getting-started/authentication.mdx).
+
+## Connect your MCP client
+
+With the container running on `http://localhost:8001/mcp`, point your client at the HTTP endpoint instead of spawning a subprocess:
+
+<Tabs>
+<TabItem value="cursor" label="Cursor">
+
+```json
+{
+  "mcpServers": {
+    "infrahub_mcp": {
+      "type": "streamable-http",
+      "url": "http://localhost:8001/mcp"
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="vs-code" label="VS Code">
+
+```json
+{
+  "servers": {
+    "infrahub_mcp": {
+      "type": "http",
+      "url": "http://localhost:8001/mcp"
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="claude-desktop" label="Claude Desktop">
+
+```json
+{
+  "mcpServers": {
+    "infrahub_mcp": {
+      "transport": "streamable-http",
+      "url": "http://localhost:8001/mcp"
+    }
+  }
+}
+```
+
+</TabItem>
+</Tabs>
+
+For per-client setup details (prompts, tool approval, troubleshooting), see the [Integrations section](../integrations/claude-desktop.mdx).
+
+## Frequently-overridden variables
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `INFRAHUB_ADDRESS` | URL of your Infrahub instance | **required** |
+| `INFRAHUB_API_TOKEN` | API token for the MCP server's Infrahub session | — |
+| `INFRAHUB_TIMEOUT` | HTTP request timeout in seconds | `30` |
+| `MCP_HOST` | Bind address for the HTTP server | `0.0.0.0` |
+| `MCP_PORT` | Port for the HTTP server | `8001` |
+| `INFRAHUB_MCP_READ_ONLY` | Disable write operations | `false` |
+| `INFRAHUB_MCP_RATE_LIMIT_RPS` | Rate limit (requests/sec, `0` = off) | `0` |
+| `INFRAHUB_MCP_CACHE_ENABLED` | Enable response caching | `false` |
+| `INFRAHUB_MCP_PROMETHEUS_ENABLED` | Prometheus format for `/metrics` | `false` |
+
+For the full list including retry, auth, OpenTelemetry, and more, see the [Configuration reference](../references/configuration.mdx).
+
+## Endpoints
+
+| Path | Method | Description |
+| --- | --- | --- |
+| `/mcp` | POST | MCP Streamable HTTP transport |
+| `/health` | GET | Health check for container orchestration probes |
+| `/metrics` | GET | Request counts, errors, and latency (JSON or Prometheus) |
+
+## Operational tips
+
+- **Health probes** — `/health` returns HTTP 503 when the server can't reach Infrahub. Wire it into your orchestrator's readiness probe with a generous timeout (Infrahub can be slow to start).
+- **Metrics** — set `INFRAHUB_MCP_PROMETHEUS_ENABLED=true` and scrape `/metrics` into Prometheus or a Grafana Agent. The JSON format (default) is useful for ad-hoc curls; the Prometheus format is what production monitoring wants.
+- **Log level** — `INFRAHUB_MCP_LOG_LEVEL=debug` logs full tracebacks and per-call timing; use it when diagnosing an issue, not in steady state.
+- **Token pass-through requires HTTP** — the Compose deployment is HTTP-only, which is what token pass-through and OIDC require. Don't mix stdio transport into a container deployment.
+
+## Related reading
+
+- [Installation](../getting-started/installation.mdx) — running the server without Docker.
+- [Set up authentication](../getting-started/authentication.mdx) — choosing between shared token, pass-through, and OIDC.
+- [Configuration reference](../references/configuration.mdx) — every environment variable.

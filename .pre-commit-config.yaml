@@ -12,10 +12,10 @@ repos:
       - id: ruff-format
       - id: ruff-check
         args: [--fix]
-  - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.45.0
+  - repo: local
     hooks:
-      - id: markdownlint
-        args:
-          - "--config=.markdownlint.yaml"
-          - "docs/docs/**/*.mdx"
+      - id: rumdl
+        name: rumdl
+        entry: uv run rumdl check
+        language: system
+        types_or: [markdown, mdx]

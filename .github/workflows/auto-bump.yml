@@ -61,10 +61,16 @@ jobs:
 
       - name: Install mcp-discovery
         # yamllint disable rule:line-length
+        env:
+          MCP_DISCOVERY_VERSION: "0.2.5"
+          MCP_DISCOVERY_SHA256: "ede19b0e8a6d960ddb3cf0abd7d33e791ad94aecfe65d94c33c6011bd5291ba9"
         run: |
-          curl -sL https://github.com/rust-mcp-stack/mcp-discovery/releases/latest/download/mcp-discovery-x86_64-unknown-linux-gnu.tar.xz \
-            | tar -xJ --strip-components=1
+          curl -sL "https://github.com/rust-mcp-stack/mcp-discovery/releases/download/v${MCP_DISCOVERY_VERSION}/mcp-discovery-x86_64-unknown-linux-gnu.tar.xz" \
+            -o mcp-discovery.tar.xz
+          echo "${MCP_DISCOVERY_SHA256}  mcp-discovery.tar.xz" | sha256sum -c
+          tar -xJf mcp-discovery.tar.xz --strip-components=1
           sudo mv mcp-discovery /usr/local/bin/
+          rm mcp-discovery.tar.xz
         # yamllint enable rule:line-length
 
       - name: Calculate next version from PR labels

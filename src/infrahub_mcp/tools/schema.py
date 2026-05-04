@@ -1,7 +1,7 @@
 """Schema discovery tool for the Infrahub MCP server."""
 
 import json
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 import toon
 from fastmcp import Context, FastMCP
@@ -10,10 +10,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from infrahub_mcp.schema import get_schema_catalog, get_schema_detail, get_valid_kinds_summary
-from infrahub_mcp.utils import _log_and_raise_error
-
-if TYPE_CHECKING:
-    from infrahub_sdk.client import InfrahubClient
+from infrahub_mcp.utils import _log_and_raise_error, get_client
 
 mcp: FastMCP = FastMCP(name="Infrahub Schema")
 
@@ -25,9 +22,7 @@ async def get_schema(
         str | None,
         Field(
             default=None,
-            description=(
-                "Kind to get detail for. Omit to list all available kinds."
-            ),
+            description=("Kind to get detail for. Omit to list all available kinds."),
         ),
     ] = None,
     branch: Annotated[
@@ -35,10 +30,11 @@ async def get_schema(
         Field(default=None, description="Branch to query. Defaults to the default branch."),
     ] = None,
 ) -> str:
-    """Discover available schema kinds and their structure in Infrahub.
+    """Discover available schema kinds — call this first when you don't know what kinds or filters exist.
 
-    Call without arguments to list all available kinds.
-    Call with a ``kind`` to see its attributes, relationships, and valid filter keys.
+    Without a ``kind``, returns the catalog of all kinds (compact JSON).
+    With a ``kind``, returns its attributes, relationships, and the full set
+    of filter keys accepted by ``get_nodes`` (TOON-encoded for token efficiency).
 
     Prefer reading the ``infrahub://schema`` resource if your client supports
     MCP resources — this tool provides the same data for clients that don't.
@@ -50,7 +46,7 @@ async def get_schema(
     Returns:
         JSON catalog (no kind) or TOON-encoded schema detail (with kind).
     """
-    client: InfrahubClient = ctx.request_context.lifespan_context.client  # type: ignore[union-attr]
+    client = get_client(ctx)
 
     if kind is None:
         catalog = await get_schema_catalog(client, branch=branch)

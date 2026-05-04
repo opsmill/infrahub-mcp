@@ -5,17 +5,22 @@ description = "MCP server to interact with Infrahub"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "fastmcp>=3.1.1",
+    "fastmcp>=3.2.0",
     "infrahub-sdk>=1.13.5",
+    "pydantic>=2.10,<3",
+    "pydantic-settings>=2.6,<3",
     "toonify>=0.1.2",
 ]
 
+[project.scripts]
+infrahub-mcp = "infrahub_mcp:main"
+
 [dependency-groups]
 dev = [
-    "deepeval>=3.3.2",
+    "ty>=0.0.32",
+    "rumdl>=0.1.68",
     "invoke>=2.2.0",
     "mypy>=1.17.0",
-    "anthropic[mcp]>=0.52.0",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
     "ruff>=0.15.5",
@@ -94,8 +99,42 @@ known-first-party = ["infrahub_mcp"]
 max-line-length = 150
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101"]  # Allow assert in test files
+"tests/**/*.py" = [
+    "S101",    # Allow assert in test files
+    "ARG001",  # Unused function args (protocol-matching callback stubs)
+    "ARG002",  # Unused method args (required by @patch decorators)
+    "PLC2701", # Private name imports (testing internal helpers)
+    "PLR2004", # Magic values in comparisons (expected in assertions)
+    "PLR6301", # Method could be static (standard test-class pattern)
+]
+"scripts/**/*.py" = [
+    "BLE001",  # Broad exception catch (acceptable in scripts)
+    "EXE001",  # Shebang without executable bit
+    "PLC0415", # Import not at top level (lazy imports in scripts)
+    "PLR0914", # Too many local variables
+    "PLR0915", # Too many statements
+    "PLR2004", # Magic values
+]
 
+
+[tool.pylint.format]
+max-line-length = 120
+
+[tool.pylint."messages control"]
+disable = [
+    "too-many-arguments",            # R0913 — MCP tool functions have many params by design
+    "too-many-positional-arguments", # R0917 — same reason
+    "fixme",                         # W0511 — TODOs are tracked, not banned
+    "missing-module-docstring",      # C0114 — module docstrings add noise, ruff handles this
+    "import-outside-toplevel",       # C0415 — conditional/lazy imports are intentional
+    "too-few-public-methods",        # R0903 — ASGI middleware classes need only __call__
+    "invalid-name",                  # C0103 — module-level instances are intentionally lowercase
+    "broad-exception-caught",        # W0718 — health/lifespan endpoints catch-all intentionally
+    "global-statement",              # W0603 — middleware registry uses module-level state
+    "no-else-return",                # R1705 — stylistic, ruff handles this differently
+    "protected-access",              # W0212 — SDK workarounds require private member access
+    "unused-argument",               # W0613 — framework callback signatures require unused args
+]
 
 [tool.uv]
 constraint-dependencies = [
@@ -109,7 +148,37 @@ constraint-dependencies = [
     "ujson>=5.12.0",
     "urllib3>=2.6.3",
     "wheel>=0.46.2",
+    "pygments>=2.20.0",
 ]
+
+[tool.rumdl]
+# Disabled rules
+disable = ["MD013", "MD029", "MD033", "MD041"]
+
+# Opt-in rules
+extend-enable = ["MD060"]
+
+# File exclusions
+exclude = ["docs/docs/release-notes/**", "*-workspace/**"]
+
+# Per-file ignores
+[tool.rumdl.per-file-ignores]
+"**/AGENTS.md" = ["MD013", "MD024", "MD025", "MD029", "MD033", "MD041"]
+
+# MD024: allow duplicate headings among siblings only
+[tool.rumdl.MD024]
+siblings-only = true
+
+# MD025: don't treat frontmatter title as H1
+[tool.rumdl.MD025]
+front-matter-title = ""
+
+# MD060: require leading and trailing pipes
+[tool.rumdl.MD060]
+enabled = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/infrahub_mcp"]
 
 [build-system]
 requires = ["hatchling"]

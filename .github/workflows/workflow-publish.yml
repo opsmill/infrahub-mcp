@@ -38,6 +38,11 @@ on:
         required: false
         default: false
 
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+
 jobs:
   publish_to_pypi:
     name: Publish Infrahub MCP to PyPI
@@ -68,3 +73,41 @@ jobs:
       - name: Publish to PyPI
         if: ${{ inputs.publish == true }}
         run: uv publish --token "${{ secrets.PYPI_TOKEN }}"
+
+  docker_meta:
+    name: Compute docker image metadata
+    runs-on: ubuntu-24.04
+    needs: publish_to_pypi
+    outputs:
+      tags: ${{ steps.meta.outputs.tags }}
+      labels: ${{ steps.meta.outputs.labels }}
+      ref: ${{ steps.ref.outputs.ref }}
+    steps:
+      - name: Set GIT ref
+        id: ref
+        run: echo "ref=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set docker image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ${{ vars.HARBOR_HOST }}/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ inputs.version }}
+            type=raw,value=latest,enable=${{ inputs.publish == true }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.version=${{ inputs.version }}
+
+  publish_docker_image:
+    name: Build and publish container image
+    needs: docker_meta
+    uses: ./.github/workflows/ci-docker-image.yml
+    secrets: inherit
+    with:
+      publish: ${{ inputs.publish }}
+      version: ${{ inputs.version }}
+      ref: ${{ needs.docker_meta.outputs.ref }}
+      tags: ${{ needs.docker_meta.outputs.tags }}
+      labels: ${{ needs.docker_meta.outputs.labels }}

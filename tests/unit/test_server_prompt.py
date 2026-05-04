@@ -1,7 +1,7 @@
 from infrahub_mcp.server import infrahub_agent
 
 
-async def test_infrahub_agent_prompt_returns_content() -> None:
+def test_infrahub_agent_prompt_returns_content() -> None:
     result = infrahub_agent()
     assert isinstance(result, str)
     assert len(result) > 100

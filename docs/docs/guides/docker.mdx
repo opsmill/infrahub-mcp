@@ -7,10 +7,18 @@ import TabItem from '@theme/TabItem';
 
 This guide covers deploying the Infrahub MCP server as a container, including running it alongside Infrahub in the same Docker Compose stack.
 
-## Build the image
+## Quick start with Docker Compose
 
 ```bash
-docker build -t infrahub-mcp .
+docker compose up -d
+```
+
+This pulls the published image from the Opsmill registry and starts the MCP server. Configure it with a `.env` file or environment variables (see [Configuration reference](../references/configuration.mdx)).
+
+## Build the image locally
+
+```bash
+docker build -f development/Dockerfile -t infrahub-mcp .
 ```
 
 ## Run standalone
@@ -19,7 +27,7 @@ docker build -t infrahub-mcp .
 docker run -p 8001:8001 \
   -e INFRAHUB_ADDRESS=http://your-infrahub-host:8000 \
   -e INFRAHUB_API_TOKEN=your-token \
-  infrahub-mcp
+  registry.opsmill.io/opsmill/infrahub-mcp:latest
 ```
 
 The server listens on `http://localhost:8001/mcp` using the [MCP Streamable HTTP](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http) transport.
@@ -33,9 +41,7 @@ services:
   # ... your existing Infrahub services ...
 
   infrahub-mcp:
-    build: https://github.com/opsmill/infrahub-mcp.git
-    # or use a pre-built image when published:
-    # image: registry.opsmill.io/opsmill/infrahub-mcp:latest
+    image: registry.opsmill.io/opsmill/infrahub-mcp:latest
     ports:
       - "8001:8001"
     environment:
@@ -110,3 +116,17 @@ Once the container is running, point your MCP client at the HTTP endpoint instea
 | `INFRAHUB_TIMEOUT` | HTTP request timeout in seconds | `30` |
 | `MCP_HOST` | Bind address for the HTTP server | `0.0.0.0` |
 | `MCP_PORT` | Port for the HTTP server | `8001` |
+| `INFRAHUB_MCP_READ_ONLY` | Disable write operations | `false` |
+| `INFRAHUB_MCP_RATE_LIMIT_RPS` | Rate limit (requests/sec, `0` = off) | `0` |
+| `INFRAHUB_MCP_CACHE_ENABLED` | Enable response caching | `false` |
+| `INFRAHUB_MCP_PROMETHEUS_ENABLED` | Prometheus format for `/metrics` | `false` |
+
+For the full list including retry, auth, OpenTelemetry, and more, see the [Configuration reference](../references/configuration.mdx).
+
+## Endpoints
+
+| Path | Method | Description |
+| --- | --- | --- |
+| `/mcp` | POST | MCP Streamable HTTP transport |
+| `/health` | GET | Health check for container orchestration probes |
+| `/metrics` | GET | Request counts, errors, and latency (JSON or Prometheus) |
