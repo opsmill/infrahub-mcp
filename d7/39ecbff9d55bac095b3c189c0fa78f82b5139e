@@ -1,0 +1,63 @@
+.specify/feature.json
+  dc8391d561ca7996 1-3
+src/infrahub_mcp/config.py
+  dc8391d561ca7996 62-74,112-115
+src/infrahub_mcp/tools/schema.py
+  dc8391d561ca7996 13,50,54,56
+src/infrahub_mcp/schema_cache.py
+  dc8391d561ca7996 1-482
+specs/20260504-203256-schema-cache/tasks.md
+  dc8391d561ca7996 1-207
+specs/20260504-203256-schema-cache/plan.md
+  dc8391d561ca7996 1-113
+specs/20260504-203256-schema-cache/quickstart.md
+  dc8391d561ca7996 1-171
+specs/20260504-203256-schema-cache/research.md
+  dc8391d561ca7996 1-209
+src/infrahub_mcp/middleware.py
+  dc8391d561ca7996 78-87,383-441,458-465,492,495-505,543-552,724,856,859,862
+tests/unit/test_middleware.py
+  dc8391d561ca7996 561-565,743-744,748-750
+specs/20260504-203256-schema-cache/checklists/requirements.md
+  dc8391d561ca7996 1-36
+specs/20260504-203256-schema-cache/data-model.md
+  dc8391d561ca7996 1-157
+specs/20260504-203256-schema-cache/spec.md
+  dc8391d561ca7996 1-160
+tests/unit/test_get_nodes_pagination.py
+  dc8391d561ca7996 43-46,66-69,88-91
+src/infrahub_mcp/resources/schema.py
+  dc8391d561ca7996 11,29,52,70-71
+src/infrahub_mcp/utils.py
+  dc8391d561ca7996 7,21-23,37-38
+src/infrahub_mcp/schema.py
+  dc8391d561ca7996 13,16,19-26,29,33-34,39,53,85,91
+src/infrahub_mcp/tools/nodes.py
+  dc8391d561ca7996 14,88,119,235,237,245,347,349
+tests/unit/test_schema_cache.py
+  dc8391d561ca7996 1-800
+AGENTS.md
+  dc8391d561ca7996 131-132
+src/infrahub_mcp/tools/write.py
+  dc8391d561ca7996 13,92,94,202,204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "d739ecbff9d55bac095b3c189c0fa78f82b5139e",
+  "prompts": {
+    "dc8391d561ca7996": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0846ae37-ccd8-4dae-89db-edf80c1b86ec",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 2780,
+      "total_deletions": 343,
+      "accepted_lines": 2527,
+      "overriden_lines": 0
+    }
+  }
+}
