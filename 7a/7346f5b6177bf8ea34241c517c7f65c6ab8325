@@ -1,0 +1,27 @@
+tests/unit/test_schema_cache.py
+  dc8391d561ca7996 91,145,153,178,191,197,212,218,262,291,298,347,374,398,403,462,478,620,685,715,745-746
+tasks.py
+  dc8391d561ca7996 59-72,101
+src/infrahub_mcp/schema_cache.py
+  dc8391d561ca7996 152-159,161,443
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "7a7346f5b6177bf8ea34241c517c7f65c6ab8325",
+  "prompts": {
+    "dc8391d561ca7996": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0846ae37-ccd8-4dae-89db-edf80c1b86ec",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 50,
+      "total_deletions": 25,
+      "accepted_lines": 48,
+      "overriden_lines": 0
+    }
+  }
+}
