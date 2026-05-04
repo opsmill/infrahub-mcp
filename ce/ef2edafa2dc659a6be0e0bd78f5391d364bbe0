@@ -1,0 +1,40 @@
+.github/workflows/auto-bump.yml
+  1f1b63a2f927363e 68-71,73-77,125-128
+.github/workflows/version-sync.yml
+  1f1b63a2f927363e 42-44,46-50
+.github/workflows/ci-mcp-discovery.yml
+  1f1b63a2f927363e 35-37,39-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "ceef2edafa2dc659a6be0e0bd78f5391d364bbe0",
+  "prompts": {
+    "1f1b63a2f927363e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "02b7eaa3-598e-4672-bede-5af61c2aa117",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 65,
+      "total_deletions": 376,
+      "accepted_lines": 65,
+      "overriden_lines": 0
+    },
+    "dc8391d561ca7996": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0846ae37-ccd8-4dae-89db-edf80c1b86ec",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler",
+      "messages": [],
+      "total_additions": 208,
+      "total_deletions": 9,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}
