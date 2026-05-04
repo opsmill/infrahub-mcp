@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 import mcp.types as mt
 import pytest
 from fastmcp.exceptions import ToolError
+from fastmcp.server.middleware.caching import ResponseCachingMiddleware
 from fastmcp.server.middleware.error_handling import RetryMiddleware
 from fastmcp.server.middleware.middleware import MiddlewareContext
 from fastmcp.tools.base import ToolResult
@@ -558,8 +559,6 @@ class TestConfigureMiddleware:
         config = ServerConfig(cache_enabled=True, cache_list_ttl=60, cache_read_ttl=120)
         configure_middleware(mock_mcp, config)
 
-        from fastmcp.server.middleware.caching import ResponseCachingMiddleware
-
         # The schema cache subclass _SchemaAwareResponseCachingMiddleware IS-A
         # ResponseCachingMiddleware; check by isinstance rather than name string.
         assert any(isinstance(m, ResponseCachingMiddleware) for m in mock_mcp.middleware)
@@ -739,8 +738,6 @@ class TestConfigureMiddleware:
             auth_scopes_write="write",
         )
         configure_middleware(mock_mcp, config)
-
-        from fastmcp.server.middleware.caching import ResponseCachingMiddleware
 
         types = [type(m).__name__ for m in mock_mcp.middleware]
         assert "RateLimitingMiddleware" in types

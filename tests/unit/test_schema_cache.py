@@ -1,17 +1,34 @@
-"""Tests for the hash-validated schema cache (``schema_cache.py``)."""
+"""Tests for the hash-validated schema cache (``schema_cache.py``).
+
+This file mocks the SDK's ``InfrahubClient._get`` private method extensively
+because the schema-cache module deliberately calls it to reach the
+``GET /api/schema/summary`` endpoint that the SDK does not yet wrap publicly.
+The file-level ``ruff: noqa: SLF001`` is therefore intentional.
+"""
+
+# ruff: noqa: SLF001
 
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 from fastmcp.exceptions import ToolError
+from fastmcp.server.middleware.caching import (
+    CallToolSettings,
+    ListPromptsSettings,
+    ListResourcesSettings,
+    ListToolsSettings,
+    ReadResourceSettings,
+)
+from infrahub_sdk.exceptions import SchemaNotFoundError
 
 from infrahub_mcp import schema_cache
 from infrahub_mcp.config import ServerConfig
+from infrahub_mcp.middleware import MetricsMiddleware, _SchemaAwareResponseCachingMiddleware
 from infrahub_mcp.schema_cache import (
     CachedSchemaEntry,
     _BranchGoneError,
@@ -20,10 +37,6 @@ from infrahub_mcp.schema_cache import (
     get_cached_kind,
 )
 from infrahub_mcp.utils import AppContext
-
-if TYPE_CHECKING:
-    pass
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -77,15 +90,13 @@ def mock_client() -> MagicMock:
     client.schema = MagicMock()
     client.schema.fetch = AsyncMock()
     client.schema.set_cache = MagicMock()
-    client._get = AsyncMock()  # noqa: SLF001
+    client._get = AsyncMock()
     return client
 
 
 @pytest.fixture
-def app_ctx(monkeypatch: pytest.MonkeyPatch) -> AppContext:
-    config = _make_config()
-    ctx = AppContext(client=None, config=config, default_branch="main")
-    return ctx
+def app_ctx() -> AppContext:
+    return AppContext(client=None, config=_make_config(), default_branch="main")
 
 
 @pytest.fixture
@@ -99,10 +110,9 @@ def mock_ctx(app_ctx: AppContext) -> MagicMock:
 @pytest.fixture(autouse=True)
 def _patch_dependencies(mock_client: MagicMock, monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     """Patch get_client and get_default_branch globally for the test module."""
-
     monkeypatch.setattr(schema_cache, "get_client", lambda _ctx: mock_client)
 
-    async def fake_default_branch(_ctx: Any) -> str:
+    async def fake_default_branch(_ctx: Any) -> str:  # noqa: RUF029  # async signature required by production contract
         return "main"
 
     monkeypatch.setattr(schema_cache, "get_default_branch", fake_default_branch)
@@ -158,7 +168,7 @@ class TestUS1ColdAndWarm:
             schema=schema,
             schema_hash="H1",
             graphql_sdl="sdl",
-            fetched_at_monotonic=schema_cache._now(),  # noqa: SLF001
+            fetched_at_monotonic=schema_cache._now(),
             consecutive_failures=0,
         )
 
@@ -199,7 +209,7 @@ class TestSingleFlight:
         slow_event = asyncio.Event()
         call_count = 0
 
-        async def slow_fetch(branch: str, populate_cache: bool = True) -> Any:  # noqa: ARG001
+        async def slow_fetch(branch: str, populate_cache: bool = True) -> Any:
             nonlocal call_count
             call_count += 1
             await slow_event.wait()
@@ -217,7 +227,7 @@ class TestSingleFlight:
         results = await asyncio.gather(*tasks)
 
         assert all(r is schema for r in results)
-        assert call_count == 1, "expected exactly one upstream fetch under burst, got {0}".format(call_count)
+        assert call_count == 1, f"expected exactly one upstream fetch under burst, got {call_count}"
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +245,7 @@ class TestUS2Revalidation:
         mock_metrics: MagicMock,
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1")
-        old_time = schema_cache._now() - 100  # noqa: SLF001  # past skip-window, under staleness ceiling
+        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=schema,
@@ -263,7 +273,7 @@ class TestUS2Revalidation:
     ) -> None:
         old_schema = _make_branch_schema(schema_hash="H1")
         new_schema = _make_branch_schema(schema_hash="H2", kinds=["NewKind"])
-        old_time = schema_cache._now() - 100  # noqa: SLF001  # past skip-window, under staleness ceiling
+        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=old_schema,
@@ -296,7 +306,7 @@ class TestUS2Revalidation:
         mock_client: MagicMock,
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1")
-        old_time = schema_cache._now() - 100  # noqa: SLF001  # past skip-window, under staleness ceiling
+        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=schema,
@@ -327,7 +337,7 @@ class TestUS2LazyOnMissingKind:
             schema=schema,
             schema_hash="H1",
             graphql_sdl="sdl",
-            fetched_at_monotonic=schema_cache._now(),  # noqa: SLF001
+            fetched_at_monotonic=schema_cache._now(),
             consecutive_failures=0,
         )
 
@@ -349,15 +359,13 @@ class TestUS2LazyOnMissingKind:
             schema=schema,
             schema_hash="H1",
             graphql_sdl="sdl",
-            fetched_at_monotonic=schema_cache._now(),  # noqa: SLF001
+            fetched_at_monotonic=schema_cache._now(),
             consecutive_failures=0,
         )
 
         # Missing kind triggers force_revalidate path: /summary returns same hash,
         # so no full refetch — schema stays the same — kind still missing.
         mock_client._get.return_value = _make_response(json_body={"main": "H1"})
-
-        from infrahub_sdk.exceptions import SchemaNotFoundError
 
         with pytest.raises(SchemaNotFoundError):
             await get_cached_kind(mock_ctx, kind="GhostKind")
@@ -379,7 +387,7 @@ class TestUS2LazyOnMissingKind:
             schema=old_schema,
             schema_hash="H1",
             graphql_sdl="old-sdl",
-            fetched_at_monotonic=schema_cache._now(),  # noqa: SLF001
+            fetched_at_monotonic=schema_cache._now(),
             consecutive_failures=0,
         )
 
@@ -411,7 +419,7 @@ class TestUS3Resilience:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1")
-        old_time = schema_cache._now() - 100  # noqa: SLF001  # past skip-window, under staleness ceiling
+        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=schema,
@@ -441,7 +449,7 @@ class TestUS3Resilience:
         mock_metrics: MagicMock,
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1")
-        old_time = schema_cache._now() - 100  # noqa: SLF001  # past skip-window, under staleness ceiling
+        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=schema,
@@ -482,7 +490,7 @@ class TestUS3Resilience:
         mock_client: MagicMock,
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1")
-        old_time = schema_cache._now() - 100  # noqa: SLF001  # past skip-window, under staleness ceiling
+        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=schema,
@@ -514,7 +522,7 @@ class TestCircuitBreak:
             schema=schema,
             schema_hash="H1",
             graphql_sdl="sdl",
-            fetched_at_monotonic=schema_cache._now(),  # noqa: SLF001
+            fetched_at_monotonic=schema_cache._now(),
             consecutive_failures=10,
         )
 
@@ -529,7 +537,7 @@ class TestCircuitBreak:
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1")
         # last success > max_staleness ago.
-        very_old = schema_cache._now() - 10_000  # noqa: SLF001
+        very_old = schema_cache._now() - 10_000
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=schema,
@@ -559,7 +567,7 @@ class TestCircuitBreak:
             schema=schema,
             schema_hash="H1",
             graphql_sdl="sdl",
-            fetched_at_monotonic=schema_cache._now() - 100_000,  # noqa: SLF001
+            fetched_at_monotonic=schema_cache._now() - 100_000,
             consecutive_failures=999,
         )
         mock_client._get.return_value = _make_response(json_body={"main": "H1"})
@@ -577,7 +585,7 @@ class TestCircuitBreak:
         mock_client: MagicMock,
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1")
-        old_time = schema_cache._now() - 100  # noqa: SLF001  # past skip-window, under staleness ceiling
+        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=schema,
@@ -623,7 +631,7 @@ class TestMetrics:
             schema=old_entry.schema,
             schema_hash=old_entry.schema_hash,
             graphql_sdl=old_entry.graphql_sdl,
-            fetched_at_monotonic=schema_cache._now() - 100,  # noqa: SLF001
+            fetched_at_monotonic=schema_cache._now() - 100,
             consecutive_failures=0,
         )
         mock_client._get.return_value = _make_response(json_body={"main": "H1"})
@@ -637,8 +645,6 @@ class TestMetrics:
 
 class TestMetricsMiddlewareSchemaCacheCounters:
     def test_record_schema_cache_event_increments(self) -> None:
-        from infrahub_mcp.middleware import MetricsMiddleware
-
         mw = MetricsMiddleware()
         for _ in range(3):
             mw.record_schema_cache_event("hit")
@@ -652,8 +658,6 @@ class TestMetricsMiddlewareSchemaCacheCounters:
         assert "unknown" not in snap["schema_cache"]
 
     def test_prometheus_text_includes_schema_cache_counters(self) -> None:
-        from infrahub_mcp.middleware import MetricsMiddleware
-
         mw = MetricsMiddleware()
         mw.record_schema_cache_event("hit")
         mw.record_schema_cache_event("hash_diff")
@@ -695,7 +699,7 @@ class TestGraphQLSDL:
     ) -> None:
         old_schema = _make_branch_schema(schema_hash="H1")
         new_schema = _make_branch_schema(schema_hash="H2")
-        old_time = schema_cache._now() - 100  # noqa: SLF001  # past skip-window, under staleness ceiling
+        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=old_schema,
@@ -723,16 +727,6 @@ class TestGraphQLSDL:
 class TestSchemaAwareCachingMiddleware:
     @pytest.mark.anyio
     async def test_schema_uri_bypasses_cache(self) -> None:
-        from fastmcp.server.middleware.caching import (
-            CallToolSettings,
-            ListPromptsSettings,
-            ListResourcesSettings,
-            ListToolsSettings,
-            ReadResourceSettings,
-        )
-
-        from infrahub_mcp.middleware import _SchemaAwareResponseCachingMiddleware
-
         mw = _SchemaAwareResponseCachingMiddleware(
             list_tools_settings=ListToolsSettings(ttl=300),
             list_resources_settings=ListResourcesSettings(ttl=300),
@@ -748,7 +742,7 @@ class TestSchemaAwareCachingMiddleware:
 
         call_next_count = 0
 
-        async def call_next(_ctx: Any) -> str:
+        async def call_next(_ctx: Any) -> str:  # noqa: RUF029  # FastMCP middleware contract requires async
             nonlocal call_next_count
             call_next_count += 1
             return "fresh-response"
@@ -762,16 +756,6 @@ class TestSchemaAwareCachingMiddleware:
 
     @pytest.mark.anyio
     async def test_non_schema_uri_uses_parent_cache(self) -> None:
-        from fastmcp.server.middleware.caching import (
-            CallToolSettings,
-            ListPromptsSettings,
-            ListResourcesSettings,
-            ListToolsSettings,
-            ReadResourceSettings,
-        )
-
-        from infrahub_mcp.middleware import _SchemaAwareResponseCachingMiddleware
-
         mw = _SchemaAwareResponseCachingMiddleware(
             list_tools_settings=ListToolsSettings(ttl=300),
             list_resources_settings=ListResourcesSettings(ttl=300),
