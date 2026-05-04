@@ -6,7 +6,7 @@ import string
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn
 from weakref import WeakKeyDictionary
 
 from fastmcp import Context
@@ -26,6 +26,9 @@ from infrahub_mcp.auth import (
 )
 from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.constants import AUTH_MODE_BASIC_PASSTHROUGH, AUTH_MODE_TOKEN_PASSTHROUGH
+
+if TYPE_CHECKING:
+    from infrahub_mcp.schema_cache import CachedSchemaEntry
 
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 
@@ -51,6 +54,8 @@ class AppContext:
     _session_branches: WeakKeyDictionary[object, str] = field(default_factory=WeakKeyDictionary)
     _session_locks: WeakKeyDictionary[object, asyncio.Lock] = field(default_factory=WeakKeyDictionary)
     _session_locks_guard: asyncio.Lock = field(default_factory=asyncio.Lock)
+    schema_cache: dict[str, "CachedSchemaEntry"] = field(default_factory=dict)
+    _schema_cache_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 def get_client(ctx: Context) -> InfrahubClient:

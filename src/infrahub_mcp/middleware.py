@@ -75,6 +75,16 @@ logger = logging.getLogger("infrahub_mcp.middleware")
 # so any new write tool automatically gets blocked if tagged "write".
 WRITE_TAG = "write"
 
+# Resource URI prefixes whose responses are governed by the hash-validated schema
+# cache (``schema_cache.py``) and must NOT be cached at the FastMCP TTL layer when
+# the schema cache is enabled. The schema cache provides bounded staleness via the
+# upstream ``/api/schema/summary`` hash; a TTL layer above it would short-circuit
+# that correctness guarantee with a longer stale window.
+_SCHEMA_RESOURCE_URI_PREFIXES: tuple[str, ...] = (
+    "infrahub://schema",
+    "infrahub://graphql-schema",
+)
+
 # ContextVar for propagating the request ID to downstream middleware and log filters.
 current_request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_request_id", default=None)
 
@@ -371,6 +381,65 @@ class AuditMiddleware(Middleware):
 
 
 # ---------------------------------------------------------------------------
+# Schema-aware response cache wrapper
+
+
+def _build_response_caching_middleware(config: ServerConfig) -> ResponseCachingMiddleware:
+    """Construct the response-caching middleware tailored to ``config``.
+
+    When the hash-validated schema cache is enabled, schema-related resource
+    URIs and the ``get_schema`` tool are governed by ``schema_cache.py`` and
+    are excluded from this TTL layer so a single layer owns correctness.
+    """
+    list_tools = ListToolsSettings(ttl=config.cache_list_ttl)
+    list_resources = ListResourcesSettings(ttl=config.cache_list_ttl)
+    list_prompts = ListPromptsSettings(ttl=config.cache_list_ttl)
+    read_resource = ReadResourceSettings(ttl=config.cache_read_ttl)
+
+    if config.schema_cache_enabled:
+        call_tool = CallToolSettings(ttl=config.cache_read_ttl, excluded_tools=["get_schema"])
+        return _SchemaAwareResponseCachingMiddleware(
+            list_tools_settings=list_tools,
+            list_resources_settings=list_resources,
+            list_prompts_settings=list_prompts,
+            read_resource_settings=read_resource,
+            call_tool_settings=call_tool,
+        )
+
+    call_tool = CallToolSettings(ttl=config.cache_read_ttl, included_tools=["get_schema"])
+    return ResponseCachingMiddleware(
+        list_tools_settings=list_tools,
+        list_resources_settings=list_resources,
+        list_prompts_settings=list_prompts,
+        read_resource_settings=read_resource,
+        call_tool_settings=call_tool,
+    )
+
+
+class _SchemaAwareResponseCachingMiddleware(ResponseCachingMiddleware):
+    """Subclass of FastMCP ``ResponseCachingMiddleware`` that bypasses caching
+    for schema-related resource URIs.
+
+    The hash-validated schema cache in ``schema_cache.py`` owns correctness for
+    ``infrahub://schema``, ``infrahub://schema/{kind}`` and
+    ``infrahub://graphql-schema``. Caching them again at this TTL layer would
+    extend the stale window beyond the schema cache's hash-revalidation
+    guarantee.
+    """
+
+    @override
+    async def on_read_resource(  # type: ignore[override]
+        self,
+        context: MiddlewareContext[Any],
+        call_next: CallNext[Any, Any],
+    ) -> Any:
+        uri = str(getattr(context.message, "uri", ""))
+        if any(uri.startswith(prefix) for prefix in _SCHEMA_RESOURCE_URI_PREFIXES):
+            return await call_next(context)
+        return await super().on_read_resource(context, call_next)
+
+
+# ---------------------------------------------------------------------------
 # Metrics collection
 # ---------------------------------------------------------------------------
 
@@ -386,6 +455,14 @@ class MetricsMiddleware(Middleware):
         self._requests: dict[str, int] = {}
         self._errors: dict[str, int] = {}
         self._latency_ms: dict[str, float] = {}
+        self._schema_cache: dict[str, int] = {
+            "hit": 0,
+            "miss": 0,
+            "hash_match": 0,
+            "hash_diff": 0,
+            "revalidate_failure": 0,
+            "circuit_break": 0,
+        }
 
     @override
     async def on_message(
@@ -412,7 +489,19 @@ class MetricsMiddleware(Middleware):
             "requests": dict(self._requests),
             "errors": dict(self._errors),
             "latency_ms": {k: round(v, 2) for k, v in self._latency_ms.items()},
+            "schema_cache": dict(self._schema_cache),
         }
+
+    def record_schema_cache_event(self, event: str) -> None:
+        """Increment a schema-cache counter.
+
+        ``event`` must be one of ``hit``, ``miss``, ``hash_match``,
+        ``hash_diff``, ``revalidate_failure``, ``circuit_break``.
+        Unknown events are ignored to avoid coupling the cache module
+        to the exact metric set.
+        """
+        if event in self._schema_cache:
+            self._schema_cache[event] += 1
 
     def prometheus_text(self) -> str:
         """Render metrics in Prometheus exposition text format.
@@ -450,6 +539,16 @@ class MetricsMiddleware(Middleware):
         )
         for method, ms in sorted(self._latency_ms.items()):
             lines.append(f'infrahub_mcp_latency_ms_total{{method="{method}"}} {ms:.2f}')
+
+        for event, count in sorted(self._schema_cache.items()):
+            metric_name = f"infrahub_mcp_schema_cache_{event}_total"
+            lines.extend(
+                (
+                    f"# HELP {metric_name} Total schema-cache {event.replace('_', ' ')} events.",
+                    f"# TYPE {metric_name} counter",
+                    f"{metric_name} {count}",
+                )
+            )
 
         return "\n".join(lines) + "\n"
 
@@ -622,7 +721,7 @@ def get_caching_middleware() -> Any | None:
     return _caching_middleware
 
 
-def configure_middleware(mcp: Any, config: ServerConfig) -> None:
+def configure_middleware(mcp: Any, config: ServerConfig) -> None:  # pylint: disable=too-many-statements
     """Register the full middleware stack on the FastMCP server.
 
     Middleware executes in registration order (first registered = outermost).
@@ -754,21 +853,13 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
 
     # Response caching — TTL-based for schema/list operations (conditional)
     if config.cache_enabled:
-        _caching_middleware = ResponseCachingMiddleware(
-            list_tools_settings=ListToolsSettings(ttl=config.cache_list_ttl),
-            list_resources_settings=ListResourcesSettings(ttl=config.cache_list_ttl),
-            list_prompts_settings=ListPromptsSettings(ttl=config.cache_list_ttl),
-            read_resource_settings=ReadResourceSettings(ttl=config.cache_read_ttl),
-            call_tool_settings=CallToolSettings(
-                ttl=config.cache_read_ttl,
-                included_tools=["get_schema"],
-            ),
-        )
+        _caching_middleware = _build_response_caching_middleware(config)
         mcp.add_middleware(_caching_middleware)
         logger.info(
-            "response_caching enabled=true list_ttl=%d read_ttl=%d",
+            "response_caching enabled=true list_ttl=%d read_ttl=%d schema_uris_bypassed=%s",
             config.cache_list_ttl,
             config.cache_read_ttl,
+            config.schema_cache_enabled,
         )
 
     # Dereference $ref in JSON schemas for client compatibility (conditional)
