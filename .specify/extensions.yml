@@ -2,6 +2,21 @@ installed: []
 settings:
   auto_execute_hooks: true
 hooks:
+  after_implement:
+  - extension: git
+    command: speckit.git.commit
+    enabled: true
+    optional: true
+    prompt: Commit implementation changes?
+    description: Auto-commit after implementation
+    condition: null
+  - extension: review
+    command: speckit.review.run
+    enabled: true
+    optional: true
+    prompt: Run PR review on implemented changes?
+    description: Comprehensive review after implementation
+    condition: null
   before_constitution:
   - extension: git
     command: speckit.git.initialize
@@ -17,6 +32,13 @@ hooks:
     optional: false
     prompt: Execute speckit.git.feature?
     description: Create feature branch before specification
+    condition: null
+  - extension: tinyspec
+    command: speckit.tinyspec.classify
+    enabled: true
+    optional: true
+    prompt: Check if this task is small enough for the lightweight tinyspec workflow?
+    description: Auto-classify task complexity before starting the full SDD workflow
     condition: null
   before_clarify:
   - extension: git
@@ -106,6 +128,13 @@ hooks:
     prompt: Commit plan changes?
     description: Auto-commit after implementation planning
     condition: null
+  - extension: critique
+    command: speckit.critique.run
+    enabled: true
+    optional: true
+    prompt: Run spec critique before proceeding to tasks?
+    description: Challenges the spec and plan through product and engineering lenses
+    condition: null
   after_tasks:
   - extension: git
     command: speckit.git.commit
@@ -113,14 +142,6 @@ hooks:
     optional: true
     prompt: Commit task changes?
     description: Auto-commit after task generation
-    condition: null
-  after_implement:
-  - extension: git
-    command: speckit.git.commit
-    enabled: true
-    optional: true
-    prompt: Commit implementation changes?
-    description: Auto-commit after implementation
     condition: null
   after_checklist:
   - extension: git
