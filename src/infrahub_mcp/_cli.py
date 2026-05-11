@@ -22,8 +22,11 @@ def main() -> None:
         msg = f"Auth mode {_config.auth_mode!r} requires streamable-http transport. Stdio has no HTTP headers."
         raise SystemExit(msg)
 
-    kwargs: dict[str, Any] = {"transport": args.transport, "host": args.host, "port": args.port}
-    asgi_mw = get_asgi_middleware()
-    if asgi_mw and args.transport == "streamable-http":
-        kwargs["middleware"] = asgi_mw
+    kwargs: dict[str, Any] = {"transport": args.transport}
+    if args.transport == "streamable-http":
+        kwargs["host"] = args.host
+        kwargs["port"] = args.port
+        asgi_mw = get_asgi_middleware()
+        if asgi_mw:
+            kwargs["middleware"] = asgi_mw
     mcp.run(**kwargs)
