@@ -1,0 +1,20 @@
+src/infrahub_mcp/tools/nodes.py
+  s_db048fa8e4bbe5::t_b37a730e8bfe54 339-355
+  s_db048fa8e4bbe5::t_0f32e1da94fb75 318-323
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "8193c53fed2f0c2cca9e90d7b235e90f3ffb98d7",
+  "prompts": {},
+  "sessions": {
+    "s_db048fa8e4bbe5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e87fb3d8-127e-4854-996a-f1a7fbcef00d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler <bkohler@bearchitek.tailc018d.ts.net>"
+    }
+  }
+}
