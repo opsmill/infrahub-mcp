@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 
 from infrahub_mcp import _cli
@@ -34,12 +32,12 @@ class TestCliTransportKwargs:
     ) -> None:
         monkeypatch.setattr(
             "sys.argv",
-            ["infrahub-mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "9000"],
+            ["infrahub-mcp", "--transport", "streamable-http", "--host", "192.0.2.10", "--port", "9000"],
         )
         _cli.main()
         assert captured_run_kwargs == {
             "transport": "streamable-http",
-            "host": "0.0.0.0",
+            "host": "192.0.2.10",
             "port": 9000,
         }
 
