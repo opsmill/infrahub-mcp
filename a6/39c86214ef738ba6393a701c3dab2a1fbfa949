@@ -1,0 +1,22 @@
+tests/unit/test_search_nodes_filter.py
+  s_db048fa8e4bbe5::t_4428439774003d 1-72
+src/infrahub_mcp/tools/nodes.py
+  s_db048fa8e4bbe5::t_91c0247f6eeec3 8
+  s_db048fa8e4bbe5::t_691198fb0d05bd 136-154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "a639c86214ef738ba6393a701c3dab2a1fbfa949",
+  "prompts": {},
+  "sessions": {
+    "s_db048fa8e4bbe5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e87fb3d8-127e-4854-996a-f1a7fbcef00d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler <bkohler@bearchitek.tailc018d.ts.net>"
+    }
+  }
+}
