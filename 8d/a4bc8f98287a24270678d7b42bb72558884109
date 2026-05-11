@@ -1,0 +1,19 @@
+tests/unit/test_tools.py
+  s_db048fa8e4bbe5::t_a6128b30a510aa 128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "8da4bc8f98287a24270678d7b42bb72558884109",
+  "prompts": {},
+  "sessions": {
+    "s_db048fa8e4bbe5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e87fb3d8-127e-4854-996a-f1a7fbcef00d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler <bkohler@bearchitek.tailc018d.ts.net>"
+    }
+  }
+}
