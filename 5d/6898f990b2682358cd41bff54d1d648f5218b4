@@ -1,0 +1,19 @@
+CAPABILITIES.md
+  s_db048fa8e4bbe5::t_e57f3af7caa06c 162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "5d6898f990b2682358cd41bff54d1d648f5218b4",
+  "prompts": {},
+  "sessions": {
+    "s_db048fa8e4bbe5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e87fb3d8-127e-4854-996a-f1a7fbcef00d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler <bkohler@bearchitek.tailc018d.ts.net>"
+    }
+  }
+}
