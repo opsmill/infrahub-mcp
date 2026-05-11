@@ -1,0 +1,20 @@
+tests/unit/test_search_nodes_filter.py
+  s_db048fa8e4bbe5::t_fc473cae15beb3 83
+  s_db048fa8e4bbe5::t_947d6ad96a6a3d 7,9-10,13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "1c98bfc5ba289e3d507a56a57b9e70d1dd7ceeef",
+  "prompts": {},
+  "sessions": {
+    "s_db048fa8e4bbe5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e87fb3d8-127e-4854-996a-f1a7fbcef00d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler <bkohler@bearchitek.tailc018d.ts.net>"
+    }
+  }
+}
