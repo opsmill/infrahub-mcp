@@ -41,9 +41,7 @@ class TestCliTransportKwargs:
             "port": 9000,
         }
 
-    def test_streamable_http_includes_middleware_when_available(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_streamable_http_includes_middleware_when_available(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: dict = {}
 
         def fake_run(**kwargs: object) -> None:
