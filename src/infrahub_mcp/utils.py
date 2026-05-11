@@ -222,7 +222,7 @@ async def _log_and_raise_error(ctx: Context, error: str | Exception, remediation
     raise ToolError(msg)
 
 
-def _node_label(node: InfrahubNode, *, include_kind: bool = True) -> str:
+def get_node_label(node: InfrahubNode, *, include_kind: bool = True) -> str:
     """Return the best human-readable label for a node.
 
     Preference order: display_label > HFID > node ID (UUID).
@@ -269,7 +269,7 @@ async def convert_node_to_dict(  # noqa: C901  # pylint: disable=too-many-branch
                 key=peer_node.id,
                 raise_when_missing=False,
             )
-            data[rel_name] = _node_label(
+            data[rel_name] = get_node_label(
                 related_node or peer_node,
                 include_kind=hfid_include_kind,
             )
@@ -292,6 +292,6 @@ async def convert_node_to_dict(  # noqa: C901  # pylint: disable=too-many-branch
                     except NodeNotFoundError:
                         peers.append(peer.id)
                         continue
-                peers.append(_node_label(related_node, include_kind=hfid_include_kind))
+                peers.append(get_node_label(related_node, include_kind=hfid_include_kind))
             data[rel_name] = peers
     return data
