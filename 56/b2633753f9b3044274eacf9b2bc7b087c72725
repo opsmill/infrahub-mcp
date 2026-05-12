@@ -1,0 +1,22 @@
+.github/release-drafter.yml
+  s_2a9db4741c42e5::t_a49d5047c5bc6c 13-15
+  s_2a9db4741c42e5::t_5ba0caf3c6cf94 43-46
+.github/workflows/labeler.yml
+  s_2a9db4741c42e5::t_46f02ff75fca65 2-3,5-7,9-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "56b2633753f9b3044274eacf9b2bc7b087c72725",
+  "prompts": {},
+  "sessions": {
+    "s_2a9db4741c42e5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ca8189cb-b11d-40c8-8b32-65b701daa920",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler <bkohler@bearchitek.tailc018d.ts.net>"
+    }
+  }
+}
