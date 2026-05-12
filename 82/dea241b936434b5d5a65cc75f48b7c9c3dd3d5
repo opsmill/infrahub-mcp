@@ -1,0 +1,20 @@
+.github/workflows/auto-bump.yml
+  s_07248339646288::t_a725682d6452a4 128-131
+  s_07248339646288::t_a74ae2ddcd3d94 39-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "82dea241b936434b5d5a65cc75f48b7c9c3dd3d5",
+  "prompts": {},
+  "sessions": {
+    "s_07248339646288": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "53908471-2269-4bcd-a5f2-699dbad48f2b",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler <bkohler@bearchitek.tailc018d.ts.net>"
+    }
+  }
+}
