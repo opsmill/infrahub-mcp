@@ -1,0 +1,19 @@
+.github/workflows/version-sync.yml
+  s_baa4c99006bda7::t_df7417cf35f5a7 27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "12e8ba20b033cf1c71397f91a0537a83f03e6a92",
+  "prompts": {},
+  "sessions": {
+    "s_baa4c99006bda7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "549c81af-7e58-4069-959f-a0488897ac04",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler <bkohler@bearchitek.tailc018d.ts.net>"
+    }
+  }
+}
