@@ -124,7 +124,7 @@ async def _create_branch_with_pattern(app_ctx: AppContext, ctx: Context) -> str:
             await client.branch.create(
                 branch_name=branch_name,
                 sync_with_git=False,
-                background_execution=False,
+                wait_until_completion=True,
             )
             return branch_name
         except GraphQLError as exc:
@@ -152,7 +152,7 @@ async def _create_branch_fixed(app_ctx: AppContext, ctx: Context) -> str:
         await client.branch.create(
             branch_name=branch_name,
             sync_with_git=False,
-            background_execution=False,
+            wait_until_completion=True,
         )
     except GraphQLError as exc:
         if _is_branch_conflict(exc):
