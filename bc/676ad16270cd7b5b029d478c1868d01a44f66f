@@ -1,0 +1,19 @@
+.github/version-drafter.yml
+  s_2a9db4741c42e5::t_b034cd67fcbc93 1-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "bc676ad16270cd7b5b029d478c1868d01a44f66f",
+  "prompts": {},
+  "sessions": {
+    "s_2a9db4741c42e5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ca8189cb-b11d-40c8-8b32-65b701daa920",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler <bkohler@bearchitek.tailc018d.ts.net>"
+    }
+  }
+}
