@@ -1,0 +1,22 @@
+.github/labels.yml
+  s_634ca65f0ae690::t_f501d7583c5486 19-20,34-36
+  s_634ca65f0ae690::t_9e4756422745b7 155-168
+.github/dependabot.yml
+  s_634ca65f0ae690::t_efa20450310ce5 20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "f0e9bfecde32d9afa9b3802bb1b12c6f71a90ea1",
+  "prompts": {},
+  "sessions": {
+    "s_634ca65f0ae690": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a43992ac-1585-44ee-a6fb-e688367045eb",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler <bkohler@bearchitek.tailc018d.ts.net>"
+    }
+  }
+}
