@@ -12,9 +12,17 @@ MAIN_DIRECTORY_PATH = Path(__file__).parent
 
 @task(name="format")
 def format_all(context: Context) -> None:
-    """Run RUFF to format all Python files."""
+    """Run RUFF to format all Python files and apply autofixes.
 
-    exec_cmds = ["uv run ruff format ."]
+    Mirrors CI's ``ruff format`` step but with write-mode (CI uses
+    ``--check --diff``). The trailing ``ruff check . --fix`` applies
+    autofixable lint corrections so a developer running ``invoke format``
+    sees a clean tree before invoking the strict ``invoke lint`` gate.
+    """
+    exec_cmds = [
+        "uv run ruff format .",
+        "uv run ruff check . --fix",
+    ]
     with context.cd(MAIN_DIRECTORY_PATH):
         for cmd in exec_cmds:
             context.run(cmd)
@@ -22,9 +30,13 @@ def format_all(context: Context) -> None:
 
 @task
 def lint_yaml(context: Context) -> None:
-    """Run Linter to check all Python files."""
+    """Run yamllint in strict mode across the whole tree.
+
+    Mirrors CI's ``yamllint -s .`` step. ``-s`` (strict) treats
+    warnings as errors so local runs predict CI exactly.
+    """
     print(" - Check code with yamllint")
-    exec_cmd = "uv run yamllint ."
+    exec_cmd = "uv run yamllint -s ."
     with context.cd(MAIN_DIRECTORY_PATH):
         context.run(exec_cmd)
 
@@ -48,21 +60,121 @@ def lint_pylint(context: Context) -> None:
 
 
 @task
-def lint_ruff(context: Context) -> None:
-    """Run Linter to check all Python files."""
-    print(" - Check code with ruff")
-    exec_cmd = "uv run ruff check src/ --fix"
+def lint_vale(context: Context) -> None:
+    """Run Vale documentation style check across docs/.
+
+    Mirrors CI's ``vale`` step in .github/workflows/ci.yml.
+    Requires the ``vale`` binary on PATH (``brew install vale``)
+    OR a ``./vale`` binary at the repo root (CI installs it there).
+    Skips with a clear warning if neither is available so a missing
+    local install doesn't break the lint pipeline for backend-only
+    changes.
+    """
+    print(" - Check documentation style with vale")
+    repo_vale = MAIN_DIRECTORY_PATH / "vale"
+    if repo_vale.exists():
+        vale_bin = "./vale"
+    else:
+        from shutil import which  # noqa: PLC0415
+
+        if which("vale") is None:
+            print(
+                "   vale binary not found (PATH or ./vale). "
+                "Install with 'brew install vale' or rely on CI to run this gate.",
+                file=sys.stderr,
+            )
+            return
+        vale_bin = "vale"
+
+    exec_cmd = f'{vale_bin} $(find ./docs -type f \\( -name "*.mdx" -o -name "*.md" \\))'
     with context.cd(MAIN_DIRECTORY_PATH):
         context.run(exec_cmd)
 
 
+@task
+def lint_ty(context: Context) -> None:
+    """Run Astral's ``ty`` type checker across the whole tree.
+
+    Mirrors CI's ``ty check .`` step in .github/workflows/ci.yml.
+    Local mypy (``invoke lint-mypy``) only checks ``src/infrahub_mcp``,
+    so this catches the additional class of errors ty reports against
+    tests and project tooling.
+    """
+    print(" - Check code with ty")
+    exec_cmd = "uv run ty check ."
+    with context.cd(MAIN_DIRECTORY_PATH):
+        context.run(exec_cmd)
+
+
+@task
+def lint_ruff(context: Context) -> None:
+    """Run ruff check and ruff format --check across the whole tree.
+
+    Mirrors the two ruff steps that CI runs (see ``.github/workflows/ci.yml``):
+
+        uv run ruff check .
+        uv run ruff format --check --diff .
+
+    Strict by design — no ``--fix``. Use ``invoke format`` to auto-fix
+    formatting and lint issues before running ``invoke lint``.
+    """
+    print(" - Check code with ruff")
+    exec_cmds = [
+        "uv run ruff check .",
+        "uv run ruff format --check --diff .",
+    ]
+    with context.cd(MAIN_DIRECTORY_PATH):
+        for cmd in exec_cmds:
+            context.run(cmd)
+
+
 @task(name="lint")
 def lint_all(context: Context) -> None:
-    """Run all linters."""
+    """Run all linters that mirror CI's python-lint, yaml-lint, and validate-documentation-style jobs."""
     lint_yaml(context)
     lint_ruff(context)
     lint_mypy(context)
+    lint_ty(context)
     lint_pylint(context)
+    lint_vale(context)
+
+
+@task(name="validate")
+def validate_all(context: Context) -> None:
+    """Run repo-state validators that mirror CI's validate-* jobs.
+
+    Currently:
+
+    - ``invoke validate-dockercomposeenv`` — checks the
+      ``x-infrahub-mcp-config`` anchor in ``docker-compose.yml`` is
+      sorted and complete relative to ``ServerConfig``.
+    - ``invoke validate-serverjson`` — checks ``server.json`` lists
+      every (non-OIDC-only) ``INFRAHUB_MCP_*`` env var.
+    """
+    validate_dockercomposeenv(context)
+    validate_serverjson(context)
+
+
+@task(name="ci")
+def ci_all(context: Context) -> None:
+    """Run the full CI gate locally — predicts CI pass/fail.
+
+    Calls in order:
+
+    1. ``invoke lint`` (yaml, ruff, mypy, ty, pylint, vale)
+    2. ``invoke validate`` (docker-compose env, server.json)
+    3. ``uv run pytest`` (test suite)
+
+    Use ``invoke format`` first to apply autofixes, then ``invoke ci``
+    to verify. A clean ``invoke ci`` predicts CI green; if CI then
+    flags something this task missed, the gap belongs in this task —
+    update it and AGENTS.md.
+    """
+    lint_all(context)
+    validate_all(context)
+    print(" - Run pytest")
+    with context.cd(MAIN_DIRECTORY_PATH):
+        context.run("uv run pytest")
 
 
 @task(name="ui")

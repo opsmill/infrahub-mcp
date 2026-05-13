@@ -10,6 +10,7 @@ from pydantic import Field
 
 from infrahub_mcp.auth import assert_writable_branch
 from infrahub_mcp.schema import get_valid_kinds_summary
+from infrahub_mcp.schema_cache import get_cached_kind
 from infrahub_mcp.utils import (
     _log_and_raise_error,
     get_client,
@@ -88,9 +89,9 @@ async def node_upsert(  # pylint: disable=too-many-locals
 
     # Validate kind exists
     try:
-        schema = await client.schema.get(kind=kind, branch=session_branch)
+        schema = await get_cached_kind(ctx, kind=kind, branch=session_branch)
     except SchemaNotFoundError:
-        valid = await get_valid_kinds_summary(client, branch=session_branch)
+        valid = await get_valid_kinds_summary(ctx, branch=session_branch)
         await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",
@@ -198,9 +199,9 @@ async def node_delete(
     session_branch = await get_or_create_session_branch(ctx)
 
     try:
-        schema = await client.schema.get(kind=kind, branch=session_branch)
+        schema = await get_cached_kind(ctx, kind=kind, branch=session_branch)
     except SchemaNotFoundError:
-        valid = await get_valid_kinds_summary(client, branch=session_branch)
+        valid = await get_valid_kinds_summary(ctx, branch=session_branch)
         await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",

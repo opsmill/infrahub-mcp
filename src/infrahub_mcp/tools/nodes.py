@@ -11,6 +11,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from infrahub_mcp.schema import get_valid_kinds_summary
+from infrahub_mcp.schema_cache import get_cached_kind
 from infrahub_mcp.utils import _log_and_raise_error, convert_node_to_dict, get_client
 
 if TYPE_CHECKING:
@@ -84,9 +85,8 @@ async def _get_total_count(
         return -1
 
 
-async def _validate_filters(  # noqa: PLR0913, PLR0917
+async def _validate_filters(
     ctx: Context,
-    client: "InfrahubClient",
     schema: MainSchemaTypesAPI,
     kind: str,
     branch: str | None,
@@ -96,7 +96,6 @@ async def _validate_filters(  # noqa: PLR0913, PLR0917
 
     Args:
         ctx: MCP context for logging and error reporting.
-        client: Infrahub SDK client.
         schema: Schema for the kind being queried.
         kind: Kind name (used in error messages).
         branch: Branch name.
@@ -117,7 +116,7 @@ async def _validate_filters(  # noqa: PLR0913, PLR0917
     valid_filters: set[str] = {f"{attr.name}__value" for attr in schema.attributes}
     for rel in schema.relationships:
         try:
-            rel_schema = await client.schema.get(kind=rel.peer, branch=branch)
+            rel_schema = await get_cached_kind(ctx, kind=rel.peer, branch=branch)
             valid_filters.update(f"{rel.name}__{attr.name}__value" for attr in rel_schema.attributes)
         except SchemaNotFoundError:
             continue
@@ -233,9 +232,9 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
     )
 
     try:
-        schema = await client.schema.get(kind=kind, branch=branch)
+        schema = await get_cached_kind(ctx, kind=kind, branch=branch)
     except SchemaNotFoundError:
-        valid = await get_valid_kinds_summary(client, branch=branch)
+        valid = await get_valid_kinds_summary(ctx, branch=branch)
         await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",
@@ -243,7 +242,7 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
         )
 
     if filters:
-        await _validate_filters(ctx=ctx, client=client, schema=schema, kind=kind, branch=branch, filters=filters)
+        await _validate_filters(ctx=ctx, schema=schema, kind=kind, branch=branch, filters=filters)
 
     filter_kwargs = filters or {}
     total_count = await _get_total_count(client, schema.kind, branch, partial_match, **filter_kwargs)
@@ -345,9 +344,9 @@ async def search_nodes(
     await ctx.info(f"Searching {kind} nodes: request_id={req_id!r}, branch={branch!r}, query_len={len(query)}")
 
     try:
-        schema = await client.schema.get(kind=kind, branch=branch)
+        schema = await get_cached_kind(ctx, kind=kind, branch=branch)
     except SchemaNotFoundError:
-        valid = await get_valid_kinds_summary(client, branch=branch)
+        valid = await get_valid_kinds_summary(ctx, branch=branch)
         await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",

@@ -50,7 +50,7 @@ Automatic retry with exponential backoff for transient failures (`ConnectionErro
 
 ## Response caching
 
-TTL-based caching for schema discovery and list operations. Reduces load on Infrahub for repeated schema lookups.
+TTL-based caching for list operations and non-schema resource reads. Reduces load on Infrahub for repeated MCP discovery calls.
 
 | Variable | Description | Default |
 | --- | --- | --- |
@@ -58,7 +58,28 @@ TTL-based caching for schema discovery and list operations. Reduces load on Infr
 | `INFRAHUB_MCP_CACHE_LIST_TTL` | TTL for list operations (tools, resources, prompts) in seconds | `300` |
 | `INFRAHUB_MCP_CACHE_READ_TTL` | TTL for read operations (resources, tool calls) in seconds | `3600` |
 
-Only the `get_schema` tool is cached for tool calls — node queries and writes are never cached.
+When the schema cache (below) is enabled, the schema-related resources (`infrahub://schema`, `infrahub://schema/{kind}`, `infrahub://graphql-schema`) and the `get_schema` tool are excluded from this TTL layer — they are governed by the schema cache instead so a single layer owns correctness for schema reads.
+
+Node queries and writes are never cached.
+
+## Schema cache
+
+Process-wide hash-validated cache for the Infrahub schema, primarily a performance optimisation for the `token-passthrough` and `basic-passthrough` auth modes (where a fresh `InfrahubClient` is built per request and the SDK's per-client schema cache is otherwise discarded between calls).
+
+Within a configurable skip-window, repeat schema reads serve from cache without contacting Infrahub. Past the skip-window, the cache calls `GET /api/schema/summary` (cheap — hashes only, no schema body) and compares the upstream `main` hash against the cached value. A match extends the cache; a difference triggers a single full schema re-fetch under a single-flight lock. Transient revalidation failures preserve the cached entry and emit a `WARN` log; sustained failures eventually fail closed via two configurable circuit-break thresholds.
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `INFRAHUB_MCP_SCHEMA_CACHE_ENABLED` | Enable the hash-validated schema cache | `true` |
+| `INFRAHUB_MCP_SCHEMA_CACHE_TTL` | Skip-window in seconds. Within this window after a successful fetch, reads are served from cache with no upstream call | `30` |
+| `INFRAHUB_MCP_SCHEMA_CACHE_MAX_CONSECUTIVE_FAILURES` | Number of consecutive revalidation failures before reads fail closed for that branch (`0` disables this threshold) | `10` |
+| `INFRAHUB_MCP_SCHEMA_CACHE_MAX_STALENESS_SECONDS` | Maximum seconds since the last successful revalidation before reads fail closed for that branch (`0` disables this threshold) | `900` |
+
+When either threshold is crossed, reads return a `Schema temporarily unavailable` error to the agent until the next successful revalidation, which resets both counters.
+
+Schema changes made upstream are observed within `schema_cache_ttl + one /summary round-trip` of the change. Setting `INFRAHUB_MCP_SCHEMA_CACHE_ENABLED=false` reverts to the pre-feature baseline (full schema re-fetch on every request in passthrough modes).
+
+Cache effectiveness is observable through the [Prometheus metrics](#prometheus-metrics) endpoint via the `infrahub_mcp_schema_cache_*_total` counters.
 
 ## Authentication and authorization
 
@@ -142,6 +163,14 @@ Metrics exposed:
 - `infrahub_mcp_requests_total{method}` — total requests by MCP method
 - `infrahub_mcp_errors_total{method}` — total errors by MCP method
 - `infrahub_mcp_latency_ms_total{method}` — cumulative latency in milliseconds
+- `infrahub_mcp_schema_cache_hit_total` — schema reads served from cache within the skip-window
+- `infrahub_mcp_schema_cache_miss_total` — cold schema fetches (no cache entry existed)
+- `infrahub_mcp_schema_cache_hash_match_total` — `/api/schema/summary` confirmed cache currency past the skip-window (no full re-fetch needed)
+- `infrahub_mcp_schema_cache_hash_diff_total` — upstream schema hash differed; full re-fetch performed
+- `infrahub_mcp_schema_cache_revalidate_failure_total` — transient revalidation/re-fetch failure (cache served stale)
+- `infrahub_mcp_schema_cache_circuit_break_total` — schema cache entry marked unsafe (consecutive-failure or absolute-staleness threshold crossed)
+
+Schema cache counters are aggregate (no per-branch labels) to avoid Prometheus cardinality blow-up from session-branch auto-creation. Per-branch detail appears in `WARN`/`ERROR` log lines for revalidation failures and circuit-break activations so operators can correlate metric movements with specific branches via log search.
 
 The JSON format also includes `error_stats` (per-exception-type counts from error handling) and `cache` statistics when caching is enabled.
 
@@ -173,7 +202,7 @@ The server applies middleware in registration order. The full stack when all fea
 | 11 | **TokenPassthroughMiddleware** — fail-closed gate for token/basic passthrough modes | no |
 | 12 | **ReadOnlyMiddleware** — tag-based write tool blocking | no |
 | 13 | **AuditMiddleware** — structured audit trail for tool/resource access | yes |
-| 14 | **ResponseCachingMiddleware** — TTL-based response caching | no |
+| 14 | **ResponseCachingMiddleware** — TTL-based response caching (schema URIs excluded when the [schema cache](#schema-cache) is on) | no |
 | 15 | **DereferenceRefsMiddleware** — inline `$ref` in JSON schemas | no |
 | 16 | **PingMiddleware** — periodic keepalive pings | no |
 | 17 | **ResponseLimitingMiddleware** — truncates responses over 500 KB | yes |
