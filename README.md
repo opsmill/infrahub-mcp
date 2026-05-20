@@ -48,13 +48,13 @@ infrahub-mcp --transport streamable-http --host 0.0.0.0 --port 8001
 
 ## Documentation
 
-Full documentation, including client configuration for Cursor, VS Code, Claude Desktop, and Claude Code, is available at the [Infrahub MCP Server docs site](https://opsmill.github.io/infrahub-mcp/).
+Full documentation, including client configuration for Cursor, VS Code, Claude Desktop, and Claude Code, is available at the [Infrahub MCP Server docs site](https://docs.infrahub.app/mcp).
 
-- [Installation and client setup](https://opsmill.github.io/infrahub-mcp/guides/installation)
-- [Docker / sidecar deployment](https://opsmill.github.io/infrahub-mcp/guides/docker)
-- [Authentication modes](https://opsmill.github.io/infrahub-mcp/guides/authentication)
-- [Configuration reference](https://opsmill.github.io/infrahub-mcp/references/configuration)
-- [Methods reference — tools, resources, prompts](https://opsmill.github.io/infrahub-mcp/references/methods)
+- [Installation and client setup](https://docs.infrahub.app/mcp/getting-started/installation)
+- [Docker / sidecar deployment](https://docs.infrahub.app/mcp/guides/docker-compose)
+- [Authentication modes](https://docs.infrahub.app/mcp/references/authentication)
+- [Configuration reference](https://docs.infrahub.app/mcp/references/configuration)
+- [Methods reference — tools, resources, prompts](https://docs.infrahub.app/mcp/references/methods)
 
 ## About Infrahub
 
