@@ -6,6 +6,8 @@ from typing import Any
 from fastmcp import Context, FastMCP
 from mcp.types import ToolAnnotations
 
+from infrahub_mcp.utils import SESSION_BRANCH_STATE_KEY
+
 mcp: FastMCP = FastMCP(name="Infrahub Session")
 
 
@@ -28,13 +30,10 @@ async def get_session_info(ctx: Context) -> dict[str, Any]:
     Returns:
         Dict with ``session_branch`` (str or null), ``infrahub_address``, and ``has_session_branch``.
     """
-    if ctx.request_context is None:
-        msg = "request_context must not be None"
-        raise RuntimeError(msg)
-    app_ctx = ctx.request_context.lifespan_context
+    session_branch = await ctx.get_state(SESSION_BRANCH_STATE_KEY)
     await ctx.debug("Returning session info")
     return {
-        "session_branch": app_ctx.session_branch,
-        "has_session_branch": app_ctx.session_branch is not None,
+        "session_branch": session_branch,
+        "has_session_branch": session_branch is not None,
         "infrahub_address": os.environ.get("INFRAHUB_ADDRESS", "unknown"),
     }

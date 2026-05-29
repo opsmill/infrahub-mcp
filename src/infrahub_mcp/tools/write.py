@@ -11,6 +11,7 @@ from pydantic import Field
 from infrahub_mcp.auth import assert_writable_branch
 from infrahub_mcp.schema import get_valid_kinds_summary
 from infrahub_mcp.utils import (
+    SESSION_BRANCH_STATE_KEY,
     _log_and_raise_error,
     get_client,
     get_default_branch,
@@ -267,19 +268,13 @@ async def propose_changes(
         Dict with proposed change id and branch details on success.
     """
     client = get_client(ctx)
-    if ctx.request_context is None:
-        msg = "request_context must not be None"
-        raise RuntimeError(msg)
-    app_ctx = ctx.request_context.lifespan_context
-
-    if app_ctx.session_branch is None:
+    session_branch = await ctx.get_state(SESSION_BRANCH_STATE_KEY)
+    if session_branch is None:
         await _log_and_raise_error(
             ctx=ctx,
             error="No session branch exists yet.",
             remediation="Make at least one write (node_upsert / node_delete) before proposing changes.",
         )
-
-    session_branch: str = app_ctx.session_branch
 
     if destination_branch is None:
         branches = await client.branch.all()

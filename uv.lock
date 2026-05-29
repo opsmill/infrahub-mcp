@@ -584,7 +584,7 @@ dev = [
     { name = "pylint", specifier = ">=4.0.5" },
     { name = "pytest", specifier = ">=8.4.1" },
     { name = "pytest-asyncio", specifier = ">=1.1.0" },
-    { name = "ruff", specifier = ">=0.15.5" },
+    { name = "ruff", specifier = ">=0.15.11" },
     { name = "rumdl", specifier = ">=0.1.68" },
     { name = "ty", specifier = ">=0.0.32" },
     { name = "yamllint", specifier = ">=1.37.1" },

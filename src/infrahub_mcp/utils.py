@@ -20,14 +20,24 @@ from infrahub_mcp.constants import AUTH_MODE_BASIC_PASSTHROUGH, AUTH_MODE_TOKEN_
 
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 
+SESSION_BRANCH_STATE_KEY = "session_branch"
+
 
 @dataclass
 class AppContext:
-    """Application context held for the lifetime of an MCP connection."""
+    """Application context held for the lifetime of the MCP server process.
+
+    Holds only state that is genuinely process-scoped (the shared SDK client,
+    server configuration, and the cached default-branch name — a property of
+    the Infrahub instance, not of any caller). Per-MCP-session state — most
+    importantly the session branch name — lives in FastMCP's per-session
+    state store, keyed by ``Context.session_id``, so independent MCP sessions
+    served by the same process never share branches or leak across users in
+    passthrough auth modes.
+    """
 
     client: InfrahubClient | None
     config: ServerConfig
-    session_branch: str | None = field(default=None)
     default_branch: str | None = field(default=None)
     _session_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     _default_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -189,28 +199,34 @@ async def get_default_branch(ctx: Context) -> str:
 
 
 async def get_or_create_session_branch(ctx: Context) -> str:
-    """Return the session branch, auto-creating it on the first write of the session.
+    """Return the per-MCP-session branch, auto-creating it on the first write.
+
+    The branch name is cached in FastMCP's per-session state store
+    (``ctx.set_state`` / ``ctx.get_state``), keyed by the MCP session id —
+    so two independent MCP sessions served by the same server process get
+    independent branches, and the cache disappears when the session ends
+    (or its TTL expires).
 
     Uses the branch pattern from ``ServerConfig.branch_pattern``:
     - Patterns with placeholders ({date}, {hex}, {user}) are expanded.
       If creation fails due to a name conflict, a new {hex} is generated (up to max retries).
     - Fixed names (no placeholders) attempt a single creation — if the branch
       already exists the server raises a clear error.
-
-    Branch creation is attempted directly to avoid TOCTOU races between
-    checking existence and creating.
     """
     if ctx.request_context is None:
         msg = "request_context must not be None"
         raise RuntimeError(msg)
     app_ctx: AppContext = ctx.request_context.lifespan_context
     async with app_ctx._session_branch_lock:  # noqa: SLF001
-        if app_ctx.session_branch is None:
-            if _has_placeholders(app_ctx.config.branch_pattern):
-                app_ctx.session_branch = await _create_branch_with_pattern(app_ctx, ctx)
-            else:
-                app_ctx.session_branch = await _create_branch_fixed(app_ctx, ctx)
-    return app_ctx.session_branch
+        cached = await ctx.get_state(SESSION_BRANCH_STATE_KEY)
+        if cached is not None:
+            return str(cached)
+        if _has_placeholders(app_ctx.config.branch_pattern):
+            branch_name = await _create_branch_with_pattern(app_ctx, ctx)
+        else:
+            branch_name = await _create_branch_fixed(app_ctx, ctx)
+        await ctx.set_state(SESSION_BRANCH_STATE_KEY, branch_name)
+        return branch_name
 
 
 async def _log_and_raise_error(ctx: Context, error: str | Exception, remediation: str | None = None) -> NoReturn:

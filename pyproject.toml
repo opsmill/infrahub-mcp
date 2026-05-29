@@ -23,7 +23,7 @@ dev = [
     "mypy>=1.17.0",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
-    "ruff>=0.15.5",
+    "ruff>=0.15.11",
     "pylint>=4.0.5",
     "yamllint>=1.37.1",
 ]
