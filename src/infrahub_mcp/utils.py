@@ -10,8 +10,8 @@ from fastmcp import Context
 from fastmcp.exceptions import ToolError
 from infrahub_sdk import Config
 from infrahub_sdk.client import InfrahubClient
+from infrahub_sdk.exceptions import BranchNotFoundError, GraphQLError, NodeNotFoundError
 from infrahub_sdk.exceptions import Error as SdkError
-from infrahub_sdk.exceptions import GraphQLError, NodeNotFoundError
 from infrahub_sdk.node import Attribute, InfrahubNode, RelatedNode, RelationshipManager
 
 from infrahub_mcp.auth import get_passthrough_basic, get_passthrough_token, get_user_from_token
@@ -197,14 +197,27 @@ async def get_or_create_session_branch(ctx: Context) -> str:
     - Fixed names (no placeholders) attempt a single creation — if the branch
       already exists the server raises a clear error.
 
-    Branch creation is attempted directly to avoid TOCTOU races between
-    checking existence and creating.
+    The cached branch name is validated against Infrahub before reuse — if it
+    has been deleted (merged proposed change, manual delete, dev server reset)
+    the cache is cleared and a new branch is created. Without this check the
+    cache is process-scoped and a stale name would persist across MCP sessions
+    until the server process restarts.
     """
     if ctx.request_context is None:
         msg = "request_context must not be None"
         raise RuntimeError(msg)
     app_ctx: AppContext = ctx.request_context.lifespan_context
     async with app_ctx._session_branch_lock:  # noqa: SLF001
+        if app_ctx.session_branch is not None:
+            client = get_client(ctx)
+            try:
+                await client.branch.get(branch_name=app_ctx.session_branch)
+            except BranchNotFoundError:
+                await ctx.warning(
+                    f"Cached session branch {app_ctx.session_branch!r} no longer exists on "
+                    "Infrahub; creating a new one."
+                )
+                app_ctx.session_branch = None
         if app_ctx.session_branch is None:
             if _has_placeholders(app_ctx.config.branch_pattern):
                 app_ctx.session_branch = await _create_branch_with_pattern(app_ctx, ctx)
