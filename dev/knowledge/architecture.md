@@ -25,6 +25,26 @@ The server is built on **FastMCP** and follows its composition pattern:
 configuration are yielded as `AppContext`, available to all tools via
 FastMCP's dependency injection.
 
+### Session-branch state (per-session, weakly held)
+
+`AppContext` is shared across MCP sessions for the process lifetime, so the
+active session branch must **not** be a single value on it. Instead it is held
+in `WeakKeyDictionary` maps keyed by the per-session object
+(`ctx.request_context.session`, resolved by `_session_obj`): one map for the
+branch name, one for a per-session `asyncio.Lock`. This gives true per-session
+isolation (a reset/recovery in one session never touches another) and releases
+entries automatically when a session ends — no unbounded growth.
+
+`get_or_create_session_branch()` validates the cached branch before reuse via a
+single `client.branch.get()`: a `BranchNotFoundError` (deleted) or a
+`BranchStatus` of `MERGED`/`DELETING` (present but read-only) clears the entry
+and provisions a fresh branch, warning the caller with the old and new names.
+A read-only error surfacing during the write itself is also recovered (the
+session entry is cleared and a retryable error returned). `reset_session_branch`
+is the explicit operator override (reset to fresh, or switch to a named branch —
+created when the name matches `branch_pattern`). See
+[ADR 0007](../adr/0007-per-session-branch-recovery-and-reset.md).
+
 ## Middleware Stack
 
 Defined in `src/infrahub_mcp/middleware.py`. Composed once at startup
