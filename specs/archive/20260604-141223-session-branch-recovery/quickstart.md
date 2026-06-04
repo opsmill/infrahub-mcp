@@ -17,7 +17,7 @@ How to exercise the feature once implemented.
 
 ## Scenario C — switch/override to a named branch
 
-1. Call `reset_session_branch(branch="mcp/session-20260604-feature1")` (a name that conforms to `branch_pattern` but doesn't exist).
+1. Call `reset_session_branch(branch="mcp/session-20260604-deadbeef")` (a name that conforms to `branch_pattern` but doesn't exist).
    - **Expected**: branch created, session switched, `{"action":"created","created":true,...}`.
 2. Call `reset_session_branch(branch="totally-random-name")` (non-conformant).
    - **Expected**: `ToolError` explaining the name doesn't match the configured convention; nothing created.
