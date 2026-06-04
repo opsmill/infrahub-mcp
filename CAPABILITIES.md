@@ -1,9 +1,9 @@
 ## Infrahub MCP Server 1.1.5
 
-| ✔ Tools (9) | ✔ Prompts (4) | ✔ Resources (3) | ✔ Logging | ~~<span style="opacity:0.6" class="error">✘ Completions</span>~~ | ~~<span style="opacity:0.6" class="error">✘ Tasks</span>~~ |
+| ✔ Tools (10) | ✔ Prompts (4) | ✔ Resources (3) | ✔ Logging | ~~<span style="opacity:0.6" class="error">✘ Completions</span>~~ | ~~<span style="opacity:0.6" class="error">✘ Tasks</span>~~ |
 | --- | --- | --- | --- | --- | --- |
 
-## 🛠️ Tools (9)
+## 🛠️ Tools (10)
 
 <table style="text-align: left;">
 <thead>
@@ -75,10 +75,9 @@
             <td>
                 <code><b>mutate_graphql</b></code>
             </td>
-            <td>Execute a GraphQL mutation against Infrahub — use only for complex writes that typed tools can't express.<br/><br/>Prefer `<code>node_upsert</code>` (create/update scalar attributes) or `<code>node_delete</code>`<br/>(remove a node) for straightforward changes; they validate against the<br/>schema and produce clearer audit entries. Reach for `<code>mutate_graphql</code>`<br/>when you need relationship edits, bulk operations, or any mutation shape<br/>not covered by the typed tools. For reads, use `<code>query_graphql</code>`.<br/><br/>The mutation targets the session branch by default, which is auto-created<br/>on the first write of the session (``mcp/session-YYYYMMDD-<hex>``).<br/><br/>To discover available kinds and their attributes, read the ``infrahub://schema``<br/>resource or call the `<code>get_schema</code>` tool.<br/>For the full GraphQL SDL, read ``infrahub://graphql-schema``.</td>
+            <td>Execute a GraphQL mutation against Infrahub — use only for complex writes that typed tools can't express.<br/><br/>Prefer `<code>node_upsert</code>` (create/update scalar attributes) or `<code>node_delete</code>`<br/>(remove a node) for straightforward changes; they validate against the<br/>schema and produce clearer audit entries. Reach for `<code>mutate_graphql</code>`<br/>when you need relationship edits, bulk operations, or any mutation shape<br/>not covered by the typed tools. For reads, use `<code>query_graphql</code>`.<br/><br/>The mutation always runs on the **active session branch** (auto-created on the<br/>first write of the session, ``mcp/session-YYYYMMDD-<hex>``). There is no branch<br/>override — writes are isolated to the session, and changes reach the default<br/>branch only through `<code>propose_changes</code>` and human review. To target a different<br/>branch deliberately, switch the session with `<code>reset_session_branch</code>` first.<br/>Branch- and schema-management mutations are rejected.<br/><br/>To discover available kinds and their attributes, read the ``infrahub://schema``<br/>resource or call the `<code>get_schema</code>` tool.<br/>For the full GraphQL SDL, read ``infrahub://graphql-schema``.</td>
             <td>
                 <ul>
-                    <li> <code>branch</code> : string | null<br /></li>
                     <li> <code>query</code> : string<br /></li>
                 </ul>
             </td>
@@ -153,6 +152,21 @@
         </tr>
         <tr>
             <td>9.</td>
+            <td>
+                <!--- no icon -->
+            </td>
+            <td>
+                <code><b>reset_session_branch</b></code>
+            </td>
+            <td>Reset or switch the active session branch for the current MCP session.<br/><br/>Use this to recover or take control of which branch your writes target:<br/><br/>- **No `<code>branch</code>`** — clears the cached session branch; the next write<br/>  auto-creates a fresh one. Useful after you have merged your work and want<br/>  to start a new change set.<br/>- **With `<code>branch</code>`** — points this session at the named branch. If it does<br/>  not exist and the name matches the configured branch pattern, it is created<br/>  and reported. The instance default branch and merged/read-only branches are<br/>  rejected.<br/><br/>Note: a merged or deleted session branch is recovered **automatically** on the<br/>next write — this tool is the explicit override on top of that.<br/><br/>Affects only the calling session; other sessions are unaffected.</td>
+            <td>
+                <ul>
+                    <li> <code>branch</code> : string | null<br /></li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>10.</td>
             <td>
                 <!--- no icon -->
             </td>

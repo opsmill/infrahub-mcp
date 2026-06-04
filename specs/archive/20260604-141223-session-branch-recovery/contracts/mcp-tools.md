@@ -50,6 +50,10 @@ The server's external interface is its MCP tools. This feature adds one tool and
 
 - Reads the **calling session's** branch via `get_session_branch(ctx)`. Same "no active session branch" error when the session has none. No signature/output change.
 
+## MODIFIED behavior: `mutate_graphql`
+
+- The explicit `branch` parameter is **removed** — like `node_upsert`/`node_delete`, the mutation always targets the active session branch (switch deliberately via `reset_session_branch`). Branch-management (`Branch*`) and schema (`Schema*`) mutations, and non-mutation operations, are rejected so writes cannot bypass the review gate.
+
 ## Unchanged
 
-- `node_upsert`, `node_delete`, `mutate_graphql` signatures are unchanged; they inherit recovery transparently through `get_or_create_session_branch`. `mutate_graphql`'s existing explicit `branch` param keeps its current semantics (targets an existing branch; default-branch protection preserved).
+- `node_upsert` and `node_delete` signatures are unchanged; they inherit recovery transparently through `get_or_create_session_branch`.

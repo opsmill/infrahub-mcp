@@ -33,9 +33,9 @@ def _make_ctx(app_ctx: AppContext) -> MagicMock:
     return ctx
 
 
-def _app_ctx(**kwargs: object) -> AppContext:
+def _app_ctx() -> AppContext:
     config = ServerConfig(auth_mode="none", branch_pattern=_PATTERN)
-    return AppContext(client=MagicMock(), config=config, default_branch="main", **kwargs)  # type: ignore[arg-type]
+    return AppContext(client=MagicMock(), config=config, default_branch="main")
 
 
 class TestResetSessionBranch:

@@ -39,8 +39,11 @@ entries automatically when a session ends — no unbounded growth.
 single `client.branch.get()`: a `BranchNotFoundError` (deleted) or a
 `BranchStatus` of `MERGED`/`DELETING` (present but read-only) clears the entry
 and provisions a fresh branch, warning the caller with the old and new names.
-A read-only error surfacing during the write itself is also recovered (the
-session entry is cleared and a retryable error returned). `reset_session_branch`
+A read-only/merged error surfacing during the write is recovered too, but only
+after re-confirming via `branch.get()` that the branch is actually merged/deleted
+(so an unrelated read-only *attribute* error never clears a valid branch); on a
+confirmed-stale branch the session entry is cleared and a retryable error returned.
+`reset_session_branch`
 is the explicit operator override (reset to fresh, or switch to a named branch —
 created when the name matches `branch_pattern`). See
 [ADR 0007](../adr/0007-per-session-branch-recovery-and-reset.md).
