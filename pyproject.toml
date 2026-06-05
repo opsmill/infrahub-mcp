@@ -1,12 +1,12 @@
 [project]
 name = "infrahub-mcp"
-version = "1.1.2"
+version = "1.1.5"
 description = "MCP server to interact with Infrahub"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fastmcp>=3.2.0",
-    "infrahub-sdk>=1.13.5",
+    "infrahub-sdk>=1.20.0",
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.6,<3",
     "toonify>=0.1.2",
@@ -19,11 +19,11 @@ infrahub-mcp = "infrahub_mcp:main"
 dev = [
     "ty>=0.0.32",
     "rumdl>=0.1.68",
-    "invoke>=2.2.0",
+    "invoke>=2.2.0,<3.0.0",
     "mypy>=1.17.0",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
-    "ruff>=0.15.5",
+    "ruff>=0.15.11",
     "pylint>=4.0.5",
     "yamllint>=1.37.1",
 ]

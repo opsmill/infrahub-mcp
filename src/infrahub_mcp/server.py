@@ -70,7 +70,7 @@ def _validate_env() -> None:
 
 
 @asynccontextmanager
-async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: ARG001, RUF029
+async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: ARG001
     """Manage the application lifecycle: validate config, create client, yield context."""
     _validate_env()
     client = (
