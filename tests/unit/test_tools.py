@@ -102,7 +102,28 @@ async def test_search_nodes() -> None:
         result = await client.call_tool("search_nodes", {"query": "atl", "kind": "LocationSite"})
         assert result.is_error is False
         assert isinstance(result.data, list)
-        assert "atl1" in result.data
+        # Robust across demo-fixture variants: any label containing "atl" (case-insensitive)
+        # is acceptable — display labels have varied between releases (e.g. "atl1" vs
+        # "ATL1.ATL (Site: atlanta1)").
+        assert any("atl" in label.lower() for label in result.data)
+
+
+async def test_search_nodes_abstract_kind() -> None:
+    """search_nodes against CoreNode (abstract/generic) succeeds via the any__value filter.
+
+    Regression test for https://github.com/opsmill/infrahub-mcp/issues/82 — previously
+    raised `Unknown argument 'name__value' on field 'Query.CoreNode'`.
+    """
+    async with Client(mcp) as client:
+        result = await client.call_tool("search_nodes", {"query": "a", "kind": "CoreNode", "limit": 1})
+        assert result.is_error is False
+        assert isinstance(result.data, list)
+        assert len(result.data) <= 1
+        assert all(isinstance(label, str) and label for label in result.data)
+        assert all(
+            "Remediation:" not in label and "GraphQL" not in label and "Unknown argument" not in label
+            for label in result.data
+        )
 
 
 async def test_get_nodes_unknown_kind() -> None:
