@@ -125,6 +125,8 @@ Execute a read-only GraphQL query against Infrahub. Mutations are rejected at th
 
 Write tools target the **active session branch**, auto-created on the first write of a session (`mcp/session-YYYYMMDD-<hex>`). Use `propose_changes` to open a review once your changes are ready. Write tools are hidden when the server runs in read-only mode.
 
+The session branch is tracked per session. If it has been merged or deleted, the next write automatically recovers onto a fresh branch — no server restart is needed. Use `reset_session_branch` to reset or switch branches deliberately.
+
 <!-- vale off -->
 ### node_upsert
 <!-- vale on -->
@@ -203,9 +205,26 @@ Open a proposed change (pull request) from the active session branch to the defa
 - non-idempotent
 - potentially destructive
 
-Execute a GraphQL mutation against Infrahub — use only for complex writes that the typed tools can't express (relationship edits, bulk operations, mutations not covered by `node_upsert` / `node_delete`). The mutation targets the session branch by default.
+Execute a GraphQL mutation against Infrahub — use only for complex writes that the typed tools can't express (relationship edits, bulk operations, mutations not covered by `node_upsert` / `node_delete`). The mutation always runs on the active session branch; there is no branch override. To target a different branch deliberately, switch the session with `reset_session_branch` first. Branch-management mutations (`BranchMerge`, `BranchRebase`, `BranchDelete`, …) and schema mutations are rejected — they would bypass session isolation and the review gate.
 
 #### Parameters
 
-- **query** (string, required): GraphQL mutation to execute
-- **branch** (string): branch to execute against; defaults to the session branch
+- **query** (string, required): GraphQL mutation to execute on the session branch
+
+<!-- vale off -->
+### reset_session_branch
+<!-- vale on -->
+
+#### Capabilities
+
+- write
+- non-idempotent
+- non-destructive
+
+Reset or switch the active session branch for the current session. Call with no arguments to clear the cached branch so the next write creates a fresh one (for example, after merging your work). Pass a branch name to switch this session to it — the branch is created when it does not exist and the name matches the configured branch pattern. The instance default branch and merged or read-only branches are rejected. Affects only the calling session.
+
+A merged or deleted session branch is recovered automatically on the next write; this tool is the explicit override on top of that.
+
+#### Parameters
+
+- **branch** (string): target branch; omit to reset to a fresh auto-created branch
