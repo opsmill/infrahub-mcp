@@ -1,0 +1,31 @@
+.github/workflows/labeler.yml
+  s_44a5681d71572d::t_eae3afcf1e5721 8-9,11,13
+.yamllint.yml
+  s_44a5681d71572d::t_314419bb31d3bc 5-6
+.github/workflows/release.yml
+  s_44a5681d71572d::t_77608d51affde4 2,8-12,15-28,31-32,43-44,53-54,69-81,83-90,92-101
+.github/workflows/labels.yml
+  s_44a5681d71572d::t_2bf08a97a267a9 7,9-12,15-19
+.github/workflows/sync-docs.yml
+  s_44a5681d71572d::t_78b6cfbeef7315 2,13-14,16-32,34-35,49,55-56
+.github/dependabot.yml
+  s_44a5681d71572d::t_e5a9f10ff4af43 1-4,7-48
+.github/workflows/ci.yml
+  s_44a5681d71572d::t_dbe027f77249fd 2-3,11-12,19-37,39-40,42-55,57-58,60-68,71-76,98-101,103-104,110-123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "836a8a4edfe038cbc6916a03b80c20aef64ac0ec",
+  "prompts": {},
+  "sessions": {
+    "s_44a5681d71572d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "55f90437-5430-45ba-8b47-8eed2c547f4d",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Benoit Kohler <bkohler@mbpbenoitkohler.tailc018d.ts.net>"
+    }
+  }
+}
