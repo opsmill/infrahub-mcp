@@ -1,0 +1,31 @@
+specs/001-infrahub-testcontainers/plan.md
+  s_41e008620b25bd::t_d1e7cdbaaedad1 110-112
+tests/integration/conftest.py
+  s_41e008620b25bd::t_c5e17ad5292b64 150-152
+specs/001-infrahub-testcontainers/quickstart.md
+  s_41e008620b25bd::t_75611a7f3ad42d 54
+  s_41e008620b25bd::t_51b91d3b42fedd 28
+  s_41e008620b25bd::t_42df28a4cb6874 36
+  s_41e008620b25bd::t_705c47f4f7d432 18,21
+  s_41e008620b25bd::t_1ba7b7bd18babe 66
+  s_41e008620b25bd::t_71d7a45f774730 72
+specs/001-infrahub-testcontainers/research.md
+  s_41e008620b25bd::t_876acb4952324a 135-137
+  s_41e008620b25bd::t_50d0c2ae90302b 167
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "74cc6962a109bd9415f2c8ea3d01125c1ebf1ce4",
+  "prompts": {},
+  "sessions": {
+    "s_41e008620b25bd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90f0603f-4e18-4069-9e9e-b1b26a3bac21",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
