@@ -107,9 +107,9 @@ pyproject.toml                     # register `integration` marker; ensure addop
 **Structure Decision**: Single project layout. The existing `tests/unit/` directory is preserved untouched; the new `tests/integration/` directory sits alongside it. Selection is by directory + marker, not by configuration acrobatics:
 
 ```bash
-uv run pytest tests/unit          # fast, no Docker (default unchanged)
-uv run pytest tests/integration   # integration, requires Docker
-uv run pytest                     # default; excludes integration via `-m 'not integration'`
+uv run pytest tests/unit                        # fast, no Docker (default unchanged)
+uv run pytest tests/integration -m integration  # integration, requires Docker
+uv run pytest                                   # default; excludes integration via `-m 'not integration'`
 ```
 
 ## Complexity Tracking

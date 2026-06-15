@@ -147,7 +147,9 @@ def seeded_infrahub(infrahub_container: str) -> dict[str, object]:
 
     os.environ["INFRAHUB_ADDRESS"] = infrahub_container
     os.environ["INFRAHUB_API_TOKEN"] = ADMIN_TOKEN
-    os.environ.setdefault("INFRAHUB_MCP_READ_ONLY", "false")
+    # Hard-set (not setdefault): the default mcp_client needs write tools enabled,
+    # so any externally-set INFRAHUB_MCP_READ_ONLY=true must be overridden here.
+    os.environ["INFRAHUB_MCP_READ_ONLY"] = "false"
 
     return {"address": infrahub_container, "widget_kind": WIDGET_KIND, "widget_ids": widget_ids}
 

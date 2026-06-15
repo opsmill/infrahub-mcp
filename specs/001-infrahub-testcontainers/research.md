@@ -132,9 +132,9 @@ Crucially, FastMCP-level middleware (those subclassing `fastmcp.server.middlewar
 
 **Decision**: Document the following in `quickstart.md`:
 
-- `uv run pytest tests/integration` — full integration run.
-- `INFRAHUB_TESTCONTAINERS_KEEP=1 uv run pytest tests/integration` — leave containers up on exit for inspection (implemented via a small env-var check in the session-scoped fixture's teardown).
-- Per-test selection: `uv run pytest tests/integration/test_node_tools.py::test_get_nodes_with_filter`.
+- `uv run pytest tests/integration -m integration` — full integration run.
+- `INFRAHUB_TESTCONTAINERS_KEEP=1 uv run pytest tests/integration -m integration` — leave containers up on exit for inspection (implemented via a small env-var check in the session-scoped fixture's teardown).
+- Per-test selection: `uv run pytest tests/integration/test_node_tools.py::test_get_nodes_filter_by_color -m integration`.
 
 **Rationale**: Common developer flows. The `KEEP=1` toggle is the lowest-cost way to satisfy the implicit "let me poke at it when it breaks" workflow without violating FR-004 by default (default still tears down).
 
@@ -164,7 +164,7 @@ Crucially, FastMCP-level middleware (those subclassing `fastmcp.server.middlewar
 
 **Decision**: Rely on `infrahub-testcontainers`' existing behavior: it allocates a per-session `tmp_directory` via `tmpdir_factory`, creates a uniquely-named docker-compose project under that directory, and lets Docker assign random host ports. No additional work needed in our test code.
 
-**Rationale**: The upstream fixture already isolates by project name and ephemeral ports. Two concurrent `uv run pytest tests/integration` invocations on the same host will get two independent Infrahub stacks.
+**Rationale**: The upstream fixture already isolates by project name and ephemeral ports. Two concurrent `uv run pytest tests/integration -m integration` invocations on the same host will get two independent Infrahub stacks.
 
 **Risk**: If a developer runs *many* parallel sessions, Docker resource exhaustion (memory, port range) becomes the limit, not name collisions. Documented in `quickstart.md`.
 
