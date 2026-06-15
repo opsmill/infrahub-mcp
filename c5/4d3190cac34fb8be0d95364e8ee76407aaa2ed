@@ -1,0 +1,113 @@
+specs/001-infrahub-testcontainers/research.md
+  s_41e008620b25bd::t_5808c3afe0daef 24,26,28-29,32-34,36,40-42
+  s_41e008620b25bd::t_1f8d82fe4ccdbe 106
+  s_0e3b4890bdefe9::t_62c5b51c4da856 1-5,7-23,25,27,30-31,35,37-39,43-105,107-172,192-193,195-196
+  s_41e008620b25bd::t_fc11c288fc767a 173-191,194
+  s_41e008620b25bd::t_e8dc4ca11ec82e 6
+specs/001-infrahub-testcontainers/quickstart.md
+  s_41e008620b25bd::t_b72cfc85027323 61-62
+  s_0e3b4890bdefe9::t_2716bccbc6e64f 1-60,63-74
+tests/integration/_util.py
+  s_41e008620b25bd::t_f6476408dcc918 1-29
+specs/001-infrahub-testcontainers/data-model.md
+  s_41e008620b25bd::t_4a90cbb3f71c81 51-53,55,57
+  s_0e3b4890bdefe9::t_b3d63290f39383 1-50,54,56,58-118
+specs/001-infrahub-testcontainers/checklists/requirements.md
+  s_0e3b4890bdefe9::t_7bb497b5765235 1-36
+tests/integration/test_branches_resource.py
+  s_41e008620b25bd::t_48725bcba0e8bb 14
+  s_41e008620b25bd::t_4638634047884d 1-13,15-26
+specs/001-infrahub-testcontainers/tasks.md
+  s_41e008620b25bd::t_54172b5bdb7fbf 10-11,28-30,40-46,48,56,60-67,69,79,96,123,160-163,181-182
+  s_41e008620b25bd::t_9cf6ebc0bae8f3 1-9,12-27,31-39,47,49-55,57-59,68,70-78,80-95,97-122,124-159,164-180
+tests/integration/test_graphql_tool.py
+  s_41e008620b25bd::t_831c25776e8d86 19
+  s_41e008620b25bd::t_6f78c035dd7fbb 1-15,17-18,20-32
+  s_41e008620b25bd::t_47434274b3122d 16
+src/infrahub_mcp/server.py
+  s_41e008620b25bd::t_716ac0ee3fa8d2 73
+tests/integration/test_node_tools.py
+  s_41e008620b25bd::t_3892f70d83487b 1-13,15-59
+  s_41e008620b25bd::t_a787a6673d4af5 14
+tests/integration/fixtures/schema_minimal.yml
+  s_41e008620b25bd::t_c0cb9c1724e0e0 1-23
+tests/integration/test_write_tool.py
+  s_41e008620b25bd::t_3f562b115d72fc 15
+  s_41e008620b25bd::t_9623ff41d40756 1-14,16-46
+specs/001-infrahub-testcontainers/plan.md
+  s_41e008620b25bd::t_ed1d1da3ebf1a8 27
+  s_41e008620b25bd::t_da1469c35cc180 46
+  s_41e008620b25bd::t_5be51887ff72d5 62
+  s_41e008620b25bd::t_eb2ec8b8243917 3
+  s_0e3b4890bdefe9::t_f23b20a9a3c93c 2,5-7,9,12,34,37,49-51,54,64,67-71,81-86,105-106,108,114,116
+  s_41e008620b25bd::t_ceb3a5ac738888 93
+  s_41e008620b25bd::t_aec014060507c6 10-11
+  s_41e008620b25bd::t_77e9b8ea3cd259 100-101
+  s_0e3b4890bdefe9::t_a0a9b6bdb019ac 1,4,8,13-26,28-33,35-36,38-45,47-48,52-53,55-61,63,65-66,72-80,87-92,94-99,102-104,107,109-113,115
+  s_41e008620b25bd::t_ddc9000c1cb9b6 117
+tests/integration/conftest.py
+  s_41e008620b25bd::t_c7a5e824c056c2 111
+  s_41e008620b25bd::t_8f73af87f4e0bd 1-30,33-38,40-53,56-110,112-155,157,159-176,178-182,184-189,191-197,199-208
+  s_41e008620b25bd::t_b2300ef0e168f4 156,158
+  s_41e008620b25bd::t_a9bb39d2749260 31-32,39
+  s_41e008620b25bd::t_b09fe222b8992d 177,183
+  s_41e008620b25bd::t_cbdf0e611ebdec 190,198
+  s_41e008620b25bd::t_0e1ec85c443893 54-55
+tests/integration/test_failure_modes.py
+  s_41e008620b25bd::t_75d76a8425f6ae 1-22,24-32,40
+  s_41e008620b25bd::t_efe4824bfbdd89 33-39,41
+  s_41e008620b25bd::t_79e1fba2f52333 23
+specs/001-infrahub-testcontainers/contracts/integration-test-surface.md
+  s_0e3b4890bdefe9::t_9c256be13178d5 1-9,12-109,125-147
+  s_41e008620b25bd::t_91ab0eb312995c 10-11
+  s_41e008620b25bd::t_2534e8a86ef78c 110-124
+specs/001-infrahub-testcontainers/spec.md
+  s_41e008620b25bd::t_79fb4a4e30d255 14-16,19
+  s_41e008620b25bd::t_0f997e260fbe9a 18
+  s_41e008620b25bd::t_791edc2bf61bb9 88
+  s_0e3b4890bdefe9::t_8a86927c96eb40 94
+  s_41e008620b25bd::t_983bc6e916c265 96
+  s_41e008620b25bd::t_699d6a81b2c470 100
+  s_0e3b4890bdefe9::t_3c038b7787fde5 101-103
+  s_0e3b4890bdefe9::t_a3637ebd965de8 8-13
+  s_41e008620b25bd::t_c2fe45eafb41ee 85
+  s_0e3b4890bdefe9::t_2b3fe2498da5a3 1-7,20-77,79-84,86-87,89-93,95,97-99,104-125
+  s_41e008620b25bd::t_24aa619fa6c99d 78
+  s_41e008620b25bd::t_5b97bf72253bc5 17
+tests/integration/fixtures/seed.py
+  s_41e008620b25bd::t_1655c2ac6254c8 53
+  s_41e008620b25bd::t_128377d9b0913f 1-52,54
+pyproject.toml
+  s_41e008620b25bd::t_24e1d2c410a70b 29
+  s_41e008620b25bd::t_087186168827d6 36-43
+tests/integration/test_schema_resource.py
+  s_41e008620b25bd::t_a5b6071b4a6c90 14
+  s_41e008620b25bd::t_b5557485cd3e65 1-13,15-24
+tests/integration/test_version_compat.py
+  s_41e008620b25bd::t_0c704f62eeb65f 18
+  s_41e008620b25bd::t_db156e4fc44478 1-17,19-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "c54d3190cac34fb8be0d95364e8ee76407aaa2ed",
+  "prompts": {},
+  "sessions": {
+    "s_0e3b4890bdefe9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9cb482a0-9a1c-4408-88d0-20147ca70005",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    },
+    "s_41e008620b25bd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90f0603f-4e18-4069-9e9e-b1b26a3bac21",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
