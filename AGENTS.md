@@ -1,6 +1,6 @@
 # Infrahub MCP Server
 
-Infrahub MCP Server connects AI assistants to Infrahub using the open MCP standard — so agents can read and (optionally) change infrastructure state through a consistent, audited, human-approved interface.
+Connects AI assistants to Infrahub over the open MCP standard, so agents can read and (optionally) change infrastructure state through a consistent, audited, human-approved interface.
 
 ## Tech Stack
 
@@ -28,44 +28,26 @@ Infrahub MCP Server connects AI assistants to Infrahub using the open MCP standa
 
 ## Commands
 
-### Setup
-
 ```bash
-uv sync                    # Install dependencies
-```
+uv sync                          # Install dependencies
 
-### Testing
+uv run pytest                    # Run full test suite
 
-```bash
-uv run pytest              # Run full test suite
-```
+uv run invoke format             # Auto-format with ruff
+uv run invoke lint               # All linters (yaml, ruff, pylint, mypy)
+uv run invoke lint-ruff          # Ruff only
+uv run invoke lint-pylint        # Pylint only
+uv run invoke lint-mypy          # MyPy type checking only
+uv run invoke lint-yaml          # Yamllint only
 
-### Linting & Formatting
-
-```bash
-uv run invoke format            # Auto-format with ruff
-uv run invoke lint              # All linters (yaml, ruff, pylint, mypy)
-uv run invoke lint-ruff         # Ruff only
-uv run invoke lint-pylint       # Pylint only
-uv run invoke lint-mypy         # MyPy type checking only
-uv run invoke lint-yaml         # Yamllint only
-```
-
-**Important:** `ruff` and `mypy` are the authoritative tools for detecting Python syntax errors, style violations, and type issues. Do not attempt to identify Python errors by reading the code — run `uv run invoke format lint` instead and rely on the tool output.
-
-### Documentation
-
-```bash
-uv run rumdl check docs/docs/   # Check markdown linting
-uv run rumdl fmt docs/docs/     # Auto-fix markdown formatting
+uv run rumdl check docs/docs/    # Check markdown linting
+uv run rumdl fmt docs/docs/      # Auto-fix markdown formatting
 cd docs && npm run build         # Test documentation build
-```
 
-### Pre-commit
-
-```bash
 uv run pre-commit run            # Ruff + Mypy (runs automatically on commits)
 ```
+
+`ruff` and `mypy` are authoritative for Python syntax, style, and type issues. Do not eyeball Python errors — run `uv run invoke format lint` and rely on the output.
 
 ## MCP Objects
 
@@ -77,13 +59,7 @@ Changes to MCP functionality typically span all three object types:
 
 ## Middleware
 
-The middleware stack is composed once at startup via `configure_middleware()` in `middleware.py`. Do not scatter middleware across modules.
-
-When modifying middleware, you **must**:
-
-1. Understand the 17-layer ordering (outermost → innermost) — see `dev/knowledge/architecture.md`
-2. Keep all middleware classes in `middleware.py`
-3. Wire activation through `ServerConfig` flags
+The stack is composed once at startup via `configure_middleware()` in `middleware.py`. Keep all middleware classes there; do not scatter them. Wire activation through `ServerConfig` flags. The 17-layer ordering (outermost → innermost) and rationale live in [dev/knowledge/architecture.md](dev/knowledge/architecture.md) and [dev/adr/0002-middleware-stack-ordering.md](dev/adr/0002-middleware-stack-ordering.md).
 
 ## Coding Standards
 
@@ -117,14 +93,7 @@ When modifying middleware, you **must**:
 
 ## Navigation
 
-| Question | Location |
-|----------|----------|
-| How does the system work? | [dev/knowledge/](dev/knowledge/) |
-| How should I write code? | [dev/guidelines/](dev/guidelines/) |
-| Why was this decided? | [dev/adr/](dev/adr/) |
-| What are the project rules? | [dev/constitution.md](dev/constitution.md) |
-| What commands are available? | [.agents/commands/](.agents/commands/) |
-| Internal docs index | [dev/README.md](dev/README.md) |
+Internal developer docs are indexed in [dev/README.md](dev/README.md): architecture in [dev/knowledge/](dev/knowledge/), coding rules in [dev/guidelines/](dev/guidelines/), decisions in [dev/adr/](dev/adr/), project rules in [dev/constitution.md](dev/constitution.md), and agent commands in [.agents/commands/](.agents/commands/).
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
