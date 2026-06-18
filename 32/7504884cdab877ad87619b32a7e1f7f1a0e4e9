@@ -1,0 +1,19 @@
+.gitignore
+  s_bf4cf6d8749bb1::t_1a09e55bc64215 23-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "327504884cdab877ad87619b32a7e1f7f1a0e4e9",
+  "prompts": {},
+  "sessions": {
+    "s_bf4cf6d8749bb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f0bc2717-39d1-4943-a48c-c4405e834d02",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
