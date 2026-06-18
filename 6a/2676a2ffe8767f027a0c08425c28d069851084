@@ -1,0 +1,21 @@
+.vale/styles/brand-names.txt
+  s_8b8028fd4292eb::t_f398b341dc100a 10
+.vale/styles/technical-terms.txt
+  s_8b8028fd4292eb::t_446b9e899703c0 127-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "6a2676a2ffe8767f027a0c08425c28d069851084",
+  "prompts": {},
+  "sessions": {
+    "s_8b8028fd4292eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0aa8f866-3864-45f1-ba86-b7f60bdfe5c8",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
