@@ -9,6 +9,10 @@ title: Release 1.1.4
       <td>1.1.4</td>
     </tr>
     <tr>
+      <th>Release Type</th>
+      <td>Maintenance</td>
+    </tr>
+    <tr>
       <th>Release Date</th>
       <td>May 12th, 2026</td>
     </tr>
@@ -19,7 +23,27 @@ title: Release 1.1.4
   </tbody>
 </table>
 
+## Release summary
+
+Alignment with current Infrahub SDK releases, plus routine dependency maintenance. There are no changes to MCP tools, workflows, or runtime behavior.
+
+## Minor changes
+
+### SDK compatibility
+
+* Raised the Infrahub SDK minimum version to `>=1.20.0`.
+* Migrated a deprecated SDK keyword argument.
+
+### Security
+
+* Updated dependencies and GitHub Actions.
+
+## Full changelog
+
 ### Changed
 
-- Bumped the Infrahub SDK floor to `>=1.20.0` and migrated a deprecated SDK keyword argument, keeping the server aligned with current Infrahub releases.
-- Routine dependency updates.
+* Raised the Infrahub SDK floor to `>=1.20.0` and migrated a deprecated SDK keyword argument (#96).
+
+### Security
+
+* Grouped dependency and GitHub Actions updates (#98, #97).

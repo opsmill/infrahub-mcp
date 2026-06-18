@@ -9,6 +9,10 @@ title: Release 1.1.5
       <td>1.1.5</td>
     </tr>
     <tr>
+      <th>Release Type</th>
+      <td>Improvement</td>
+    </tr>
+    <tr>
       <th>Release Date</th>
       <td>May 29th, 2026</td>
     </tr>
@@ -19,10 +23,32 @@ title: Release 1.1.5
   </tbody>
 </table>
 
+## Release summary
+
+Know immediately when a session branch can no longer be used. Branch state is validated before reuse, making long-running sessions more predictable and laying the groundwork for the automatic recovery in [1.1.6](./release-1_1_6.mdx).
+
+### Get a clear signal when a session branch can no longer be used
+
+Branch state is now validated before reuse, so a session whose branch has been merged or deleted fails with a clear reason instead of an opaque error. This is the groundwork for the automatic recovery in [1.1.6](./release-1_1_6.mdx).
+
+**What changed**
+
+* Detect when a cached branch has been deleted.
+* Detect when a cached branch has already been merged or is being deleted.
+* Report why a branch can no longer be used before attempting additional writes.
+
+## Minor changes
+
+### Documentation
+
+* Updated the README.
+
+### Security
+
+* Updated dependencies, including `idna` and `authlib`.
+
+## Full changelog
+
 ### Fixed
 
-- The server now validates a cached session branch before reusing it, so a session whose branch is no longer usable fails clearly instead of writing against a stale branch. This lays the groundwork for the automatic session-branch recovery that follows in [1.1.6](./release-1_1_6.mdx).
-
-### Changed
-
-- Routine dependency updates.
+* Validate the cached session branch before reuse (#110).

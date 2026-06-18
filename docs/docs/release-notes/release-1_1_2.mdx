@@ -9,6 +9,10 @@ title: Release 1.1.2
       <td>1.1.2</td>
     </tr>
     <tr>
+      <th>Release Type</th>
+      <td>Maintenance</td>
+    </tr>
+    <tr>
       <th>Release Date</th>
       <td>May 4th, 2026</td>
     </tr>
@@ -19,8 +23,27 @@ title: Release 1.1.2
   </tbody>
 </table>
 
-An internal maintenance release that fixes the packaging and release pipeline. There are no user-facing changes.
+## Release summary
 
-### Fixed
+Dependency and internal tooling updates only. There are no changes to MCP tools, workflows, or runtime behavior.
 
-- Isolated the `mcp-discovery` tarball extraction and scoped the release auto-bump so packaging steps no longer interfere with one another.
+## Minor changes
+
+### Developer experience
+
+* Updated Speckit and related extensions.
+* Hardened the release and packaging pipeline.
+
+### Security
+
+* Updated `urllib3` and `python-multipart`.
+
+## Full changelog
+
+### Changed
+
+* Updated internal developer tooling (Speckit and extensions) and hardened the release and packaging pipeline (#85).
+
+### Security
+
+* Grouped dependency updates (#91, #86).

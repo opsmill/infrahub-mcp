@@ -66,6 +66,7 @@ rebased
 repo
 resources
 REST
+retryable
 sanitization
 Schema
 schema's
@@ -73,6 +74,7 @@ scrollable
 scrollbar
 sdk
 stderr
+stdio
 Streamable
 subprocess
 subcommand
