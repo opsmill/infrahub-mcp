@@ -373,6 +373,37 @@
       },
       "registered_skills": [],
       "installed_at": "2026-05-02T14:49:35.534746+00:00"
+    },
+    "opsmill": {
+      "version": "1.0.0",
+      "source": "local",
+      "manifest_hash": "sha256:1728f48f4f44275cb5b96b4bc1b322f323ccc4ad7e50511db61f0e963fea7bfb",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "agy": [
+          "speckit.opsmill.extract",
+          "speckit.opsmill.retrospect",
+          "speckit.opsmill.summary"
+        ],
+        "amp": [
+          "speckit.opsmill.extract",
+          "speckit.opsmill.retrospect",
+          "speckit.opsmill.summary"
+        ],
+        "claude": [
+          "speckit.opsmill.extract",
+          "speckit.opsmill.retrospect",
+          "speckit.opsmill.summary"
+        ],
+        "codex": [
+          "speckit.opsmill.extract",
+          "speckit.opsmill.retrospect",
+          "speckit.opsmill.summary"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-06-15T08:41:37.441100+00:00"
     }
   }
 }
