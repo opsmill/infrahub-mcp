@@ -26,7 +26,7 @@ First, resolve all spec directories from the user's arguments and validate each 
 
 2. **Resolve each spec directory**:
    - For each identifier in the arguments:
-     - If it matches `specs/NNN-*` or `NNN-*`, resolve to `REPO_ROOT/specs/NNN-*`
+     - If it matches `specs/NNN-*` or `NNN-*`, resolve to `specs/NNN-*` (relative to the repo root)
      - If it is a bare name like `graphql-name-lookup`, search `specs/` for a matching directory
      - If no match found for an identifier, report it and continue resolving the rest
    - If **no** identifiers could be resolved, list available spec directories and ask the user to pick
@@ -53,7 +53,7 @@ First, resolve all spec directories from the user's arguments and validate each 
    - List all files in `dev/knowledge/` (recursively)
    - List all files in `dev/guidelines/` (recursively)
    - List all files in `dev/adr/` to determine the next ADR number
-   - Read the first 20 lines of each knowledge and guidelines file to build a topic index (title + overview section)
+   - Read each knowledge and guidelines file's H1 title and opening overview section (skip any YAML frontmatter; read past long intros as needed) to build a topic index
 
 7. **Load spec artifacts** — for each spec, read all available files from its directory:
    - `research.md` (primary source for ADRs)
@@ -72,7 +72,7 @@ Repeat the following steps for **each resolved spec directory**. Tag every findi
 
 ### Step 1: Extract ADR candidates from research.md
 
-Parse each `## R#` section in `research.md`. For each entry:
+If `research.md` does not exist for this spec (flagged in Phase 0), skip this step — no ADRs can be extracted from it. Otherwise, parse each `## R#` section in `research.md`. For each entry:
 
 1. Extract: Decision, Rationale, Alternatives considered, Implementation pattern
 2. Determine if it is ADR-worthy using this heuristic:

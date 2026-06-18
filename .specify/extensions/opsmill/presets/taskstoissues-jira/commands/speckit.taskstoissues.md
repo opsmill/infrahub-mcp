@@ -116,7 +116,7 @@ You **MUST** consider the user input before proceeding (if not empty).
      - `P<N>` tags — already captured by the `Blocks` links in step 9.
      - Bracketed `[…]` decorations carrying the same data (`[P]`, `[US<N>]`).
 
-     **Keep** meaningful tier markers (`MVP`, `Beta`, `Alpha`, etc.) and the descriptive feature text. Drop surrounding parentheses if their only remaining content is itself dropped (e.g. `(P1 MVP)` → `MVP`, but `(Beta)` stays as `(Beta)`).
+     **Keep** meaningful tier markers (`MVP`, `Beta`, `Alpha`, etc.) and the descriptive feature text. Drop the surrounding parentheses whenever any tag inside them was stripped, leaving the kept content unwrapped (e.g. `(P1 MVP)` → `MVP`); keep the parentheses only when nothing inside them was stripped (e.g. `(Beta)` stays as `(Beta)`).
    - Examples:
      - `Phase 3: US1 (P1 MVP) — Auto-create groups` → `"MVP — Auto-create groups"`
      - `Phase 1: US2 — Bulk import` → `"Bulk import"`

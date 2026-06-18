@@ -19,7 +19,7 @@ and this collection adheres to [Semantic Versioning](https://semver.org/spec/v2.
 
   ```bash
   specify preset add taskstoissues-jira \
-    --from https://github.com/opsmill/opsmill-speckit/archive/refs/heads/main.zip \
+    --from https://github.com/opsmill/opsmill-speckit/archive/refs/tags/v1.0.0.zip \
     --subdir presets/taskstoissues-jira
   ```
 
