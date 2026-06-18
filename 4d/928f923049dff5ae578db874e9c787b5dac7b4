@@ -1,0 +1,29 @@
+.specify/extensions/opsmill/presets/CHANGELOG.md
+  s_a42ac1455d352b::t_d9e31a6b1ea39b 22
+.specify/extensions/opsmill/presets/taskstoissues-jira/commands/speckit.taskstoissues.md
+  s_a42ac1455d352b::t_210fcc3e339abc 119
+.specify/extensions/opsmill/commands/extract.md
+  s_a42ac1455d352b::t_a766ee7d02e6ae 75
+  s_a42ac1455d352b::t_8d556dbdd52bf1 29
+  s_a42ac1455d352b::t_0ef1de1c84b42b 56
+.specify/extensions/opsmill/commands/summary.md
+  s_a42ac1455d352b::t_3562140660a2a1 4-5
+.specify/extensions/opsmill/LICENSE
+  s_a42ac1455d352b::t_5ae0d7bebe92e2 189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "4d928f923049dff5ae578db874e9c787b5dac7b4",
+  "prompts": {},
+  "sessions": {
+    "s_a42ac1455d352b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc76577a-2100-4332-8605-7e22dd0fc2ac",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
