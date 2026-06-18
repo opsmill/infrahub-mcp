@@ -1,0 +1,28 @@
+---
+title: Release 1.1.5
+---
+
+<table>
+  <tbody>
+    <tr>
+      <th>Release Number</th>
+      <td>1.1.5</td>
+    </tr>
+    <tr>
+      <th>Release Date</th>
+      <td>May 29th, 2026</td>
+    </tr>
+    <tr>
+      <th>Tag</th>
+      <td>[v1.1.5](https://github.com/opsmill/infrahub-mcp/releases/tag/v1.1.5)</td>
+    </tr>
+  </tbody>
+</table>
+
+### Fixed
+
+- The server now validates a cached session branch before reusing it, so a session whose branch is no longer usable fails clearly instead of writing against a stale branch. This is the groundwork for the automatic recovery introduced in [1.1.6](./release-1_1_6.mdx).
+
+### Changed
+
+- Routine dependency updates.

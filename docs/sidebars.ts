@@ -53,6 +53,26 @@ const sidebars: SidebarsConfig = {
         'references/methods',
       ],
     },
+    {
+      type: 'category',
+      label: 'Release Notes',
+      collapsible: true,
+      collapsed: true,
+      link: {
+        type: 'generated-index',
+        slug: 'release-notes',
+      },
+      items: [
+        'release-notes/release-1_1_6',
+        'release-notes/release-1_1_5',
+        'release-notes/release-1_1_4',
+        'release-notes/release-1_1_3',
+        'release-notes/release-1_1_2',
+        'release-notes/release-1_1_1',
+        'release-notes/release-1_0_1',
+        'release-notes/release-1_0_0',
+      ],
+    },
   ]
 };
 

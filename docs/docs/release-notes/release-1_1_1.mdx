@@ -1,0 +1,52 @@
+---
+title: Release 1.1.1
+---
+
+<table>
+  <tbody>
+    <tr>
+      <th>Release Number</th>
+      <td>1.1.1</td>
+    </tr>
+    <tr>
+      <th>Release Date</th>
+      <td>May 4th, 2026</td>
+    </tr>
+    <tr>
+      <th>Tag</th>
+      <td>[v1.1.1](https://github.com/opsmill/infrahub-mcp/releases/tag/v1.1.1)</td>
+    </tr>
+  </tbody>
+</table>
+
+This release turns the MCP server into something you can run in production: a full middleware stack adds authentication, rate limiting, and observability, and a tag-based read-only mode lets you expose the server safely when writes are not wanted.
+
+## Highlights
+
+### Production middleware stack
+
+- **The problem.** The early server had no consistent place to enforce authentication, protect against abusive traffic, or emit the metrics and traces an operator needs to run a service. Each concern, if handled at all, was scattered.
+- **What this enables.** A single middleware stack, composed once at startup, that layers correlation IDs, Prometheus metrics, OpenTelemetry tracing, structured error handling, authentication, and rate limiting around every tool call — each layer wired through configuration so you turn on only what you need.
+- **When you need it.** Running the server as a shared, network-exposed service rather than a local stdio process — when you need it authenticated, observable, and protected from runaway clients. See the [Configuration reference](../references/configuration.mdx).
+
+### Authentication with token passthrough
+
+- **The problem.** A shared MCP server needs every caller to act as themselves in Infrahub, not as a single service identity — otherwise every change is attributed to the server and per-user permissions are lost.
+- **What this enables.** A dual-layer design extracts each request's credentials and passes them through to Infrahub, scoped to that request and reset afterward. Calls without credentials are rejected (fail-closed).
+- **When you need it.** Multi-user deployments where Infrahub's own permissions and audit trail must follow the real user behind each agent. See the [Authentication reference](../references/authentication.mdx).
+
+### Tag-based read-only mode
+
+- **The problem.** Some deployments should never write — read-only analytics, demos, or untrusted agents — but the only guarantee was "don't call the write tools."
+- **What this enables.** Write tools are tagged `write`, and read-only mode disables them with defense-in-depth, so a misbehaving or malicious agent cannot mutate state even if it tries.
+- **When you need it.** Exposing infrastructure data for investigation, reporting, or correlation without granting any ability to change it.
+
+## Other changes
+
+#### Added
+
+- A CI/CD versioning and release process, including automated, categorized release drafts.
+
+#### Notes
+
+- `v1.1.0` was prepared internally but never published; the work above ships to users in `v1.1.1`.

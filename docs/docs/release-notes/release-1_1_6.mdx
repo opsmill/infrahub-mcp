@@ -1,0 +1,36 @@
+---
+title: Release 1.1.6
+---
+
+<table>
+  <tbody>
+    <tr>
+      <th>Release Number</th>
+      <td>1.1.6</td>
+    </tr>
+    <tr>
+      <th>Release Date</th>
+      <td>June 8th, 2026</td>
+    </tr>
+    <tr>
+      <th>Tag</th>
+      <td>[v1.1.6](https://github.com/opsmill/infrahub-mcp/releases/tag/v1.1.6)</td>
+    </tr>
+  </tbody>
+</table>
+
+This release makes per-session branches resilient: the server now recovers automatically when a session's branch has been merged or deleted, adds a tool to reset or switch branches on demand, and hardens writes against races.
+
+## Highlights
+
+### Session-branch recovery and reset
+
+- **The problem.** A session's working branch could disappear underneath it — merged by a reviewer or deleted — and the next write would fail against a branch that no longer accepted changes, with no clean way to recover.
+- **What this enables.** The server now detects a merged or deleted session branch and provisions a fresh one automatically, telling the caller both the old and new branch names. A new write-tagged `reset_session_branch` tool lets an agent start a clean branch or switch to a named one explicitly. Writes are also hardened against the race where a branch is merged mid-operation, confirming the branch is genuinely stale before clearing it so in-flight work is never orphaned.
+- **When you need it.** Long-running or multi-turn agent sessions where branches are reviewed and merged while the agent is still working — see [Safe changes via branch isolation](../use-cases/safe-changes-branch-isolation.mdx).
+
+## Other changes
+
+#### Fixed
+
+- `search_nodes` now uses `any__value` with partial matching, so substring searches return the results you expect.

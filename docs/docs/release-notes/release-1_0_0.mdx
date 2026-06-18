@@ -1,0 +1,46 @@
+---
+title: Release 1.0.0
+---
+
+<table>
+  <tbody>
+    <tr>
+      <th>Release Number</th>
+      <td>1.0.0</td>
+    </tr>
+    <tr>
+      <th>Release Date</th>
+      <td>March 26th, 2026</td>
+    </tr>
+    <tr>
+      <th>Tag</th>
+      <td>[v1.0.0](https://github.com/opsmill/infrahub-mcp/releases/tag/v1.0.0)</td>
+    </tr>
+  </tbody>
+</table>
+
+The first stable release of the Infrahub MCP server — a focused, token-efficient interface that lets AI agents read and safely change infrastructure state through Infrahub.
+
+## Highlights
+
+### Six-tool design with branch-isolated writes
+
+- **The problem.** Earlier builds exposed a large, overlapping set of tools and wrote directly against a target branch. An agent had a wide surface to reason about, and any write touched shared state with no review boundary in between.
+- **What this enables.** A minimal six-tool interface, with **schema and branches exposed as MCP resources** instead of tools, and every write automatically routed to a **per-session branch**. An agent's changes land in isolation, ready for a human to review and merge.
+- **When you need it.** Any agent-driven change workflow where edits must stay auditable and reversible before they reach the main branch — see [Safe changes via branch isolation](../use-cases/safe-changes-branch-isolation.mdx).
+
+### Token-efficient responses
+
+- **The problem.** Structured Infrahub results consumed a large share of the model's context window, limiting how much an agent could take in per call.
+- **What this enables.** TOON encoding for structured arrays cuts response size by roughly **33–45%**, alongside broad token-footprint reductions across tools and resources.
+- **When you need it.** Large queries — device inventories, IPAM data, topology — where context budget is the real bottleneck.
+
+## Other changes
+
+#### Added
+
+- Branch support for the GraphQL query tool, so reads and queries can target a specific branch.
+
+#### Changed
+
+- Integration tests migrated to the Anthropic SDK.
