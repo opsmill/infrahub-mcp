@@ -70,6 +70,7 @@ exceptions:
   - Open ID Connect
   - OpsMill
   - Proposed Change
+  - Proposed Changes
   - Pydantic
   - Python
   - RabbitMQ

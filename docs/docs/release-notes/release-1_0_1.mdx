@@ -1,0 +1,52 @@
+---
+title: Release 1.0.1
+description: Error messages now include schema hints so AI agents can correct invalid queries and retry.
+---
+
+<table>
+  <tbody>
+    <tr>
+      <th>Release Number</th>
+      <td>1.0.1</td>
+    </tr>
+    <tr>
+      <th>Release Type</th>
+      <td>Improvement</td>
+    </tr>
+    <tr>
+      <th>Release Date</th>
+      <td>April 7th, 2026</td>
+    </tr>
+    <tr>
+      <th>Tag</th>
+      <td>[v1.0.1](https://github.com/opsmill/infrahub-mcp/releases/tag/v1.0.1)</td>
+    </tr>
+  </tbody>
+</table>
+
+## Release summary
+
+Use AI agents to query Infrahub data without being interrupted by invalid queries. Error messages now provide enough context for AI agents to identify valid alternatives and retry automatically.
+
+### Query Infrahub data without interrupting a conversation to correct invalid queries
+
+Schema information is now included in common error paths, allowing AI agents to correct invalid queries and continue working without manual intervention.
+
+**What changed**
+
+* Return valid kinds when an unknown kind is referenced, making it easier to correct invalid requests.
+* Return valid filters for the requested kind so AI agents can build a corrected query automatically.
+* Include `get_schema` in remediation guidance when additional schema information is needed.
+* Apply the same behavior to read, write, and GraphQL operations.
+
+## Minor changes
+
+### Security
+
+* Updated dependencies, including `ujson`, `requests`, `aiohttp`, and `fastmcp`.
+
+## Full changelog
+
+### Added
+
+* Schema discovery hints in MCP error messages ([#54](https://github.com/opsmill/infrahub-mcp/pull/54)).
