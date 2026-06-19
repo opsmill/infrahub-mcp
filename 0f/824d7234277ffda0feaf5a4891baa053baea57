@@ -1,0 +1,23 @@
+docs/docs/release-notes/release-1_1_4.mdx
+  s_55129a25b40834::t_885b107f0c5ed5 46
+docs/docs/release-notes/release-1_1_5.mdx
+  s_55129a25b40834::t_eac57ef9303fbb 56-59
+docs/docs/release-notes/release-1_1_6.mdx
+  s_55129a25b40834::t_c323801ab67e43 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "0f824d7234277ffda0feaf5a4891baa053baea57",
+  "prompts": {},
+  "sessions": {
+    "s_55129a25b40834": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec23606a-c245-427a-9589-4119392d7336",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
