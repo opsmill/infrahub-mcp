@@ -1,6 +1,6 @@
 ---
 title: Release 1.1.6
-description: Continue an AI conversation across multiple Proposed Changes, with automatic session branch recovery and a reset tool.
+description: Keep an AI conversation going after its session branch is merged or deleted, with automatic recovery and a reset tool to start the next change set.
 ---
 
 <table>
@@ -26,9 +26,9 @@ description: Continue an AI conversation across multiple Proposed Changes, with 
 
 ## Release summary
 
-Use the same AI conversation across multiple Proposed Changes instead of starting over after each one. When a Proposed Change has been merged or its branch is no longer available, work can continue in the same session while still following existing Infrahub review workflows.
+A session works on a single branch and opens one Proposed Change from it. When that branch is merged or is no longer available, the session recovers automatically so work can continue on a fresh branch, and you can reset or switch branches explicitly to start the next change set — all while still following existing Infrahub review workflows.
 
-### Work across multiple Proposed Changes in the same AI conversation
+### Continue a session after its branch is merged or deleted
 
 When a Proposed Change has been merged or its branch is no longer available, a replacement branch is created automatically so work can continue in the same session.
 
