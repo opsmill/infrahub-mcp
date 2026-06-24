@@ -1,0 +1,27 @@
+specs/002-traversal-tools/contracts/tools.md
+  s_9dbeaa0116bfae::t_762c72431c8f02 1-59
+specs/002-traversal-tools/quickstart.md
+  s_9dbeaa0116bfae::t_16c2ed023c71dd 1-42
+specs/002-traversal-tools/plan.md
+  s_9dbeaa0116bfae::t_82ab05399647ae 1-80
+specs/002-traversal-tools/research.md
+  s_9dbeaa0116bfae::t_854d566f43e044 1-49
+specs/002-traversal-tools/data-model.md
+  s_9dbeaa0116bfae::t_8cd4a9375e7768 1-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "31ef62f1b0c136430096773b33a293300308fa84",
+  "prompts": {},
+  "sessions": {
+    "s_9dbeaa0116bfae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27f8357f-08f9-4c3c-b3a0-4dffb0f55369",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
