@@ -23,6 +23,7 @@ dev = [
     "mypy>=1.17.0",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
+    "infrahub-testcontainers>=1.10.0",
     "ruff>=0.15.11",
     "pylint>=4.0.5",
     "yamllint>=1.37.1",
@@ -32,7 +33,7 @@ dev = [
 asyncio_mode = "auto"
 testpaths = ["tests"]
 filterwarnings = []
-addopts = "-p no:pytest-infrahub"
+addopts = "-p no:pytest-infrahub -p no:pytest-infrahub-performance-test"
 
 [tool.mypy]
 pretty = true
