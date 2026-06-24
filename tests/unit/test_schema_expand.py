@@ -42,7 +42,7 @@ def _make_schema_node(
 def _make_client(schemas: dict[str, MagicMock]) -> AsyncMock:
     client = AsyncMock()
 
-    def _get_schema(kind: str, branch: str | None = None) -> MagicMock:  # noqa: ARG001
+    def _get_schema(kind: str, branch: str | None = None) -> MagicMock:
         if kind not in schemas:
             raise SchemaNotFoundError(kind)
         return schemas[kind]

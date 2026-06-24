@@ -9,7 +9,7 @@ a live server.
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from infrahub_sdk.exceptions import NodeNotFoundError
 
@@ -135,8 +135,8 @@ async def run_find_paths(  # noqa: PLR0913
         src,
         dst,
         max_depth=max_depth,
-        # agent passes kind-name strings; SDK's union list is invariant, so list[str] needs widening
-        kind_filter=kind_filter,  # type: ignore[arg-type]
+        # agent passes kind-name strings; the SDK's kind-filter list type is invariant, so cast to widen.
+        kind_filter=cast("list[Any] | None", kind_filter),
         relationship_filter=relationship_filter,
         branch=branch,
     )
@@ -157,7 +157,7 @@ async def run_find_reachable(  # noqa: PLR0913
     src = await resolve_node_ref(client, source, branch=branch)
     result = await client.reachable_nodes(
         src,
-        target_kinds,  # type: ignore[arg-type]  # kind-name strings; SDK union list is invariant
+        cast("list[Any]", target_kinds),
         max_depth=max_depth,
         max_results=max_results,
         shortest_paths_only=shortest_paths_only,

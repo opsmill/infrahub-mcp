@@ -72,7 +72,7 @@ async def test_resolve_malformed_raises() -> None:
 
 async def test_resolve_not_found_raises() -> None:
     client = AsyncMock()
-    client.get = AsyncMock(side_effect=NodeNotFoundError("InfraDevice", "nope"))
+    client.get = AsyncMock(side_effect=NodeNotFoundError(identifier={"kind": ["InfraDevice"]}, message="not found"))
     with pytest.raises(NodeResolutionError, match="Could not resolve"):
         await resolve_node_ref(client, "InfraDevice__ghost")
 
