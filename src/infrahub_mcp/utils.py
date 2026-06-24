@@ -461,7 +461,7 @@ def get_node_label(node: InfrahubNode, *, include_kind: bool = True) -> str:
     return node.id or "unknown"
 
 
-async def convert_node_to_dict(  # noqa: C901  # pylint: disable=too-many-branches
+async def convert_node_to_dict(  # noqa: C901, PLR0912  # pylint: disable=too-many-branches
     *,
     obj: InfrahubNode,
     branch: str | None,
@@ -505,10 +505,18 @@ async def convert_node_to_dict(  # noqa: C901  # pylint: disable=too-many-branch
             if not rel.initialized:
                 await rel.fetch()
             for peer in rel.peers:
+                # `rel` is the async RelationshipManager, so each peer is an async
+                # RelatedNode; narrow away the RelatedNodeSync member the SDK declares
+                # on the shared base, and skip peers without a resolvable id.
+                if not isinstance(peer, RelatedNode):
+                    continue
+                peer_id = peer.id
+                if peer_id is None:
+                    continue
                 # FIXME: We are using the store to avoid doing to many queries to Infrahub
                 # but we could end up doing store+infrahub if the store is not populated
                 related_node = obj._client.store.get(  # noqa: SLF001
-                    key=peer.id,
+                    key=peer_id,
                     raise_when_missing=False,
                     branch=branch,
                 )
@@ -517,7 +525,7 @@ async def convert_node_to_dict(  # noqa: C901  # pylint: disable=too-many-branch
                     try:
                         related_node = peer.peer
                     except NodeNotFoundError:
-                        peers.append(peer.id)
+                        peers.append(peer_id)
                         continue
                 peers.append(get_node_label(related_node, include_kind=hfid_include_kind))
             data[rel_name] = peers
