@@ -1,0 +1,19 @@
+CAPABILITIES.md
+  s_9dbeaa0116bfae::t_fd2366d0de558f 3,6,24-63,81,88,92,98,112,127,144,162,179,195,210,351
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "db975fab7b10e2ad3d04bccc0940dbf0fd0d0bf1",
+  "prompts": {},
+  "sessions": {
+    "s_9dbeaa0116bfae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27f8357f-08f9-4c3c-b3a0-4dffb0f55369",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
