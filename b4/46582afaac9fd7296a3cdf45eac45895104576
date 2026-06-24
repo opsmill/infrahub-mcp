@@ -1,0 +1,19 @@
+docs/superpowers/specs/2026-06-24-traversal-tools-design.md
+  s_9dbeaa0116bfae::t_22a8354ee89007 1-250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.11",
+  "base_commit_sha": "b446582afaac9fd7296a3cdf45eac45895104576",
+  "prompts": {},
+  "sessions": {
+    "s_9dbeaa0116bfae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27f8357f-08f9-4c3c-b3a0-4dffb0f55369",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
