@@ -1,0 +1,22 @@
+docs/docs/references/methods.mdx
+  s_9dbeaa0116bfae::t_7dd8d13fda9f3f 143,150
+  s_9dbeaa0116bfae::t_064c5974104fd2 125-142,144-149,151-165,167-172,174
+  s_9dbeaa0116bfae::t_87090ac69f64f1 166,173
+  s_9dbeaa0116bfae::t_c33bf3aa4941a6 40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "387fa44154a314e835e5768b1d1b43263ec29e6d",
+  "prompts": {},
+  "sessions": {
+    "s_9dbeaa0116bfae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27f8357f-08f9-4c3c-b3a0-4dffb0f55369",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
