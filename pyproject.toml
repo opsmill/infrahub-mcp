@@ -83,7 +83,6 @@ ignore = [
     "FBT",    # Boolean-typed positional argument in function definition
     "ANN401", # Dynamically typed expressions (typing.Any) are disallowed in `value`
     "ERA001", # Found commented-out code
-    "PLW0717", # too-many-statements-in-try-clause — write tool flows wrap full SDK operations intentionally
 ]
 
 [tool.ruff.format]
@@ -108,6 +107,9 @@ max-line-length = 150
     "PLR2004", # Magic values in comparisons (expected in assertions)
     "PLR6301", # Method could be static (standard test-class pattern)
     "RUF076",  # autouse fixtures are an intentional test-isolation pattern
+]
+"src/infrahub_mcp/tools/write.py" = [
+    "PLW0717", # too-many-statements-in-try-clause — write flows wrap full SDK operations intentionally
 ]
 "scripts/**/*.py" = [
     "BLE001",  # Broad exception catch (acceptable in scripts)
