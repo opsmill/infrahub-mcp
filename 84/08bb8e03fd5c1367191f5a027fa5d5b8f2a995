@@ -1,0 +1,27 @@
+server.json
+  s_9dbeaa0116bfae::t_7f47048569b77a 179-185
+docker-compose.yml
+  s_9dbeaa0116bfae::t_0995673dbde795 33
+specs/002-traversal-tools/tasks.md
+  s_9dbeaa0116bfae::t_651a2677590599 12
+specs/002-traversal-tools/checklists/requirements.md
+  s_9dbeaa0116bfae::t_91c660ceb488cc 34
+specs/002-traversal-tools/plan.md
+  s_9dbeaa0116bfae::t_3507b92c6aca73 80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "8408bb8e03fd5c1367191f5a027fa5d5b8f2a995",
+  "prompts": {},
+  "sessions": {
+    "s_9dbeaa0116bfae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27f8357f-08f9-4c3c-b3a0-4dffb0f55369",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
