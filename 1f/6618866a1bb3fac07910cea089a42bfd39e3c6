@@ -1,0 +1,30 @@
+src/infrahub_mcp/tools/traversal.py
+  s_9dbeaa0116bfae::t_b6f16c6c2f0afb 98-100
+  s_9dbeaa0116bfae::t_c9d101ca29a610 1-97,101-163
+tests/unit/test_traversal.py
+  s_9dbeaa0116bfae::t_318e2a627fdc6f 21-22,31
+  s_9dbeaa0116bfae::t_de6571de69ca2a 173-202,204-216
+  s_9dbeaa0116bfae::t_5db44c1f40c699 5,8-9
+  s_9dbeaa0116bfae::t_e8190ff1729411 203
+src/infrahub_mcp/server.py
+  s_9dbeaa0116bfae::t_5a2ced647f4850 208,210-211,214
+  s_9dbeaa0116bfae::t_f2b1462a7dc2d0 269
+  s_9dbeaa0116bfae::t_f76bd675c2a509 40
+  s_9dbeaa0116bfae::t_b6f16c6c2f0afb 209,212-213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "1f6618866a1bb3fac07910cea089a42bfd39e3c6",
+  "prompts": {},
+  "sessions": {
+    "s_9dbeaa0116bfae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27f8357f-08f9-4c3c-b3a0-4dffb0f55369",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
