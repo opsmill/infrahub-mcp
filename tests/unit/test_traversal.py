@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import toon
+from fastmcp.exceptions import ToolError
 from infrahub_sdk.exceptions import NodeNotFoundError, VersionNotSupportedError
 from infrahub_sdk.graph_traversal import (
     Path,
@@ -16,6 +18,8 @@ from infrahub_sdk.graph_traversal import (
     ReachableNodesResult,
 )
 
+from infrahub_mcp.config import ServerConfig
+from infrahub_mcp.tools.traversal import _find_paths_impl, _find_reachable_impl
 from infrahub_mcp.traversal import (
     NodeResolutionError,
     resolve_node_ref,
@@ -24,6 +28,7 @@ from infrahub_mcp.traversal import (
     shape_path_result,
     shape_reachable_result,
 )
+from infrahub_mcp.utils import AppContext
 
 UUID_A = "1891a122-8875-bae7-3866-10658751d7cc"
 UUID_B = "1891a12b-27e5-fe3e-386c-1065983045b0"
@@ -165,3 +170,47 @@ async def test_run_find_reachable_default_max_results() -> None:
     client.reachable_nodes.assert_awaited_once_with(
         UUID_A, ["InfraCircuit"], max_depth=None, max_results=20, shortest_paths_only=True, branch=None
     )
+
+
+# --- tool wrappers ---------------------------------------------------------
+
+
+def _make_ctx(client: AsyncMock) -> MagicMock:
+    ctx = MagicMock()
+    ctx.request_context.lifespan_context = AppContext(client=client, config=ServerConfig())
+    ctx.error = AsyncMock()
+    ctx.info = AsyncMock()
+    return ctx
+
+
+async def test_find_paths_impl_happy_returns_toon() -> None:
+    client = AsyncMock()
+    client.traverse_paths = AsyncMock(
+        return_value=PathTraversalResult(
+            source=_node(UUID_A, "InfraDevice", "edge1"),
+            destination=_node(UUID_B, "InfraDevice", "edge2"),
+            count=0,
+            paths=[],
+        )
+    )
+    out = await _find_paths_impl(_make_ctx(client), UUID_A, UUID_B, None, None, None, None)
+    assert toon.decode(out)["count"] == 0
+
+
+async def test_find_paths_impl_version_error_raises_toolerror() -> None:
+    client = AsyncMock()
+    client.traverse_paths = AsyncMock(side_effect=VersionNotSupportedError("Graph path traversal", "1.10"))
+    with pytest.raises(ToolError, match=r"1\.10"):
+        await _find_paths_impl(_make_ctx(client), UUID_A, UUID_B, None, None, None, None)
+
+
+async def test_find_paths_impl_resolution_error_raises_toolerror() -> None:
+    client = AsyncMock()
+    with pytest.raises(ToolError, match="get_nodes"):
+        await _find_paths_impl(_make_ctx(client), "bad-ref", UUID_B, None, None, None, None)
+
+
+async def test_find_reachable_impl_resolution_error_raises_toolerror() -> None:
+    client = AsyncMock()
+    with pytest.raises(ToolError, match="get_nodes"):
+        await _find_reachable_impl(_make_ctx(client), "bad-ref", ["InfraCircuit"], None, None, 20, True)
