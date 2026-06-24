@@ -1,0 +1,19 @@
+pyproject.toml
+  s_b82a7066cfac3e::t_213b9431a280ba 110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.11",
+  "base_commit_sha": "f213b8cf4d470268b52abb1346e63c5389d0eca8",
+  "prompts": {},
+  "sessions": {
+    "s_b82a7066cfac3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aacbe356-653d-4d38-bb30-001ad6fb5e6c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
