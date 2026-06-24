@@ -1,0 +1,23 @@
+tests/unit/test_config.py
+  s_9dbeaa0116bfae::t_71461fc96913b4 32
+  s_9dbeaa0116bfae::t_58ed81cc8ece33 80-99
+src/infrahub_mcp/config.py
+  s_9dbeaa0116bfae::t_e4f3b57888ec0a 46-47
+  s_9dbeaa0116bfae::t_bd695b6d384fbd 91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "38df8b32051198a7c584e78e47cd1058d045134a",
+  "prompts": {},
+  "sessions": {
+    "s_9dbeaa0116bfae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27f8357f-08f9-4c3c-b3a0-4dffb0f55369",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
