@@ -1,5 +1,6 @@
 ---
 # Label-to-semver mapping for patrickjahns/version-drafter-action.
+# REQUIRED FILE — action crashes with "Invalid config file" if absent.
 # Both type/* and changes/* labels drive version bumps.
 # changes/* labels serve as explicit overrides when the type label
 # doesn't reflect the desired bump level.

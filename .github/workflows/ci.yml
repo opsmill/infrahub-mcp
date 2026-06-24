@@ -21,12 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
+      mcp: ${{ steps.changes.outputs.mcp_all }}
       documentation: ${{ steps.changes.outputs.documentation_all }}
       python: ${{ steps.changes.outputs.python_all }}
       yaml: ${{ steps.changes.outputs.yaml_all }}
     steps:
       - name: "Check out repository code"
-        uses: "actions/checkout@v6"
+        uses: "actions/checkout@v7"
       - name: Check for file changes
         uses: opsmill/paths-filter@v3.0.2
         id: changes
@@ -34,24 +35,81 @@ jobs:
           token: ${{ github.token }}
           filters: .github/file-filters.yml
 
-  # python-lint:
-  #   if: needs.files-changed.outputs.python == 'true'
-  #   needs: ["files-changed"]
-  #   runs-on: "ubuntu-latest"
-  #   strategy:
-  #     matrix:
-  #       python-version:
-  #         - "3.12"
-  #   timeout-minutes: 5
-  #   steps:
-  #     - name: "Check out repository code"
-  #       uses: "actions/checkout@v6"
+  prepare-environment:
+    runs-on: "ubuntu-latest"
+    timeout-minutes: 5
+    outputs:
+      PYTHON_VERSION: ${{ steps.versions.outputs.PYTHON_VERSION }}
+      UV_VERSION: ${{ steps.versions.outputs.UV_VERSION }}
+    steps:
+      - name: "Check out repository code"
+        uses: "actions/checkout@v7"
+      - name: "Set versions"
+        id: versions
+        run: |
+          echo "PYTHON_VERSION=3.13" >> "$GITHUB_OUTPUT"
+          echo "UV_VERSION=0.7" >> "$GITHUB_OUTPUT"
 
-  #     - name: "Set up Python ${{ matrix.python-version }}"
-  #       uses: "actions/setup-python@v5"
-  #       with:
-  #         python-version: ${{ matrix.python-version }}
+  python-lint:
+    if: |
+      needs.files-changed.outputs.python == 'true'
+    needs:
+      - files-changed
+      - prepare-environment
+    runs-on: "ubuntu-latest"
+    timeout-minutes: 5
+    steps:
+      - name: "Check out repository code"
+        uses: "actions/checkout@v7"
+        with:
+          submodules: true
+      - name: Set up Python
+        id: python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ needs.prepare-environment.outputs.PYTHON_VERSION }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ needs.prepare-environment.outputs.UV_VERSION }}
+      - name: Install dependencies
+        run: "uv sync --all-groups"
+      - name: "Linting: ruff check"
+        run: "uv run ruff check ."
+      - name: "Linting: ruff format"
+        run: "uv run ruff format --check --diff  ."
+      - name: "Linting: ty check"
+        run: "uv run ty check ."
 
+  validate-docker-compose-env-vars:
+    if: |
+      always() && !cancelled() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      needs.files-changed.outputs.mcp == 'true'
+    needs: ["prepare-environment", "files-changed", "yaml-lint", "python-lint"]
+    runs-on: "ubuntu-latest"
+    timeout-minutes: 5
+    steps:
+      - name: "Check out repository code"
+        uses: "actions/checkout@v7"
+        with:
+          submodules: true
+      - name: Set up Python
+        id: python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ needs.prepare-environment.outputs.PYTHON_VERSION }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ needs.prepare-environment.outputs.UV_VERSION }}
+      - name: Install dependencies
+        run: "uv sync --all-groups"
+      - name: Validate docker-compose env vars
+        run: uv run invoke validate-dockercomposeenv
+      - name: Validate server.json env vars
+        run: uv run invoke validate-serverjson
 
   yaml-lint:
     if: needs.files-changed.outputs.yaml == 'true'
@@ -60,7 +118,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: "Check out repository code"
-        uses: "actions/checkout@v6"
+        uses: "actions/checkout@v7"
         with:
           submodules: true
       - name: "Setup environment"
@@ -77,12 +135,12 @@ jobs:
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
       needs.files-changed.outputs.documentation == 'true'
-    needs: ["files-changed", "yaml-lint"] # , "python-lint"]
+    needs: ["files-changed", "yaml-lint", "python-lint"]
     runs-on: "ubuntu-22.04"
     timeout-minutes: 5
     steps:
       - name: "Check out repository code"
-        uses: "actions/checkout@v6"
+        uses: "actions/checkout@v7"
         with:
           submodules: true
       - name: Install NodeJS
@@ -103,12 +161,12 @@ jobs:
       always() && !cancelled() &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled')
-    needs: ["files-changed", "yaml-lint"] # , "python-lint"]
+    needs: ["files-changed", "yaml-lint", "python-lint"]
     runs-on: "ubuntu-22.04"
     timeout-minutes: 5
     steps:
       - name: "Check out repository code"
-        uses: "actions/checkout@v6"
+        uses: "actions/checkout@v7"
         with:
           submodules: true
 

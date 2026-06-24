@@ -3,10 +3,10 @@
 name: Version sync
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Auto bump version"]
+    types: [completed]
     branches: [stable]
-    paths:
-      - "pyproject.toml"
   workflow_dispatch:
 
 permissions:
@@ -14,16 +14,19 @@ permissions:
 
 jobs:
   sync-versions:
-    # Skip when auto-bump already handled the sync
+    # Only run after auto-bump succeeds (or when manually dispatched).
+    # Acts as a safety net for direct pyproject.toml edits that bypass auto-bump.
     if: >-
-      !startsWith(github.event.head_commit.message, 'chore(release):')
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: stable
+          token: ${{ secrets.GH_INFRAHUB_BOT_TOKEN }}
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.13"
 
@@ -32,10 +35,19 @@ jobs:
 
       - name: Install mcp-discovery
         # yamllint disable rule:line-length
+        env:
+          MCP_DISCOVERY_VERSION: "0.2.5"
+          MCP_DISCOVERY_SHA256: "ede19b0e8a6d960ddb3cf0abd7d33e791ad94aecfe65d94c33c6011bd5291ba9"
         run: |
-          curl -sL https://github.com/rust-mcp-stack/mcp-discovery/releases/latest/download/mcp-discovery-x86_64-unknown-linux-gnu.tar.xz \
-            | tar -xJ --strip-components=1
-          sudo mv mcp-discovery /usr/local/bin/
+          # Extract to a tmp dir so stray bundled files (LICENSE, README,
+          # etc.) never land in the working tree.
+          TMPDIR=$(mktemp -d)
+          curl -sL "https://github.com/rust-mcp-stack/mcp-discovery/releases/download/v${MCP_DISCOVERY_VERSION}/mcp-discovery-x86_64-unknown-linux-gnu.tar.xz" \
+            -o "${TMPDIR}/mcp-discovery.tar.xz"
+          echo "${MCP_DISCOVERY_SHA256}  ${TMPDIR}/mcp-discovery.tar.xz" | sha256sum -c
+          tar -xJf "${TMPDIR}/mcp-discovery.tar.xz" -C "${TMPDIR}" --strip-components=1
+          sudo mv "${TMPDIR}/mcp-discovery" /usr/local/bin/
+          rm -rf "${TMPDIR}"
         # yamllint enable rule:line-length
 
       - name: Extract version from pyproject.toml

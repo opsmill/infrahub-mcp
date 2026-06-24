@@ -1,0 +1,25 @@
+schema_version: "1.0"
+
+extension:
+  id: "summary"
+  name: "Session Summary"
+  version: "1.0.0"
+  description: "Manual flow-level summary of the current Claude Code session, written next to spec.md / plan.md"
+  author: "opsmill"
+  repository: "https://github.com/opsmill/styrmin"
+  license: "MIT"
+  homepage: "https://github.com/opsmill/styrmin"
+
+requires:
+  speckit_version: ">=0.1.0"
+
+provides:
+  commands:
+    - name: "speckit.summary.run"
+      file: "commands/run.md"
+      description: "Produce a flow-level timeline of the current Claude Code session in the active feature directory"
+
+tags:
+  - "docs"
+  - "session"
+  - "handoff"

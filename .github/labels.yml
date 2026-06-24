@@ -16,8 +16,8 @@
 # TYPE (default)
 # ----------------------------------
 - name: "type/breaking-change"
-  description: "Breaking Changes"
-  color: "bfd4f2"
+  description: "Breaking change requiring major version bump"
+  color: "b60205"
 
 - name: "type/feature"
   description: "New feature or request"
@@ -30,6 +30,10 @@
 - name: "type/housekeeping"
   description: "Maintenance task"
   color: "fef2c0"
+
+- name: "type/refactoring"
+  description: "Code refactoring or improvement"
+  color: "a2eeef"
 
 - name: "type/tech-debt"
   description: "Item we know we need to improve way it is implemented"
@@ -146,6 +150,21 @@
 - name: "state/wont-fix"
   description: "Issue has been closed and won't be fix/implemented."
   color: "eeeeee"
+
+# ----------------------------------
+# CHANGES (version bump triggers)
+# ----------------------------------
+- name: "changes/major"
+  description: "Bump major version (breaking change)"
+  color: "b60205"
+
+- name: "changes/minor"
+  description: "Bump minor version (new feature)"
+  color: "ff9f1c"
+
+- name: "changes/patch"
+  description: "Bump patch version (bug fix)"
+  color: "cfda2c"
 
 # ----------------------------------
 # CI

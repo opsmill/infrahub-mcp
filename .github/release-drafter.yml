@@ -6,11 +6,13 @@ name-template: "Version $RESOLVED_VERSION"
 tag-template: "v$RESOLVED_VERSION"
 
 template: |
-  ## What's Changed
-
   $CHANGES
 
   **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
+
+# Release-drafter places a PR in the FIRST category whose labels match
+# (top-to-bottom). Order = priority. Keep "Other Changes" last as a
+# catch-all so unlabeled PRs are still listed instead of disappearing.
 
 categories:
   - title: "Breaking Changes"
@@ -37,6 +39,10 @@ categories:
   - title: "Documentation"
     labels:
       - "type/documentation"
+
+  - title: "Other Changes"
+    labels:
+      - "*"
 
 exclude-labels:
   - "ci/skip-changelog"

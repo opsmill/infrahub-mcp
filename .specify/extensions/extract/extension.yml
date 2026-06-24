@@ -1,0 +1,25 @@
+schema_version: "1.0"
+
+extension:
+  id: "extract"
+  name: "Spec Extract"
+  version: "1.0.0"
+  description: "Extract knowledge, guidelines, and ADRs from completed spec directories into the project documentation system."
+  author: "OpsMill"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.1.0"
+
+provides:
+  commands:
+    - name: "speckit.extract.run"
+      file: "commands/extract.md"
+      description: "Extract knowledge, guidelines, and ADRs from one or more completed spec directories into the project documentation system."
+
+tags:
+  - "extraction"
+  - "knowledge"
+  - "guidelines"
+  - "adr"
+  - "documentation"

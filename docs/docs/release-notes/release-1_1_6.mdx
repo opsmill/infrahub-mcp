@@ -1,0 +1,75 @@
+---
+title: Release 1.1.6
+description: Continue an AI conversation across multiple Proposed Changes, with automatic session branch recovery and a reset tool.
+---
+
+<table>
+  <tbody>
+    <tr>
+      <th>Release Number</th>
+      <td>1.1.6</td>
+    </tr>
+    <tr>
+      <th>Release Type</th>
+      <td>Feature</td>
+    </tr>
+    <tr>
+      <th>Release Date</th>
+      <td>June 8th, 2026</td>
+    </tr>
+    <tr>
+      <th>Tag</th>
+      <td>[v1.1.6](https://github.com/opsmill/infrahub-mcp/releases/tag/v1.1.6)</td>
+    </tr>
+  </tbody>
+</table>
+
+## Release summary
+
+Use the same AI conversation across multiple Proposed Changes instead of starting over after each one. When a Proposed Change has been merged or its branch is no longer available, work can continue in the same session while still following existing Infrahub review workflows.
+
+### Work across multiple Proposed Changes in the same AI conversation
+
+When a Proposed Change has been merged or its branch is no longer available, a replacement branch is created automatically so work can continue in the same session.
+
+**What changed**
+
+* Detect when a branch has been deleted, merged, or is in the process of being deleted.
+* Create a replacement branch automatically when the current branch can no longer accept changes.
+* Surface a retryable error when a branch changes state mid-write — the failed write is not replayed automatically (a partial mutation could apply), so the next attempt runs on a fresh branch.
+
+### Start fresh or switch to a different branch
+
+A session branch can now be reset or changed explicitly, making it easier to start over or continue work on a branch that was prepared ahead of time.
+
+**What changed**
+
+* Reset the current branch using `reset_session_branch()` so the next write starts with a new branch.
+* Switch to a branch by name using `reset_session_branch(<branch-name>)` — created automatically if it does not exist and matches the configured branch pattern.
+* Validate branch names against the configured branch pattern.
+* Reject the default branch and merged or deleting branches.
+
+### Review and merge changes created with AI using existing Infrahub workflows
+
+Changes created with AI are kept separate from the default branch and can be explicitly submitted as a Proposed Change, allowing them to follow the same review and merge process used elsewhere in Infrahub.
+
+**What changed**
+
+* Always write to the active session branch.
+* Block branch and schema mutations, including those nested in GraphQL fragments.
+* Continue using `propose_changes` to submit changes for review.
+
+## Full changelog
+
+### Added
+
+* `reset_session_branch` tool to reset or switch the session branch ([#114](https://github.com/opsmill/infrahub-mcp/pull/114)).
+
+### Changed
+
+* `search_nodes` now uses `any__value` with `partial_match`, making substring searches consistent across concrete and abstract kinds ([#93](https://github.com/opsmill/infrahub-mcp/pull/93)).
+* Writes always target the active session branch, and privileged branch and schema mutations are blocked ([#114](https://github.com/opsmill/infrahub-mcp/pull/114)).
+
+### Fixed
+
+* Recover stale (merged or deleted) session branches automatically ([#114](https://github.com/opsmill/infrahub-mcp/pull/114)).

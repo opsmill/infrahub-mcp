@@ -20,12 +20,17 @@ exceptions:
   - BGP
   - CA certificates
   - CI
+  - CLAUDE.md
+  - CLI
+  - Claude Desktop
+  - Copilot
   - Codespaces
   - Computed Attribute
   - Computed Attributes
   - CoreArtifactTarget
   - CoreRepository
   - CoreGroup
+  - Docker
   - Docker Compose
   - E2E
   - Generics
@@ -39,6 +44,7 @@ exceptions:
   - include_in_menu & menu_placement
   - Helm
   - High Availability
+  - HTTP
   - Human Friendly Identifier
   - Infrahub
   - Infrahub Enterprise
@@ -63,6 +69,8 @@ exceptions:
   - OIDC
   - Open ID Connect
   - OpsMill
+  - Proposed Change
+  - Proposed Changes
   - Pydantic
   - Python
   - RabbitMQ

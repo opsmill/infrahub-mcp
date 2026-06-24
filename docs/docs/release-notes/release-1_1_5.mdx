@@ -1,0 +1,59 @@
+---
+title: Release 1.1.5
+description: Validate a session branch before reuse so an unusable branch fails with a clear reason.
+---
+
+<table>
+  <tbody>
+    <tr>
+      <th>Release Number</th>
+      <td>1.1.5</td>
+    </tr>
+    <tr>
+      <th>Release Type</th>
+      <td>Improvement</td>
+    </tr>
+    <tr>
+      <th>Release Date</th>
+      <td>May 29th, 2026</td>
+    </tr>
+    <tr>
+      <th>Tag</th>
+      <td>[v1.1.5](https://github.com/opsmill/infrahub-mcp/releases/tag/v1.1.5)</td>
+    </tr>
+  </tbody>
+</table>
+
+## Release summary
+
+Know immediately when a session branch can no longer be used. Branch state is validated before reuse, making long-running sessions more predictable and laying the groundwork for the automatic recovery in [1.1.6](./release-1_1_6.mdx).
+
+### Get a clear signal when a session branch can no longer be used
+
+Branch state is now validated before reuse, so a session whose branch has been merged or deleted fails with a clear reason instead of an opaque error. This is the groundwork for the automatic recovery in [1.1.6](./release-1_1_6.mdx).
+
+**What changed**
+
+* Detect when a cached branch has been deleted.
+* Detect when a cached branch has already been merged or is being deleted.
+* Report why a branch can no longer be used before attempting additional writes.
+
+## Minor changes
+
+### Documentation
+
+* Updated the README.
+
+### Security
+
+* Updated dependencies, including `idna` and `authlib`.
+
+## Full changelog
+
+### Fixed
+
+* Validate the cached session branch before reuse ([#110](https://github.com/opsmill/infrahub-mcp/pull/110)).
+
+### Security
+
+* Updated dependencies, including `idna` ([#105](https://github.com/opsmill/infrahub-mcp/pull/105)) and `authlib` ([#103](https://github.com/opsmill/infrahub-mcp/pull/103)).

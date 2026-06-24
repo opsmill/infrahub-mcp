@@ -1,0 +1,81 @@
+---
+# yamllint disable rule:line-length
+
+x-infrahub-mcp-config: &infrahub_mcp_config
+  INFRAHUB_ADDRESS: ${INFRAHUB_ADDRESS:-http://infrahub-server-1:8000}
+  INFRAHUB_API_TOKEN: ${INFRAHUB_API_TOKEN:-06438eb2-8019-4776-878c-0941b1f1d1ec}
+  INFRAHUB_MCP_AUTH_MODE: ${INFRAHUB_MCP_AUTH_MODE:-none}
+  INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER: ${INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER:-Authorization}
+  INFRAHUB_MCP_READ_ONLY: ${INFRAHUB_MCP_READ_ONLY:-false}
+  INFRAHUB_MCP_BRANCH_PATTERN: ${INFRAHUB_MCP_BRANCH_PATTERN:-mcp/session-{date}-{hex}}
+  INFRAHUB_MCP_MAX_BRANCH_RETRIES: ${INFRAHUB_MCP_MAX_BRANCH_RETRIES:-5}
+  INFRAHUB_MCP_LOG_LEVEL: ${INFRAHUB_MCP_LOG_LEVEL:-info}
+  INFRAHUB_MCP_RATE_LIMIT_RPS: ${INFRAHUB_MCP_RATE_LIMIT_RPS:-0}
+  INFRAHUB_MCP_RATE_LIMIT_BURST: ${INFRAHUB_MCP_RATE_LIMIT_BURST:-0}
+  INFRAHUB_MCP_RETRY_MAX_ATTEMPTS: ${INFRAHUB_MCP_RETRY_MAX_ATTEMPTS:-0}
+  INFRAHUB_MCP_RETRY_BASE_DELAY: ${INFRAHUB_MCP_RETRY_BASE_DELAY:-1.0}
+  INFRAHUB_MCP_CACHE_ENABLED: ${INFRAHUB_MCP_CACHE_ENABLED:-false}
+  INFRAHUB_MCP_CACHE_LIST_TTL: ${INFRAHUB_MCP_CACHE_LIST_TTL:-300}
+  INFRAHUB_MCP_CACHE_READ_TTL: ${INFRAHUB_MCP_CACHE_READ_TTL:-3600}
+  INFRAHUB_MCP_OTEL_ENABLED: ${INFRAHUB_MCP_OTEL_ENABLED:-false}
+  INFRAHUB_MCP_PROMETHEUS_ENABLED: ${INFRAHUB_MCP_PROMETHEUS_ENABLED:-false}
+  INFRAHUB_MCP_DEREFERENCE_SCHEMAS: ${INFRAHUB_MCP_DEREFERENCE_SCHEMAS:-false}
+  INFRAHUB_MCP_PING_INTERVAL_MS: ${INFRAHUB_MCP_PING_INTERVAL_MS:-0}
+  INFRAHUB_MCP_AUTH_SCOPES_WRITE: ${INFRAHUB_MCP_AUTH_SCOPES_WRITE:-write}
+
+x-oidc-config: &oidc_config
+  INFRAHUB_MCP_AUTH_MODE: oidc
+  INFRAHUB_MCP_OIDC_CONFIG_URL: http://keycloak:8080/realms/infrahub/.well-known/openid-configuration
+  INFRAHUB_MCP_OIDC_CLIENT_ID: infrahub-mcp
+  INFRAHUB_MCP_OIDC_CLIENT_SECRET: mcp-dev-secret
+  INFRAHUB_MCP_OIDC_BASE_URL: http://localhost:8001
+  INFRAHUB_MCP_AUTH_SCOPES_WRITE: write
+
+
+services:
+  # docker compose --profile default up
+  infrahub-mcp:
+    build:
+      context: ..
+      dockerfile: development/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      <<: [*infrahub_mcp_config]
+    profiles:
+      - default
+
+  # docker compose --profile oidc up
+  infrahub-mcp-oidc:
+    build:
+      context: ..
+      dockerfile: development/Dockerfile
+    ports:
+      - "8001:8001"
+    # depends_on:
+    #   keycloak:
+    #     condition: service_healthy
+    environment:
+      <<: [*oidc_config, *infrahub_mcp_config]
+    profiles:
+      - oidc
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2
+    command: start-dev --import-realm
+    ports:
+      - "8080:8080"
+    environment:
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    volumes:
+      - ./keycloak/infrahub-realm.json:/opt/keycloak/data/import/infrahub-realm.json:ro
+    # healthcheck:
+    #   test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\n\r\n' >&3 && cat <&3 | grep -q '\"status\":\"UP\"'"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 15
+    #   start_period: 30s
+    profiles:
+      - oidc

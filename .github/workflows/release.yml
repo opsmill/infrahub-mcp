@@ -8,12 +8,14 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  packages: write
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Extract version from tag
         id: tag
@@ -44,32 +46,11 @@ jobs:
             exit 1
           fi
 
-      - uses: astral-sh/setup-uv@v6
-        with:
-          python-version: "3.13"
-
-      - name: Install dependencies
-        run: uv sync --all-extras --frozen
-
-      - name: Install mcp-discovery
-        # yamllint disable rule:line-length
-        run: |
-          curl -sL https://github.com/rust-mcp-stack/mcp-discovery/releases/latest/download/mcp-discovery-x86_64-unknown-linux-gnu.tar.xz \
-            | tar -xJ --strip-components=1
-          sudo mv mcp-discovery /usr/local/bin/
-        # yamllint enable rule:line-length
-
-      - name: Validate CAPABILITIES.md is up to date
-        run: |
-          bash scripts/update-capabilities.sh /tmp/capabilities-check.md
-          if ! diff -q CAPABILITIES.md /tmp/capabilities-check.md > /dev/null 2>&1; then
-            echo "::error::CAPABILITIES.md is out of date. Run 'bash scripts/update-capabilities.sh' and commit."
-            diff CAPABILITIES.md /tmp/capabilities-check.md || true
-            exit 1
-          fi
+  capabilities:
+    uses: ./.github/workflows/ci-mcp-discovery.yml
 
   publish:
-    needs: validate
+    needs: [validate, capabilities]
     uses: ./.github/workflows/workflow-publish.yml
     secrets: inherit
     with:

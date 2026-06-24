@@ -1,0 +1,74 @@
+---
+title: Claude Desktop
+---
+
+Claude Desktop is the default starting point for most users — it speaks MCP over stdio and can spawn the Infrahub MCP server locally without any infrastructure.
+
+## Quick start
+
+See the [Installation guide](../guides/installation.mdx#add-to-your-mcp-client) for the minimal Claude Desktop configuration snippet. This page covers Claude Desktop-specific details.
+
+## Configure
+
+Open **Settings → Developer**, then click `Edit config`. Claude Desktop opens `claude_desktop_config.json`. Add an entry under `mcpServers`:
+
+```json
+{
+  "mcpServers": {
+    "infrahub_mcp": {
+      "transport": "stdio",
+      "command": "uvx",
+      "args": ["infrahub-mcp"],
+      "env": {
+        "INFRAHUB_ADDRESS": "http://localhost:8000",
+        "INFRAHUB_API_TOKEN": "your-api-token"
+      }
+    }
+  }
+}
+```
+
+Save and restart Claude Desktop. The `infrahub_mcp` server appears under **Developer → MCP servers** with a green status indicator once the handshake succeeds.
+
+## Connect to a remote server
+
+If the MCP server runs in Docker or on a remote host, use the Streamable HTTP transport:
+
+```json
+{
+  "mcpServers": {
+    "infrahub_mcp": {
+      "transport": "streamable-http",
+      "url": "http://mcp.example.com:8001/mcp"
+    }
+  }
+}
+```
+
+For multi-user deployments, combine this with [token pass-through](../getting-started/authentication.mdx#token-passthrough) — each user's Claude Desktop sends its own Infrahub token in the `Authorization` header.
+
+## Try it
+
+In a new conversation, attach the `infrahub_agent` prompt (available under the **Prompts** picker). Try:
+
+> List every schema kind whose name starts with `Dcim`.
+
+Or with writes enabled:
+
+> Create a new `DcimInterface` named `Ethernet99` on `spine-03` and open a proposed change for review.
+
+See [Your first agent run](../getting-started/first-agent-run.mdx) for the full walkthrough.
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| Server shows red status | Check logs at **Developer → Open Logs Folder** — the server prints startup errors there. |
+| `command not found: uvx` | Claude Desktop doesn't inherit your shell's PATH. Use an absolute path to `uvx` in `command`. |
+| Connection keeps dropping | Enable [ping middleware](../references/configuration.mdx#client-compatibility) — set `INFRAHUB_MCP_PING_INTERVAL_MS=30000`. |
+| No tools appear in the UI | The server is starting but failing to register. Check `INFRAHUB_MCP_LOG_LEVEL=debug` for the full traceback. |
+
+## Related reading
+
+- [Your first agent run](../getting-started/first-agent-run.mdx)
+- [Authentication setup](../getting-started/authentication.mdx)

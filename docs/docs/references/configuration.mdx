@@ -1,0 +1,190 @@
+---
+title: Configuration reference
+---
+
+The Infrahub MCP server is configured entirely through environment variables. All middleware features are **opt-in** — the server works out of the box with only the required connection variables set.
+
+## Connection
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `INFRAHUB_ADDRESS` | URL of your Infrahub instance | **required** |
+| `INFRAHUB_API_TOKEN` | API token used by the MCP server to call Infrahub (not needed in `token-passthrough` auth mode) | — |
+| `MCP_HOST` | Bind address for the HTTP server | `0.0.0.0` |
+| `MCP_PORT` | Port for the HTTP server | `8001` |
+
+Username/password authentication against Infrahub is not supported. Use [OIDC](../getting-started/authentication.mdx#oidc) when you need per-user identity.
+
+## Server behavior
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `INFRAHUB_MCP_READ_ONLY` | Disable all write operations (`true`, `1`, or `yes`) | `false` |
+| `INFRAHUB_MCP_BRANCH_PATTERN` | Branch naming pattern. Supports `{date}`, `{hex}`, `{user}` placeholders. Fixed names (no placeholders) must not already exist. | `mcp/session-{date}-{hex}` |
+| `INFRAHUB_MCP_MAX_BRANCH_RETRIES` | Max collision retries when generating branch names (1–20) | `5` |
+| `INFRAHUB_MCP_LOG_LEVEL` | Set to `debug` for verbose logging with tracebacks | `info` |
+
+## Rate limiting
+
+Token bucket rate limiter that protects the server from abuse. Disabled by default.
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `INFRAHUB_MCP_RATE_LIMIT_RPS` | Max sustained requests per second (`0` = disabled) | `0` |
+| `INFRAHUB_MCP_RATE_LIMIT_BURST` | Token bucket burst capacity (`0` = auto: 2x RPS) | `0` |
+
+```bash
+# Allow 10 requests/sec with bursts up to 20
+INFRAHUB_MCP_RATE_LIMIT_RPS=10
+INFRAHUB_MCP_RATE_LIMIT_BURST=20
+```
+
+## Retry
+
+Automatic retry with exponential backoff for transient failures (`ConnectionError`, `TimeoutError`, `OSError`). Disabled by default.
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `INFRAHUB_MCP_RETRY_MAX_ATTEMPTS` | Max retry attempts (`0` = disabled) | `0` |
+| `INFRAHUB_MCP_RETRY_BASE_DELAY` | Initial delay between retries in seconds | `1.0` |
+
+## Response caching
+
+TTL-based caching for schema discovery and list operations. Reduces load on Infrahub for repeated schema lookups.
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `INFRAHUB_MCP_CACHE_ENABLED` | Enable response caching (`true`/`false`) | `false` |
+| `INFRAHUB_MCP_CACHE_LIST_TTL` | TTL for list operations (tools, resources, prompts) in seconds | `300` |
+| `INFRAHUB_MCP_CACHE_READ_TTL` | TTL for read operations (resources, tool calls) in seconds | `3600` |
+
+Only the `get_schema` tool is cached for tool calls — node queries and writes are never cached.
+
+## Authentication and authorization
+
+The MCP server supports four authentication modes controlled by `INFRAHUB_MCP_AUTH_MODE`:
+
+### `none` (default)
+
+No identity gate. Any client that reaches the MCP server gets access using the
+shared `INFRAHUB_API_TOKEN`. Works with both stdio and HTTP transports.
+
+### `oidc`
+
+External Identity Provider authentication via OpenID Connect. When enabled, the MCP server
+uses FastMCP's OIDCProxy to authenticate users against providers like Google, Okta, or
+Microsoft Entra. This provides:
+
+- **Identity** — who is calling (for audit logs and `{user}` branch placeholder)
+- **Role gating** — two roles: read-only (read tools only) and read-write (all tools)
+
+Infrahub API calls still use the shared env var credentials. The OIDC token is for
+MCP-level access control only. Streamable HTTP transport is required (OIDC is not supported over stdio).
+
+### `token-passthrough`
+
+Each client sends their own Infrahub API token in the HTTP request header. The server creates a
+per-request `InfrahubClient` using that token — no shared server-side credentials required. Every
+request must carry a valid token (fail-closed). Streamable HTTP transport is required.
+
+### `basic-passthrough`
+
+Same fail-closed per-request model as `token-passthrough`, but the client sends an
+`Authorization: Basic <base64(user:pass)>` header. The server decodes the header and
+constructs a fresh `InfrahubClient` with those credentials for each request. Streamable
+HTTP transport is required.
+
+| Variable                                | Required   | Default         | Description                                                                    |
+| --------------------------------------- | ---------- | --------------- | ------------------------------------------------------------------------------ |
+| `INFRAHUB_MCP_AUTH_MODE`                | No         | `none`          | Authentication mode (`none`, `oidc`, `token-passthrough`, `basic-passthrough`) |
+| `INFRAHUB_MCP_OIDC_CONFIG_URL`          | Yes (oidc) |                 | OIDC discovery endpoint URL                                                    |
+| `INFRAHUB_MCP_OIDC_CLIENT_ID`           | Yes (oidc) |                 | OAuth client ID registered with the IdP                                        |
+| `INFRAHUB_MCP_OIDC_CLIENT_SECRET`       | No         |                 | OAuth client secret (omit for PKCE flow)                                       |
+| `INFRAHUB_MCP_OIDC_BASE_URL`            | Yes (oidc) |                 | Public URL where the MCP server is accessible                                  |
+| `INFRAHUB_MCP_OIDC_AUDIENCE`            | No         |                 | Token audience claim                                                           |
+| `INFRAHUB_MCP_OIDC_USER_CLAIM`          | No         | `email`         | JWT claim used for user identity                                               |
+| `INFRAHUB_MCP_AUTH_SCOPES_WRITE`        | No         | `write`         | Scopes required for write operations (comma-separated)                         |
+| `INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER` | No         | `Authorization` | HTTP header carrying the Infrahub API token (token-passthrough mode)           |
+
+### Scope-based write authorization
+
+When `INFRAHUB_MCP_AUTH_SCOPES_WRITE` is configured (in either auth mode over HTTP transport),
+tools tagged `write` are filtered from discovery and blocked at call time unless the
+access token contains all required scopes. STDIO connections skip auth checks.
+
+```bash
+# Require "infrahub:write" scope for node_upsert, node_delete, etc.
+INFRAHUB_MCP_AUTH_SCOPES_WRITE=infrahub:write
+```
+
+## Observability
+
+<!-- vale Infrahub.sentence-case = NO -->
+### OpenTelemetry tracing
+<!-- vale Infrahub.sentence-case = YES -->
+
+Wraps every MCP request in an OpenTelemetry span (`mcp.<method>`). Requires the `opentelemetry-api` package — degrades gracefully to a no-op if not installed.
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `INFRAHUB_MCP_OTEL_ENABLED` | Enable OpenTelemetry tracing | `false` |
+
+### Prometheus metrics
+
+The `/metrics` endpoint returns JSON by default. Enable Prometheus exposition format for scraping by Prometheus, Grafana Agent, or Datadog.
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `INFRAHUB_MCP_PROMETHEUS_ENABLED` | Return Prometheus text format from `/metrics` | `false` |
+
+Metrics exposed:
+
+- `infrahub_mcp_requests_total{method}` — total requests by MCP method
+- `infrahub_mcp_errors_total{method}` — total errors by MCP method
+- `infrahub_mcp_latency_ms_total{method}` — cumulative latency in milliseconds
+
+The JSON format also includes `error_stats` (per-exception-type counts from error handling) and `cache` statistics when caching is enabled.
+
+## Client compatibility
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `INFRAHUB_MCP_DEREFERENCE_SCHEMAS` | Inline `$ref` in JSON schemas for clients that do not handle references (for example, VS Code Copilot) | `false` |
+| `INFRAHUB_MCP_PING_INTERVAL_MS` | Send periodic pings to keep HTTP connections alive, in milliseconds (`0` = disabled, max `300000`) | `0` |
+
+## Middleware stack
+
+The server applies middleware in registration order. The full stack when all features are enabled:
+
+<!-- vale off -->
+
+| Layer | Middleware | Always on |
+| --- | --- | --- |
+| 1 | **RequestIdMiddleware** — unique correlation ID per request | yes |
+| 2 | **MetricsMiddleware** — request/error/latency counters for `/metrics` | yes |
+| 3 | **OTelTracingMiddleware** — OpenTelemetry spans | no |
+| 4 | **ErrorHandlingMiddleware** — exception-to-MCP-error mapping with error tracking | yes |
+| 5 | **InfrahubConnectionMiddleware** — friendly errors for unreachable/unresponsive Infrahub | yes |
+| 6 | **RetryMiddleware** — exponential backoff for transient failures | no |
+| 7 | **RateLimitingMiddleware** — token bucket rate limiting | no |
+| 8 | **StructuredLoggingMiddleware** — JSON logs with token estimates | yes |
+| 9 | **DetailedTimingMiddleware** — per-operation timing breakdown | yes |
+| 10 | **AuthMiddleware** — scope-based write tool authorization (HTTP only) | no |
+| 11 | **TokenPassthroughMiddleware** — fail-closed gate for token/basic passthrough modes | no |
+| 12 | **ReadOnlyMiddleware** — tag-based write tool blocking | no |
+| 13 | **AuditMiddleware** — structured audit trail for tool/resource access | yes |
+| 14 | **ResponseCachingMiddleware** — TTL-based response caching | no |
+| 15 | **DereferenceRefsMiddleware** — inline `$ref` in JSON schemas | no |
+| 16 | **PingMiddleware** — periodic keepalive pings | no |
+| 17 | **ResponseLimitingMiddleware** — truncates responses over 500 KB | yes |
+
+<!-- vale on -->
+
+## Endpoints
+
+| Path | Method | Description |
+| --- | --- | --- |
+| `/mcp` | POST | MCP Streamable HTTP transport |
+| `/health` | GET | Health check — returns `{"status": "healthy"}` or 503 |
+| `/metrics` | GET | Request counts, error counts, latency (JSON or Prometheus format) |
+| `/.well-known/*` | GET | OAuth discovery — returns RFC 6749 JSON 404 when OIDC is not enabled |
