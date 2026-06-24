@@ -107,6 +107,7 @@ max-line-length = 150
     "PLC2701", # Private name imports (testing internal helpers)
     "PLR2004", # Magic values in comparisons (expected in assertions)
     "PLR6301", # Method could be static (standard test-class pattern)
+    "RUF076",  # autouse fixtures are an intentional test-isolation pattern
 ]
 "scripts/**/*.py" = [
     "BLE001",  # Broad exception catch (acceptable in scripts)
