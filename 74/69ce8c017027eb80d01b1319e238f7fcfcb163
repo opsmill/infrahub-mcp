@@ -1,0 +1,21 @@
+specs/002-traversal-tools/checklists/requirements.md
+  s_9dbeaa0116bfae::t_6d4bc2508b1344 1-35
+specs/002-traversal-tools/spec.md
+  s_9dbeaa0116bfae::t_0d88f169b23778 1-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "7469ce8c017027eb80d01b1319e238f7fcfcb163",
+  "prompts": {},
+  "sessions": {
+    "s_9dbeaa0116bfae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27f8357f-08f9-4c3c-b3a0-4dffb0f55369",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
