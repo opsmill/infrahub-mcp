@@ -101,6 +101,15 @@ def get_client(ctx: Context) -> InfrahubClient:
     return app_ctx.client
 
 
+def get_config(ctx: Context) -> ServerConfig:
+    """Return the server configuration for the current request."""
+    if ctx.request_context is None:
+        msg = "request_context must not be None"
+        raise RuntimeError(msg)
+    app_ctx: AppContext = ctx.request_context.lifespan_context
+    return app_ctx.config
+
+
 def _session_obj(ctx: Context) -> object:
     """Return the per-MCP-session object used to scope session-branch state.
 
@@ -507,17 +516,19 @@ async def convert_node_to_dict(  # noqa: C901  # pylint: disable=too-many-branch
             for peer in rel.peers:
                 # FIXME: We are using the store to avoid doing to many queries to Infrahub
                 # but we could end up doing store+infrahub if the store is not populated
+                # infrahub-sdk>=1.22 widened RelatedNode.id/fetch() to include None; a fetched
+                # peer always has an id and awaitable fetch here, so the unions are narrowed safely.
                 related_node = obj._client.store.get(  # noqa: SLF001
-                    key=peer.id,
+                    key=peer.id,  # type: ignore[arg-type]
                     raise_when_missing=False,
                     branch=branch,
                 )
                 if not related_node:
-                    await peer.fetch()
+                    await peer.fetch()  # type: ignore[misc]
                     try:
                         related_node = peer.peer
                     except NodeNotFoundError:
-                        peers.append(peer.id)
+                        peers.append(peer.id)  # type: ignore[arg-type]
                         continue
                 peers.append(get_node_label(related_node, include_kind=hfid_include_kind))
             data[rel_name] = peers
