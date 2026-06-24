@@ -215,11 +215,18 @@ def infrahub_agent() -> str:
 - **`node_delete`** — delete a node by `id` or `hfid`.
 - **`mutate_graphql`** — execute a GraphQL mutation.
 - **`propose_changes`** — open a proposed change from your session branch to `main` for human review.
+- **`reset_session_branch`** — reset or switch your session branch: call with no arguments to start \
+fresh (the next write creates a new branch), or pass a branch name to switch to it (created if it \
+matches the configured pattern).
 
 ## Branch-per-session workflow
 
 All writes are branch-isolated. On your first write, a session branch is
 automatically created. The default branch is never modified directly.
+
+If your session branch is merged or deleted, the next write automatically recovers
+onto a fresh branch — you do not need to restart. Use `reset_session_branch` to
+switch branches deliberately.
 
 When changes are ready: call `propose_changes(title, description)` to open a proposed change for human review.
 

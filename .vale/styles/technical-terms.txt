@@ -2,6 +2,7 @@ agent
 anonymized
 APIs
 async
+auditable
 backoff
 boolean
 codespace
@@ -65,6 +66,7 @@ rebased
 repo
 resources
 REST
+retryable
 sanitization
 Schema
 schema's
@@ -72,6 +74,7 @@ scrollable
 scrollbar
 sdk
 stderr
+stdio
 Streamable
 subprocess
 subcommand
@@ -84,6 +87,7 @@ traceback
 tracebacks
 triaging
 uncheck
+untrusted
 uplink
 uplinks
 Uplinks

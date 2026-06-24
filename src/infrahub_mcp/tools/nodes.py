@@ -11,7 +11,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from infrahub_mcp.schema import get_valid_kinds_summary
-from infrahub_mcp.utils import _log_and_raise_error, convert_node_to_dict, get_client
+from infrahub_mcp.utils import _log_and_raise_error, convert_node_to_dict, get_client, get_node_label
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
@@ -296,7 +296,12 @@ async def search_nodes(
         str,
         Field(
             min_length=1,
-            description="Partial name/label to search for. Matched against the 'name' attribute of each node.",
+            description=(
+                "Partial substring matched across all attributes of the kind "
+                "via Infrahub's ``any__value`` filter with ``partial_match=True``. "
+                "Works for both concrete kinds (e.g. ``LocationSite``) and "
+                "abstract/generic kinds (e.g. ``CoreNode``)."
+            ),
         ),
     ],
     kind: Annotated[
@@ -312,24 +317,33 @@ async def search_nodes(
         Field(default=10, ge=1, le=100, description="Maximum number of results to return."),
     ] = 10,
 ) -> list[str]:
-    """Find a node of a specific kind by partial name — use when you only know part of the name.
+    """Find nodes of a specific kind by partial substring — use when you only know part of a value.
 
-    Matches substrings against the ``name`` attribute only (via
-    ``name__value`` with ``partial_match=True``). For matching on other
-    attributes, or for combining multiple filters, use ``get_nodes`` with
-    an explicit ``filters`` dict instead.
+    Matches the query as a substring against **all attributes** of the kind
+    via Infrahub's ``any__value`` filter with ``partial_match=True``. Works
+    uniformly on concrete kinds (e.g. ``LocationSite``) and abstract/generic
+    kinds (e.g. ``CoreNode``) — agents can ping any kind without first
+    checking whether it has a ``name`` attribute.
+
+    For a filter on one specific attribute (or combining multiple filters),
+    use ``get_nodes`` with an explicit ``filters`` dict instead.
+
+    Each result is labelled with the node's ``display_label`` when present,
+    falling back to its HFID (kind-prefixed) and finally its UUID — so
+    generic-kind results that lack a ``display_label`` still return a
+    human-readable identifier rather than a bare UUID.
 
     To discover available kinds, read the ``infrahub://schema`` resource.
     If your client does not support MCP resources, call the ``get_schema`` tool instead.
 
     Args:
-        query: Partial name string to search for.
+        query: Partial substring to search for (matched across all attributes).
         kind: Kind to search within.
         branch: Branch to query.
         limit: Maximum results (1-100, default 10).
 
     Returns:
-        A list of matching node display labels.
+        A list of matching node labels (``display_label`` / HFID / UUID).
 
     Raises:
         RuntimeError: Via ``_log_and_raise_error`` when the schema is not found or the query fails.
@@ -358,7 +372,7 @@ async def search_nodes(
         nodes = await client.filters(
             kind=schema.kind,
             branch=branch,
-            name__value=query,
+            any__value=query,
             partial_match=True,
             populate_store=True,
             order=Order(disable=True),
@@ -367,6 +381,6 @@ async def search_nodes(
     except GraphQLError as exc:
         await _log_and_raise_error(ctx=ctx, error=exc)
 
-    results: list[str] = [obj.display_label or obj.id or "unknown" for obj in nodes[:limit]]
+    results: list[str] = [get_node_label(obj, include_kind=True) for obj in nodes[:limit]]
     await ctx.debug(f"Found {len(results)} matches in {kind}: query_len={len(query)} (request_id={req_id!r})")
     return results
