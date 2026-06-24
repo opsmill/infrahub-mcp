@@ -43,6 +43,8 @@ class ServerConfig(BaseSettings):
         otel_enabled: Enable OpenTelemetry tracing spans.
         prometheus_enabled: Expose Prometheus-format metrics at ``/metrics``.
         dereference_schemas: Dereference ``$ref`` in JSON schemas for client compatibility.
+        schema_expand_peers: When True, schema detail responses inline one level of related
+            peer schemas; when False, relationships are returned as flat peer references.
         ping_interval_ms: Ping interval in milliseconds for HTTP sessions (0 disables,
             max 300 000).
         auth_scopes_write: OAuth scopes required for write operations (comma-separated).
@@ -86,6 +88,7 @@ class ServerConfig(BaseSettings):
     otel_enabled: bool = False
     prometheus_enabled: bool = False
     dereference_schemas: bool = False
+    schema_expand_peers: bool = True
     ping_interval_ms: int = Field(default=0, ge=0, le=300_000)
     auth_scopes_write: str = "write"
     auth_mode: AuthMode = "none"
