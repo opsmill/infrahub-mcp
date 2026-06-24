@@ -9,7 +9,7 @@ description: "Task list for graph traversal tools + single-level schema expansio
 
 **Tests**: Included — the spec requires offline unit coverage (SC-005). New unit tests mock the SDK.
 
-**Detailed code**: Every step's full code + exact commands are in `docs/superpowers/plans/2026-06-24-traversal-tools.md`. This file is the dependency-ordered index.
+**Detailed code**: The implementation is committed under `src/infrahub_mcp/` with tests under `tests/unit/`; this file is the dependency-ordered task index (see the branch git history for per-task commits).
 
 ## Format: `[ID] [P?] [Story] Description`
 

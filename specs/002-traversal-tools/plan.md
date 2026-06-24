@@ -77,4 +77,4 @@ pyproject.toml                # MODIFY: infrahub-sdk floor → >=1.22.0
 
 **Structure Decision**: Single-project Python MCP server. The traversal feature follows the established core/tool split (`schema.py` ↔ `tools/schema.py`) so the logic is unit-testable without a live server and the tool wrapper stays thin.
 
-> The exhaustive, code-complete task breakdown (every step with full code and exact commands) lives in `docs/superpowers/plans/2026-06-24-traversal-tools.md`. `tasks.md` (next phase) is the speckit-format index over those same tasks.
+> The implementation is committed under `src/infrahub_mcp/` (traversal core, tools, schema, config) with tests under `tests/unit/`. `tasks.md` is the dependency-ordered breakdown; see the branch git history for per-task commits.

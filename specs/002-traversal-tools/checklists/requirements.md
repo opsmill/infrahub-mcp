@@ -31,5 +31,5 @@
 
 ## Notes
 
-- Spec derived from the approved design doc `docs/superpowers/specs/2026-06-24-traversal-tools-design.md`; all clarification forks were resolved during brainstorming (node-input model, tool surface, schema-slim depth), so no open markers remain.
+- All clarification forks (node-input model, tool surface, schema-slim depth) were resolved up front during design, so no open markers remain.
 - The single intentional implementation reference (server version 1.10 / SDK floor) is confined to Assumptions, expressed as a capability dependency, not a design instruction.
