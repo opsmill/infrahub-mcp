@@ -1,0 +1,22 @@
+tests/unit/test_schema_expand.py
+  s_9dbeaa0116bfae::t_d589066f34a523 1-131
+src/infrahub_mcp/schema.py
+  s_9dbeaa0116bfae::t_47331c77b884c5 104-115,121
+  s_9dbeaa0116bfae::t_e0157473adfa9b 32-48,54-58,63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "1535b9313d190e3372c613ef6f57bcb5ad8a5c5a",
+  "prompts": {},
+  "sessions": {
+    "s_9dbeaa0116bfae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27f8357f-08f9-4c3c-b3a0-4dffb0f55369",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
