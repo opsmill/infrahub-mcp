@@ -1,0 +1,25 @@
+tests/unit/test_traversal.py
+  s_9dbeaa0116bfae::t_1252d0d249ea87 75
+src/infrahub_mcp/traversal.py
+  s_9dbeaa0116bfae::t_b94c47b29e0215 12
+  s_9dbeaa0116bfae::t_064002706b0aee 160
+  s_9dbeaa0116bfae::t_29ffdab7aa4d2e 138-139
+tests/unit/test_schema_expand.py
+  s_9dbeaa0116bfae::t_b40709d9833245 45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "633d2083af5621be48e9f6fc2452463bf3732d56",
+  "prompts": {},
+  "sessions": {
+    "s_9dbeaa0116bfae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27f8357f-08f9-4c3c-b3a0-4dffb0f55369",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
