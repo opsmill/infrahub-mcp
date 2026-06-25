@@ -4,7 +4,7 @@ from typing import Annotated
 
 import toon
 from fastmcp import Context, FastMCP
-from infrahub_sdk.exceptions import VersionNotSupportedError
+from infrahub_sdk.exceptions import GraphQLError, VersionNotSupportedError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
@@ -15,6 +15,10 @@ mcp: FastMCP = FastMCP(name="Infrahub Traversal")
 
 _VERSION_REMEDIATION = "Graph traversal requires Infrahub 1.10 or later (infrahub-sdk >= 1.22)."
 _RESOLUTION_REMEDIATION = "Use get_nodes or search_nodes to obtain a valid node id or kind-qualified HFID."
+_TRAVERSAL_ERROR_REMEDIATION = (
+    "Infrahub rejected the traversal query (e.g. an unknown node id). "
+    "Verify the node references with get_nodes or search_nodes."
+)
 
 
 async def _find_paths_impl(  # noqa: PLR0913, PLR0917
@@ -42,6 +46,8 @@ async def _find_paths_impl(  # noqa: PLR0913, PLR0917
         await _log_and_raise_error(ctx=ctx, error=str(exc), remediation=_VERSION_REMEDIATION)
     except NodeResolutionError as exc:
         await _log_and_raise_error(ctx=ctx, error=str(exc), remediation=_RESOLUTION_REMEDIATION)
+    except GraphQLError as exc:
+        await _log_and_raise_error(ctx=ctx, error=str(exc), remediation=_TRAVERSAL_ERROR_REMEDIATION)
     return toon.encode(result)
 
 
@@ -70,6 +76,8 @@ async def _find_reachable_impl(  # noqa: PLR0913, PLR0917
         await _log_and_raise_error(ctx=ctx, error=str(exc), remediation=_VERSION_REMEDIATION)
     except NodeResolutionError as exc:
         await _log_and_raise_error(ctx=ctx, error=str(exc), remediation=_RESOLUTION_REMEDIATION)
+    except GraphQLError as exc:
+        await _log_and_raise_error(ctx=ctx, error=str(exc), remediation=_TRAVERSAL_ERROR_REMEDIATION)
     return toon.encode(result)
 
 
@@ -87,7 +95,7 @@ async def find_paths(  # noqa: PLR0913, PLR0917
     ] = None,
     max_depth: Annotated[
         int | None,
-        Field(default=None, description="Maximum relationship hops to explore."),
+        Field(default=None, ge=1, le=30, description="Maximum relationship hops to explore (1-30)."),
     ] = None,
     kind_filter: Annotated[
         list[str] | None,
@@ -133,11 +141,11 @@ async def find_reachable(  # noqa: PLR0913, PLR0917
     ] = None,
     max_depth: Annotated[
         int | None,
-        Field(default=None, description="Maximum traversal depth."),
+        Field(default=None, ge=1, le=30, description="Maximum traversal depth (1-30)."),
     ] = None,
     max_results: Annotated[
         int,
-        Field(default=20, description="Maximum distinct reachable nodes to return."),
+        Field(default=20, ge=1, le=200, description="Maximum distinct reachable nodes to return (1-200)."),
     ] = 20,
     shortest_paths_only: Annotated[
         bool,

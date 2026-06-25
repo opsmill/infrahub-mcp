@@ -50,9 +50,11 @@ async def resolve_node_ref(
 ) -> str | InfrahubNode:
     """Resolve a node reference (UUID or kind-qualified HFID) for traversal.
 
-    A UUID is returned unchanged (the SDK accepts a UUID string directly).
-    Otherwise the value is treated as a kind-qualified HFID of the form
-    ``Kind__part1__part2`` (the form get_nodes emits) and resolved via the SDK.
+    A UUID is passed through unchanged and **not** verified here — the SDK accepts a
+    UUID string directly, and a non-existent UUID surfaces later as a traversal error
+    (existence cannot be checked without also knowing the kind). A non-UUID value is
+    treated as a kind-qualified HFID of the form ``Kind__part1__part2`` (the form
+    get_nodes emits) and resolved via the SDK, which validates existence.
 
     Args:
         client: Infrahub SDK client.
@@ -60,10 +62,10 @@ async def resolve_node_ref(
         branch: Optional branch to resolve against.
 
     Returns:
-        The UUID string, or the resolved InfrahubNode.
+        The UUID string (unverified), or the resolved InfrahubNode.
 
     Raises:
-        NodeResolutionError: If the value is malformed or no node matches.
+        NodeResolutionError: If a non-UUID reference is malformed or its HFID matches no node.
     """
     if _is_uuid(ref):
         return ref

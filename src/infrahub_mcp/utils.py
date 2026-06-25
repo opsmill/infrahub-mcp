@@ -470,7 +470,7 @@ def get_node_label(node: InfrahubNode, *, include_kind: bool = True) -> str:
     return node.id or "unknown"
 
 
-async def convert_node_to_dict(  # noqa: C901  # pylint: disable=too-many-branches
+async def convert_node_to_dict(  # noqa: C901, PLR0912  # pylint: disable=too-many-branches
     *,
     obj: InfrahubNode,
     branch: str | None,
@@ -514,21 +514,26 @@ async def convert_node_to_dict(  # noqa: C901  # pylint: disable=too-many-branch
             if not rel.initialized:
                 await rel.fetch()
             for peer in rel.peers:
+                # A peer without an id is unsaved/unidentifiable — skip it (can't look it up or
+                # label it). Captured to a local so the str narrowing holds across the fetch call.
+                peer_id = peer.id
+                if peer_id is None:
+                    continue
                 # FIXME: We are using the store to avoid doing to many queries to Infrahub
                 # but we could end up doing store+infrahub if the store is not populated
-                # infrahub-sdk>=1.22 widened RelatedNode.id/fetch() to include None; a fetched
-                # peer always has an id and awaitable fetch here, so the unions are narrowed safely.
                 related_node = obj._client.store.get(  # noqa: SLF001
-                    key=peer.id,  # type: ignore[arg-type]
+                    key=peer_id,
                     raise_when_missing=False,
                     branch=branch,
                 )
                 if not related_node:
+                    # infrahub-sdk>=1.22 types fetch() as a sync/async union; in this async path
+                    # it returns an awaitable coroutine.
                     await peer.fetch()  # type: ignore[misc]
                     try:
                         related_node = peer.peer
                     except NodeNotFoundError:
-                        peers.append(peer.id)  # type: ignore[arg-type]
+                        peers.append(peer_id)
                         continue
                 peers.append(get_node_label(related_node, include_kind=hfid_include_kind))
             data[rel_name] = peers

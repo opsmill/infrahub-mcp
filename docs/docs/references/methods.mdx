@@ -124,7 +124,7 @@ Execute a read-only GraphQL query against Infrahub. Mutations are rejected at th
 
 ## Graph traversal
 
-Graph traversal walks the live data graph to find how objects connect. It requires Infrahub 1.10 or later. The `source` and `destination` arguments accept either a node UUID or a kind-qualified human-friendly ID (for example `InfraDevice__atl1-edge1`, the form `get_nodes` returns); unresolvable references return an error pointing at `get_nodes`.
+Graph traversal walks the live data graph to find how objects connect. It requires Infrahub 1.10 or later. Node arguments — `source` (both tools) and `destination` (`find_paths` only) — accept either a node UUID or a kind-qualified human-friendly ID (for example `InfraDevice__atl1-edge1`, the form `get_nodes` returns); an unresolvable human-friendly ID returns an error pointing at `get_nodes`.
 
 <!-- vale off -->
 ### find_paths

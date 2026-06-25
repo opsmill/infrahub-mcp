@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import toon
 from fastmcp.exceptions import ToolError
-from infrahub_sdk.exceptions import NodeNotFoundError, VersionNotSupportedError
+from infrahub_sdk.exceptions import GraphQLError, NodeNotFoundError, VersionNotSupportedError
 from infrahub_sdk.graph_traversal import (
     Path,
     PathHop,
@@ -208,6 +208,13 @@ async def test_find_paths_impl_resolution_error_raises_toolerror() -> None:
     client = AsyncMock()
     with pytest.raises(ToolError, match="get_nodes"):
         await _find_paths_impl(_make_ctx(client), "bad-ref", UUID_B, None, None, None, None)
+
+
+async def test_find_paths_impl_graphql_error_raises_toolerror() -> None:
+    client = AsyncMock()
+    client.traverse_paths = AsyncMock(side_effect=GraphQLError([{"message": "node not found"}]))
+    with pytest.raises(ToolError, match="get_nodes"):
+        await _find_paths_impl(_make_ctx(client), UUID_A, UUID_B, None, None, None, None)
 
 
 async def test_find_reachable_impl_resolution_error_raises_toolerror() -> None:
