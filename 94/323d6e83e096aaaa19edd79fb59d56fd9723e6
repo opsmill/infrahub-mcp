@@ -1,0 +1,25 @@
+tests/integration/fixtures/schema_minimal.yml
+  s_11d9fad6d83de5::t_18630adc866605 12-13
+tests/integration/test_version_compat.py
+  s_11d9fad6d83de5::t_37fd34f1dea5b8 1,3-11,16,33,38-42
+  s_11d9fad6d83de5::t_42b07f145cb565 35-37
+  s_11d9fad6d83de5::t_a30f36acd76bb6 20
+pyproject.toml
+  s_11d9fad6d83de5::t_7ccb7ad1cbc1b7 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "94323d6e83e096aaaa19edd79fb59d56fd9723e6",
+  "prompts": {},
+  "sessions": {
+    "s_11d9fad6d83de5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49df679f-2db6-4741-878c-9ef60a3e3347",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    }
+  }
+}
