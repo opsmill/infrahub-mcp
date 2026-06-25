@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Any, cast
 
-from infrahub_sdk.exceptions import NodeNotFoundError
+from infrahub_sdk.exceptions import NodeNotFoundError, SchemaNotFoundError
 
 if TYPE_CHECKING:
     from infrahub_sdk.client import InfrahubClient
@@ -34,12 +34,15 @@ class NodeResolutionError(Exception):
 
 
 def _is_uuid(value: str) -> bool:
-    """Return True if value parses as a UUID (an Infrahub node id)."""
+    """Return True only for a canonical dashed UUID string (the form Infrahub node ids take).
+
+    ``uuid.UUID`` also accepts 32-hex (no dashes), brace-wrapped, and ``urn:uuid:`` forms;
+    those are rejected here so an HFID/name that merely looks UUID-ish is still resolved.
+    """
     try:
-        uuid.UUID(value)
+        return str(uuid.UUID(value)) == value.lower()
     except ValueError:
         return False
-    return True
 
 
 async def resolve_node_ref(
@@ -55,6 +58,10 @@ async def resolve_node_ref(
     (existence cannot be checked without also knowing the kind). A non-UUID value is
     treated as a kind-qualified HFID of the form ``Kind__part1__part2`` (the form
     get_nodes emits) and resolved via the SDK, which validates existence.
+
+    Note: the ``__`` separator is shared between the kind prefix and HFID components,
+    so a single component whose value contains ``__`` cannot be round-tripped
+    unambiguously (a limitation of the SDK's HFID string form).
 
     Args:
         client: Infrahub SDK client.
@@ -76,7 +83,9 @@ async def resolve_node_ref(
     kind, hfid = parts[0], parts[1:]
     try:
         return await client.get(kind=kind, hfid=hfid, branch=branch)
-    except NodeNotFoundError as exc:
+    except (NodeNotFoundError, SchemaNotFoundError, ValueError, IndexError) as exc:
+        # client.get surfaces an unresolvable reference as one of: NodeNotFoundError (no match),
+        # SchemaNotFoundError (unknown kind), ValueError (kind has no HFID), IndexError (>1 match).
         msg = f"Could not resolve '{ref}': {exc}"
         raise NodeResolutionError(msg) from exc
 

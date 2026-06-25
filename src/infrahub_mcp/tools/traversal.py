@@ -1,6 +1,7 @@
 """Graph-traversal tools for the Infrahub MCP server (requires Infrahub 1.10+)."""
 
-from typing import Annotated
+from collections.abc import Coroutine
+from typing import Annotated, Any
 
 import toon
 from fastmcp import Context, FastMCP
@@ -21,6 +22,22 @@ _TRAVERSAL_ERROR_REMEDIATION = (
 )
 
 
+async def _run_traversal(ctx: Context, coro: Coroutine[Any, Any, dict[str, Any]]) -> str:
+    """Await a traversal orchestrator, translate SDK/resolution failures to ToolError, TOON-encode.
+
+    Single source of truth for the exception → remediation mapping shared by both tools.
+    """
+    try:
+        result = await coro
+    except VersionNotSupportedError as exc:
+        await _log_and_raise_error(ctx=ctx, error=str(exc), remediation=_VERSION_REMEDIATION)
+    except NodeResolutionError as exc:
+        await _log_and_raise_error(ctx=ctx, error=str(exc), remediation=_RESOLUTION_REMEDIATION)
+    except GraphQLError as exc:
+        await _log_and_raise_error(ctx=ctx, error=str(exc), remediation=_TRAVERSAL_ERROR_REMEDIATION)
+    return toon.encode(result)
+
+
 async def _find_paths_impl(  # noqa: PLR0913, PLR0917
     ctx: Context,
     source: str,
@@ -31,24 +48,18 @@ async def _find_paths_impl(  # noqa: PLR0913, PLR0917
     relationship_filter: list[str] | None,
 ) -> str:
     """Resolve endpoints, run the path traversal, and translate failures to ToolError."""
-    client = get_client(ctx)
-    try:
-        result = await run_find_paths(
-            client,
+    return await _run_traversal(
+        ctx,
+        run_find_paths(
+            get_client(ctx),
             source=source,
             destination=destination,
             branch=branch,
             max_depth=max_depth,
             kind_filter=kind_filter,
             relationship_filter=relationship_filter,
-        )
-    except VersionNotSupportedError as exc:
-        await _log_and_raise_error(ctx=ctx, error=str(exc), remediation=_VERSION_REMEDIATION)
-    except NodeResolutionError as exc:
-        await _log_and_raise_error(ctx=ctx, error=str(exc), remediation=_RESOLUTION_REMEDIATION)
-    except GraphQLError as exc:
-        await _log_and_raise_error(ctx=ctx, error=str(exc), remediation=_TRAVERSAL_ERROR_REMEDIATION)
-    return toon.encode(result)
+        ),
+    )
 
 
 async def _find_reachable_impl(  # noqa: PLR0913, PLR0917
@@ -61,24 +72,18 @@ async def _find_reachable_impl(  # noqa: PLR0913, PLR0917
     shortest_paths_only: bool,
 ) -> str:
     """Resolve the source, run the reachability traversal, and translate failures to ToolError."""
-    client = get_client(ctx)
-    try:
-        result = await run_find_reachable(
-            client,
+    return await _run_traversal(
+        ctx,
+        run_find_reachable(
+            get_client(ctx),
             source=source,
             target_kinds=target_kinds,
             branch=branch,
             max_depth=max_depth,
             max_results=max_results,
             shortest_paths_only=shortest_paths_only,
-        )
-    except VersionNotSupportedError as exc:
-        await _log_and_raise_error(ctx=ctx, error=str(exc), remediation=_VERSION_REMEDIATION)
-    except NodeResolutionError as exc:
-        await _log_and_raise_error(ctx=ctx, error=str(exc), remediation=_RESOLUTION_REMEDIATION)
-    except GraphQLError as exc:
-        await _log_and_raise_error(ctx=ctx, error=str(exc), remediation=_TRAVERSAL_ERROR_REMEDIATION)
-    return toon.encode(result)
+        ),
+    )
 
 
 @mcp.tool(tags={"traversal", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))

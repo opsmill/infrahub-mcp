@@ -29,17 +29,24 @@ async def get_schema_catalog(client: "InfrahubClient", branch: str | None = None
     return {kind: node.label or kind for kind, node in all_schemas.items() if node.namespace not in NAMESPACES_INTERNAL}
 
 
+def _shape_attribute(attr: Any) -> dict[str, Any]:
+    """Compact attribute shape, used identically for root and peer schemas."""
+    return {"name": attr.name, "kind": attr.kind, "optional": attr.optional}
+
+
+def _shape_relationship(rel: Any) -> dict[str, Any]:
+    """Compact relationship shape, used identically for root and peer schemas."""
+    return {"name": rel.name, "peer": rel.peer, "cardinality": rel.cardinality, "optional": rel.optional}
+
+
 def _build_peer_schema(peer: Any) -> dict[str, Any]:
     """Build a one-level peer schema dict (no filters, no nested expansion)."""
     return {
         "kind": peer.kind,
         "label": peer.label,
         "namespace": peer.namespace,
-        "attributes": [{"name": a.name, "kind": a.kind, "optional": a.optional} for a in peer.attributes],
-        "relationships": [
-            {"name": r.name, "peer": r.peer, "cardinality": r.cardinality, "optional": r.optional}
-            for r in peer.relationships
-        ],
+        "attributes": [_shape_attribute(a) for a in peer.attributes],
+        "relationships": [_shape_relationship(r) for r in peer.relationships],
     }
 
 
@@ -103,12 +110,7 @@ async def get_schema_detail(
 
     relationships: list[dict[str, Any]] = []
     for rel in schema.relationships:
-        rel_dict: dict[str, Any] = {
-            "name": rel.name,
-            "peer": rel.peer,
-            "cardinality": rel.cardinality,
-            "optional": rel.optional,
-        }
+        rel_dict = _shape_relationship(rel)
         if expand_peers and rel.peer in peer_schemas:
             rel_dict["peer_schema"] = _build_peer_schema(peer_schemas[rel.peer])
         relationships.append(rel_dict)
@@ -117,7 +119,7 @@ async def get_schema_detail(
         "kind": schema.kind,
         "label": schema.label,
         "namespace": schema.namespace,
-        "attributes": [{"name": a.name, "kind": a.kind, "optional": a.optional} for a in schema.attributes],
+        "attributes": [_shape_attribute(a) for a in schema.attributes],
         "relationships": relationships,
         "filters": filter_list,
     }

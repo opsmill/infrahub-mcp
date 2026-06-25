@@ -7,7 +7,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import toon
 from fastmcp.exceptions import ToolError
-from infrahub_sdk.exceptions import GraphQLError, NodeNotFoundError, VersionNotSupportedError
+from infrahub_sdk.exceptions import (
+    GraphQLError,
+    NodeNotFoundError,
+    SchemaNotFoundError,
+    VersionNotSupportedError,
+)
 from infrahub_sdk.graph_traversal import (
     Path,
     PathHop,
@@ -75,6 +80,30 @@ async def test_resolve_not_found_raises() -> None:
     client.get = AsyncMock(side_effect=NodeNotFoundError(identifier={"kind": ["InfraDevice"]}, message="not found"))
     with pytest.raises(NodeResolutionError, match="Could not resolve"):
         await resolve_node_ref(client, "InfraDevice__ghost")
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        SchemaNotFoundError("UnknownKind"),
+        ValueError("Cannot filter by HFID if the node doesn't have an HFID defined"),
+        IndexError("More than 1 node returned"),
+    ],
+)
+async def test_resolve_get_failures_become_node_resolution_error(exc: Exception) -> None:
+    client = AsyncMock()
+    client.get = AsyncMock(side_effect=exc)
+    with pytest.raises(NodeResolutionError, match="Could not resolve"):
+        await resolve_node_ref(client, "SomeKind__some-id")
+
+
+async def test_resolve_non_canonical_uuid_not_treated_as_uuid() -> None:
+    # uuid.UUID() accepts 32-hex-no-dashes, but it is not a canonical node id, so it must
+    # fall through to HFID parsing (and, lacking '__', be reported as malformed).
+    client = AsyncMock()
+    with pytest.raises(NodeResolutionError, match="kind-qualified HFID"):
+        await resolve_node_ref(client, "12345678901234567890123456789012")
+    client.get.assert_not_called()
 
 
 # --- shaping ---------------------------------------------------------------
