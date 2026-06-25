@@ -9,6 +9,8 @@ nodes:
     label: Widget
     description: Test-only node used by the MCP integration suite.
     default_filter: name__value
+    display_labels:
+      - name__value
     human_friendly_id:
       - name__value
     attributes:

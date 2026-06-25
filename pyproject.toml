@@ -26,7 +26,7 @@ dev = [
     "ruff>=0.15.11",
     "pylint>=4.0.5",
     "yamllint>=1.37.1",
-    "infrahub-testcontainers>=1.9.8",
+    "infrahub-testcontainers>=1.10.0",
 ]
 
 [tool.pytest.ini_options]
