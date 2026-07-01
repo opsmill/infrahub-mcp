@@ -26,13 +26,21 @@ dev = [
     "ruff>=0.15.11",
     "pylint>=4.0.5",
     "yamllint>=1.37.1",
+    "infrahub-testcontainers>=1.10.0",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 filterwarnings = []
-addopts = "-p no:pytest-infrahub"
+# Default run = unit only: exclude the integration marker and disable the
+# infrahub-sdk / testcontainers pytest plugins (pulled in by the
+# infrahub-testcontainers dev dependency) so the fast loop stays Docker-free.
+# Run the integration suite with:  uv run pytest -m integration
+addopts = "-p no:pytest-infrahub -p no:pytest-infrahub-performance-test -m 'not integration'"
+markers = [
+    "integration: end-to-end tests against a real Infrahub container (require Docker; opt-in, excluded from the default run).",
+]
 
 [tool.mypy]
 pretty = true

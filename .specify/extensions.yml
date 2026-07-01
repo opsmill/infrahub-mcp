@@ -17,6 +17,14 @@ hooks:
     prompt: Run PR review on implemented changes?
     description: Comprehensive review after implementation
     condition: null
+  - extension: opsmill
+    command: speckit.opsmill.extract
+    enabled: true
+    optional: true
+    prompt: Extract knowledge, guidelines, and ADRs from the completed spec?
+    description: Promote durable content into dev/knowledge, dev/guidelines, dev/adr
+      before the spec ages out.
+    condition: null
   before_constitution:
   - extension: git
     command: speckit.git.initialize
@@ -166,4 +174,12 @@ hooks:
     optional: true
     prompt: Commit after syncing issues?
     description: Auto-commit after tasks-to-issues conversion
+    condition: null
+  - extension: opsmill
+    command: speckit.opsmill.summary
+    enabled: true
+    optional: true
+    prompt: Produce a session summary in the feature directory?
+    description: Flow-level timeline next to spec.md/plan.md, capturing the handoff
+      to the issue tracker.
     condition: null
