@@ -21,3 +21,6 @@ __pycache__
 .claude
 **/worktrees
 .token-savior-cache.json
+
+# Speckit local feature pointer
+.specify/feature.json

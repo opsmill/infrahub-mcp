@@ -514,6 +514,11 @@ async def convert_node_to_dict(  # noqa: C901, PLR0912  # pylint: disable=too-ma
             if not rel.initialized:
                 await rel.fetch()
             for peer in rel.peers:
+                # `rel` is the async RelationshipManager, so each peer is an async
+                # RelatedNode; narrow away the RelatedNodeSync member the SDK declares
+                # on the shared base.
+                if not isinstance(peer, RelatedNode):
+                    continue
                 # A peer without an id is unsaved/unidentifiable — skip it (can't look it up or
                 # label it). Captured to a local so the str narrowing holds across the fetch call.
                 peer_id = peer.id
