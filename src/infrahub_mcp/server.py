@@ -37,6 +37,7 @@ from infrahub_mcp.tools.gql import mcp as graphql_mcp
 from infrahub_mcp.tools.nodes import mcp as nodes_mcp
 from infrahub_mcp.tools.schema import mcp as schema_tools_mcp
 from infrahub_mcp.tools.session import mcp as session_mcp
+from infrahub_mcp.tools.traversal import mcp as traversal_mcp
 from infrahub_mcp.tools.write import mcp as write_mcp
 from infrahub_mcp.utils import AppContext
 
@@ -204,7 +205,13 @@ def infrahub_agent() -> str:
         "- **`get_nodes`** — retrieve objects of a given kind, with optional filters. "
         "Pass `include_attributes=True` for full attribute data.\n"
         "- **`search_nodes`** — find nodes by partial name match.\n"
-        "- **`query_graphql`** — execute a read-only GraphQL query."
+        "- **`query_graphql`** — execute a read-only GraphQL query.\n"
+        '- **`find_paths`** — shortest path(s) between two nodes ("how are these connected?"). '
+        "Requires Infrahub 1.10+.\n"
+        "- **`find_reachable`** — nodes of given kinds reachable from a source "
+        '("what\'s the blast radius?"). Requires Infrahub 1.10+.\n\n'
+        'For "what is connected to X" or impact analysis, prefer `find_paths`/`find_reachable` '
+        "over hand-built deep GraphQL queries."
     )
 
     if not _config.read_only:
@@ -259,6 +266,7 @@ mcp.mount(graphql_mcp)
 mcp.mount(nodes_mcp)
 mcp.mount(session_mcp)
 mcp.mount(schema_tools_mcp)
+mcp.mount(traversal_mcp)
 
 # Write tools — hidden in read-only mode
 if not _config.read_only:

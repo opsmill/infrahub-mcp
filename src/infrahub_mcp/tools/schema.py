@@ -10,7 +10,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from infrahub_mcp.schema import get_schema_catalog, get_schema_detail, get_valid_kinds_summary
-from infrahub_mcp.utils import _log_and_raise_error, get_client
+from infrahub_mcp.utils import _log_and_raise_error, get_client, get_config
 
 mcp: FastMCP = FastMCP(name="Infrahub Schema")
 
@@ -29,12 +29,24 @@ async def get_schema(
         str | None,
         Field(default=None, description="Branch to query. Defaults to the default branch."),
     ] = None,
+    expand: Annotated[
+        bool | None,
+        Field(
+            default=None,
+            description=(
+                "Inline one level of each relationship's peer schema. "
+                "Defaults to the server's INFRAHUB_MCP_SCHEMA_EXPAND_PEERS setting when omitted."
+            ),
+        ),
+    ] = None,
 ) -> str:
     """Discover available schema kinds — call this first when you don't know what kinds or filters exist.
 
     Without a ``kind``, returns the catalog of all kinds (compact JSON).
     With a ``kind``, returns its attributes, relationships, and the full set
     of filter keys accepted by ``get_nodes`` (TOON-encoded for token efficiency).
+    Each relationship inlines one level of its peer schema unless ``expand`` is
+    ``False`` (or the server default disables it).
 
     Prefer reading the ``infrahub://schema`` resource if your client supports
     MCP resources — this tool provides the same data for clients that don't.
@@ -42,6 +54,7 @@ async def get_schema(
     Args:
         kind: Optional kind to get detail for. Omit to list all kinds.
         branch: Branch to query. Defaults to the default branch.
+        expand: Inline one level of peer schemas. Defaults to the server setting.
 
     Returns:
         JSON catalog (no kind) or TOON-encoded schema detail (with kind).
@@ -52,8 +65,10 @@ async def get_schema(
         catalog = await get_schema_catalog(client, branch=branch)
         return json.dumps(catalog, separators=(",", ":"))
 
+    expand_peers = get_config(ctx).schema_expand_peers if expand is None else expand
+
     try:
-        detail = await get_schema_detail(client, kind=kind, branch=branch)
+        detail = await get_schema_detail(client, kind=kind, branch=branch, expand_peers=expand_peers)
     except SchemaNotFoundError:
         valid = await get_valid_kinds_summary(client, branch=branch)
         await _log_and_raise_error(
