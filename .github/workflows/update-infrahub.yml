@@ -46,20 +46,29 @@ jobs:
           pip install uv
           uv sync
 
+      # Reject empty or non-version-shaped input before it reaches any shell command
+      # (defense-in-depth; both trigger paths are already privileged).
+      - name: Validate version input
+        run: |
+          if [[ ! "${INFRAHUB_VERSION}" =~ ^[0-9A-Za-z.+_-]+$ ]]; then
+            echo "::error::Invalid INFRAHUB_VERSION: '${INFRAHUB_VERSION}'"
+            exit 1
+          fi
+
       # infrahub-mcp pins the Infrahub version solely through infrahub-testcontainers
       # (dev group). docker-compose.yml pins the MCP server's own published image
       # (opsmill/infrahub-mcp), not an Infrahub instance, so it is intentionally not
       # bumped here — a sed over opsmill/infrahub* would wrongly rewrite that tag.
       - name: Update testcontainers to workflow version ${{ env.INFRAHUB_VERSION }}
         run: |
-          uv add --group dev infrahub-testcontainers==${INFRAHUB_VERSION}
+          uv add --group dev "infrahub-testcontainers==${INFRAHUB_VERSION}"
 
       - name: Prepare the branch for the update
         id: prepare-branch
         run: |
-          echo "Checking if branch ${{ env.BRANCH_NAME }} exists..."
-          BRANCH_EXISTS=$(git ls-remote --heads origin ${{ env.BRANCH_NAME }} | wc -l)
-          echo "BRANCH_EXISTS=$BRANCH_EXISTS" >> $GITHUB_ENV
+          echo "Checking if branch ${BRANCH_NAME} exists..."
+          BRANCH_EXISTS=$(git ls-remote --heads origin "${BRANCH_NAME}" | wc -l)
+          echo "BRANCH_EXISTS=$BRANCH_EXISTS" >> "$GITHUB_ENV"
 
       - name: Commit and push changes
         uses: github-actions-x/commit@v2.9
@@ -76,14 +85,14 @@ jobs:
 
       - name: Create a pull request
         run: |
-          echo ${{ secrets.GH_UPDATE_PACKAGE_OTTO }} | gh auth login --with-token
+          echo "${{ secrets.GH_UPDATE_PACKAGE_OTTO }}" | gh auth login --with-token
           # Skip create if a PR already exists for this head branch (re-runs against the same version).
-          if [ -n "$(gh pr list --head "${{ env.BRANCH_NAME }}" --state open --json number --jq '.[0].number')" ]; then
-            echo "PR for ${{ env.BRANCH_NAME }} already open, skipping create"
+          if [ -n "$(gh pr list --head "${BRANCH_NAME}" --state open --json number --jq '.[0].number')" ]; then
+            echo "PR for ${BRANCH_NAME} already open, skipping create"
             exit 0
           fi
           gh pr create \
-            --title "update Infrahub to version ${{ env.INFRAHUB_VERSION }} against ${{ matrix.branch-name }}" \
-            --body "This PR updates Infrahub to version ${{ env.INFRAHUB_VERSION }}." \
-            --base ${{ matrix.branch-name }} \
-            --head ${{ env.BRANCH_NAME }}
+            --title "update Infrahub to version ${INFRAHUB_VERSION} against ${{ matrix.branch-name }}" \
+            --body "This PR updates Infrahub to version ${INFRAHUB_VERSION}." \
+            --base "${{ matrix.branch-name }}" \
+            --head "${BRANCH_NAME}"

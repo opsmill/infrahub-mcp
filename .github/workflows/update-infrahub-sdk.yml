@@ -46,6 +46,15 @@ jobs:
           pip install uv
           uv sync
 
+      # Reject empty or non-version-shaped input before it reaches any shell command
+      # (defense-in-depth; both trigger paths are already privileged).
+      - name: Validate version input
+        run: |
+          if [[ ! "${INFRAHUB_SDK_VERSION}" =~ ^[0-9A-Za-z.+_-]+$ ]]; then
+            echo "::error::Invalid INFRAHUB_SDK_VERSION: '${INFRAHUB_SDK_VERSION}'"
+            exit 1
+          fi
+
       # infrahub-mcp depends on the bare `infrahub-sdk` (no extras), so bump it
       # without a bracket group. Add extras here only if pyproject starts using them.
       - name: Update infrahub-sdk to version ${{ env.INFRAHUB_SDK_VERSION }}
@@ -55,9 +64,9 @@ jobs:
       - name: Prepare the branch for the update
         id: prepare-branch
         run: |
-          echo "Checking if branch ${{ env.BRANCH_NAME }} exists..."
-          BRANCH_EXISTS=$(git ls-remote --heads origin ${{ env.BRANCH_NAME }} | wc -l)
-          echo "BRANCH_EXISTS=$BRANCH_EXISTS" >> $GITHUB_ENV
+          echo "Checking if branch ${BRANCH_NAME} exists..."
+          BRANCH_EXISTS=$(git ls-remote --heads origin "${BRANCH_NAME}" | wc -l)
+          echo "BRANCH_EXISTS=$BRANCH_EXISTS" >> "$GITHUB_ENV"
 
       - name: Commit and push changes
         uses: github-actions-x/commit@v2.9
@@ -74,14 +83,14 @@ jobs:
 
       - name: Create a pull request
         run: |
-          echo ${{ secrets.GH_UPDATE_PACKAGE_OTTO }} | gh auth login --with-token
+          echo "${{ secrets.GH_UPDATE_PACKAGE_OTTO }}" | gh auth login --with-token
           # Skip create if a PR already exists for this head branch (re-runs against the same version).
-          if [ -n "$(gh pr list --head "${{ env.BRANCH_NAME }}" --state open --json number --jq '.[0].number')" ]; then
-            echo "PR for ${{ env.BRANCH_NAME }} already open, skipping create"
+          if [ -n "$(gh pr list --head "${BRANCH_NAME}" --state open --json number --jq '.[0].number')" ]; then
+            echo "PR for ${BRANCH_NAME} already open, skipping create"
             exit 0
           fi
           gh pr create \
-            --title "update infrahub-sdk to version ${{ env.INFRAHUB_SDK_VERSION }} against ${{ matrix.branch-name }}" \
-            --body "This PR updates infrahub-sdk to version ${{ env.INFRAHUB_SDK_VERSION }}." \
-            --base ${{ matrix.branch-name }} \
-            --head ${{ env.BRANCH_NAME }}
+            --title "update infrahub-sdk to version ${INFRAHUB_SDK_VERSION} against ${{ matrix.branch-name }}" \
+            --body "This PR updates infrahub-sdk to version ${INFRAHUB_SDK_VERSION}." \
+            --base "${{ matrix.branch-name }}" \
+            --head "${BRANCH_NAME}"
