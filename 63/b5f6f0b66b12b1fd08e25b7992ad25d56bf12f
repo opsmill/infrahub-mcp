@@ -1,0 +1,23 @@
+.github/workflows/update-infrahub-sdk.yml
+  s_4bdfc77c867f04::t_039a78a1f22baa 49-57,67-69
+  s_4bdfc77c867f04::t_7d83610cf4543c 86,88-89,93-96
+.github/workflows/update-infrahub.yml
+  s_4bdfc77c867f04::t_7c74217101b7c5 49-57,64,69-71
+  s_4bdfc77c867f04::t_940007dbae1e15 88,90-91,95-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.9",
+  "base_commit_sha": "63b5f6f0b66b12b1fd08e25b7992ad25d56bf12f",
+  "prompts": {},
+  "sessions": {
+    "s_4bdfc77c867f04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0bd7a30e-7587-4c2a-88aa-1e169d59a6b6",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
