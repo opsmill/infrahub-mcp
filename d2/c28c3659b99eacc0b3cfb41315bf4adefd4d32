@@ -1,0 +1,19 @@
+.github/CODEOWNERS
+  s_4bdfc77c867f04::t_154b9d12e4457f 2-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.9",
+  "base_commit_sha": "d2c28c3659b99eacc0b3cfb41315bf4adefd4d32",
+  "prompts": {},
+  "sessions": {
+    "s_4bdfc77c867f04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0bd7a30e-7587-4c2a-88aa-1e169d59a6b6",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
