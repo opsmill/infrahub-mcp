@@ -1,0 +1,36 @@
+docs/pnpm-workspace.yaml
+  s_4bdfc77c867f04::t_abac42b41873ee 1-10,12
+  s_4bdfc77c867f04::t_cbdff9698ecb3e 11
+.github/build-docs.sh
+  s_4bdfc77c867f04::t_90e14a98515f1c 3
+.github/workflows/ci.yml
+  s_4bdfc77c867f04::t_5a02da9701c2c1 15-18,20
+  s_4bdfc77c867f04::t_397d60265a17ba 159-162,167-168,170
+  s_4bdfc77c867f04::t_7fce9de3970f2b 206-254
+  s_4bdfc77c867f04::t_b105f3fa1f6c3a 27-29
+docs/package.json
+  s_4bdfc77c867f04::t_68db257ab201ce 42
+.yamllint.yml
+  s_4bdfc77c867f04::t_50f60024a1c98a 8
+  s_4bdfc77c867f04::t_f01b70263bc8e4 20-21
+tasks.py
+  s_4bdfc77c867f04::t_2e63fb3cd7f34b 79
+docs/pnpm-lock.yaml
+  s_4bdfc77c867f04::t_9417eb36626131 1-14035
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.9",
+  "base_commit_sha": "c7a694e20b17f4917b973478177239d77ef53559",
+  "prompts": {},
+  "sessions": {
+    "s_4bdfc77c867f04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0bd7a30e-7587-4c2a-88aa-1e169d59a6b6",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
