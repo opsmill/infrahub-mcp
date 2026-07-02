@@ -1,7 +1,3 @@
 # Code ownership for opsmill/infrahub-mcp.
-# Modeled on opsmill/infrahub-sdk-python: the backend team owns the Python
-# package, tests, and dependency manifests.
-/src/           @opsmill/backend
-/tests/         @opsmill/backend
-uv.lock         @opsmill/backend
-pyproject.toml  @opsmill/backend
+# The solutions-architecture team owns the repository.
+* @opsmill/sa
