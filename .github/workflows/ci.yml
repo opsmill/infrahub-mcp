@@ -113,7 +113,7 @@ jobs:
 
   yaml-lint:
     if: needs.files-changed.outputs.yaml == 'true'
-    needs: ["files-changed"]
+    needs: ["files-changed", "prepare-environment"]
     runs-on: "ubuntu-latest"
     timeout-minutes: 5
     steps:
@@ -121,10 +121,16 @@ jobs:
         uses: "actions/checkout@v7"
         with:
           submodules: true
-      - name: "Setup environment"
-        run: "pip install yamllint==1.35.1"
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ needs.prepare-environment.outputs.PYTHON_VERSION }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ needs.prepare-environment.outputs.UV_VERSION }}
       - name: "Linting: yamllint"
-        run: "yamllint -s ."
+        run: "uv run yamllint -s ."
 
   documentation:
     defaults:
@@ -135,7 +141,7 @@ jobs:
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
       needs.files-changed.outputs.documentation == 'true'
-    needs: ["files-changed", "yaml-lint", "python-lint"]
+    needs: ["files-changed", "prepare-environment", "yaml-lint", "python-lint"]
     runs-on: "ubuntu-22.04"
     timeout-minutes: 5
     steps:
@@ -151,10 +157,16 @@ jobs:
           cache-dependency-path: docs/package-lock.json
       - name: "Install dependencies"
         run: npm install
-      - name: "Setup Python environment"
-        run: "pip install invoke toml"
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ needs.prepare-environment.outputs.PYTHON_VERSION }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ needs.prepare-environment.outputs.UV_VERSION }}
       - name: "Build docs website"
-        run: "invoke docs"
+        run: "uv run invoke docs"
 
   validate-documentation-style:
     if: |
