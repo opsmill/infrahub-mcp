@@ -8,8 +8,6 @@ github_workflows: &github_workflows
 
 doc_files: &doc_files
   - "docs/**"
-  - package.json
-  - package-lock.json
 
 python_all: &python_all
   - "**/*.py"

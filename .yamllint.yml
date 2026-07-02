@@ -5,6 +5,7 @@ ignore: |
   /.git
   /.venv
   /.specify
+  **/pnpm-lock.yaml
   /examples
   /repositories
   /frontend/**/playwright-report
@@ -16,6 +17,8 @@ ignore: |
 rules:
   new-lines: disable
   comments-indentation: disable
+  truthy:
+    check-keys: false  # allow bare `on:` keys in workflows without inline disables
   comments:
     # Changed this to stop a mess between linters from Prettier (vscode) to yamllint
     # See https://github.com/prettier/prettier/pull/10926 or https://github.com/redhat-developer/vscode-yaml/issues/433
