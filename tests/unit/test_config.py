@@ -29,6 +29,7 @@ class TestServerConfig:
         assert config.otel_enabled is False
         assert config.prometheus_enabled is False
         assert config.dereference_schemas is False
+        assert config.schema_expand_peers is True
         assert config.ping_interval_ms == 0
         assert config.auth_scopes_write == "write"
         assert config.auth_mode == "none"
@@ -75,6 +76,26 @@ class TestLoadConfig:  # noqa: PLR0904
         with patch.dict(os.environ, {"INFRAHUB_MCP_READ_ONLY": "false"}, clear=True):
             config = load_config()
         assert config.read_only is False
+
+    def test_schema_expand_peers_default(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            config = load_config()
+        assert config.schema_expand_peers is True
+
+    def test_schema_expand_peers_false(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_SCHEMA_EXPAND_PEERS": "false"}, clear=True):
+            config = load_config()
+        assert config.schema_expand_peers is False
+
+    def test_schema_expand_peers_zero(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_SCHEMA_EXPAND_PEERS": "0"}, clear=True):
+            config = load_config()
+        assert config.schema_expand_peers is False
+
+    def test_schema_expand_peers_yes(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_SCHEMA_EXPAND_PEERS": "YES"}, clear=True):
+            config = load_config()
+        assert config.schema_expand_peers is True
 
     def test_branch_pattern_custom(self) -> None:
         with patch.dict(os.environ, {"INFRAHUB_MCP_BRANCH_PATTERN": "mcp/{user}-{date}"}, clear=True):

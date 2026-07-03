@@ -37,6 +37,7 @@ Prefer reading the `infrahub://schema` resource if your client supports MCP reso
 
 - **kind** (string): kind to get detail for; omit to list all kinds
 - **branch** (string): branch to read from; default is the server's default branch
+- **expand** (boolean): inline one level of each relationship's peer schema; defaults to the server's `INFRAHUB_MCP_SCHEMA_EXPAND_PEERS` setting
 
 ## Nodes
 
@@ -120,6 +121,56 @@ Execute a read-only GraphQL query against Infrahub. Mutations are rejected at th
 
 - **query** (string, required): GraphQL query document (mutations rejected)
 - **branch** (string): branch to execute against; default is the server's default branch
+
+## Graph traversal
+
+Graph traversal walks the live data graph to find how objects connect. It requires Infrahub 1.10 or later. Node arguments — `source` (both tools) and `destination` (`find_paths` only) — accept either a node UUID or a kind-qualified human-friendly ID (for example `InfraDevice__atl1-edge1`, the form `get_nodes` returns); an unresolvable human-friendly ID returns an error pointing at `get_nodes`.
+
+<!-- vale off -->
+### find_paths
+<!-- vale on -->
+
+#### Capabilities
+
+- read-only
+- idempotent
+- no destroy
+
+Find the shortest path(s) between two nodes. A `count` of 0 means no path within `max_depth`. Prefer this over a hand-built deep GraphQL query when you need to know how two objects are connected.
+
+#### Parameters
+
+<!-- vale off -->
+- **source** (string, required): start node — UUID or kind-qualified human-friendly ID
+- **destination** (string, required): end node — UUID or kind-qualified human-friendly ID
+- **branch** (string): branch to read from; default is the server's default branch
+- **max_depth** (integer): maximum relationship hops to explore
+- **kind_filter** (array of strings): only traverse through nodes of these kinds
+- **relationship_filter** (array of strings): only follow these schema relationship identifiers
+<!-- vale on -->
+
+<!-- vale off -->
+### find_reachable
+<!-- vale on -->
+
+#### Capabilities
+
+- read-only
+- idempotent
+- no destroy
+
+Find nodes of the given kinds reachable from a source node — impact and dependency analysis.
+
+#### Parameters
+
+<!-- vale off -->
+- **source** (string, required): source node — UUID or kind-qualified human-friendly ID
+- **target_kinds** (array of strings, required): node kinds to search for
+- **branch** (string): branch to read from; default is the server's default branch
+- **max_depth** (integer): maximum traversal depth
+- **max_results** (integer, default: 20): maximum distinct reachable nodes returned
+- **shortest_paths_only** (boolean, default: true): return only the shortest path to each target
+<!-- vale on -->
 
 ## Write operations
 

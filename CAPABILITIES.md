@@ -1,9 +1,9 @@
 ## Infrahub MCP Server 1.1.7
 
-| ✔ Tools (10) | ✔ Prompts (4) | ✔ Resources (3) | ✔ Logging | ~~<span style="opacity:0.6" class="error">✘ Completions</span>~~ | ~~<span style="opacity:0.6" class="error">✘ Tasks</span>~~ |
+| ✔ Tools (12) | ✔ Prompts (4) | ✔ Resources (3) | ✔ Logging | ~~<span style="opacity:0.6" class="error">✘ Completions</span>~~ | ~~<span style="opacity:0.6" class="error">✘ Tasks</span>~~ |
 | --- | --- | --- | --- | --- | --- |
 
-## 🛠️ Tools (10)
+## 🛠️ Tools (12)
 
 <table style="text-align: left;">
 <thead>
@@ -18,6 +18,46 @@
 <tbody style="vertical-align: top;">
         <tr>
             <td>1.</td>
+            <td>
+                <!--- no icon -->
+            </td>
+            <td>
+                <code><b>find_paths</b></code>
+            </td>
+            <td>Find the shortest path(s) between two nodes in the Infrahub graph.<br/><br/>Use this to answer "how are these two objects connected?". A result with<br/>`<code>count</code>` of 0 means no path exists within `<code>max_depth</code>`. Requires Infrahub 1.10+.</td>
+            <td>
+                <ul>
+                    <li> <code>branch</code> : string | null<br /></li>
+                    <li> <code>destination</code> : string<br /></li>
+                    <li> <code>kind_filter</code> : string [ ] | null<br /></li>
+                    <li> <code>max_depth</code> : integer | null<br /></li>
+                    <li> <code>relationship_filter</code> : string [ ] | null<br /></li>
+                    <li> <code>source</code> : string<br /></li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>2.</td>
+            <td>
+                <!--- no icon -->
+            </td>
+            <td>
+                <code><b>find_reachable</b></code>
+            </td>
+            <td>Find nodes of the given kinds reachable from a source node (impact analysis).<br/><br/>Use this to answer "what depends on / is connected to this object?" — for<br/>blast-radius and dependency discovery. Requires Infrahub 1.10+.</td>
+            <td>
+                <ul>
+                    <li> <code>branch</code> : string | null<br /></li>
+                    <li> <code>max_depth</code> : integer | null<br /></li>
+                    <li> <code>max_results</code> : integer<br /></li>
+                    <li> <code>shortest_paths_only</code> : boolean<br /></li>
+                    <li> <code>source</code> : string<br /></li>
+                    <li> <code>target_kinds</code> : string [ ]<br /></li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>3.</td>
             <td>
                 <!--- no icon -->
             </td>
@@ -38,23 +78,24 @@
             </td>
         </tr>
         <tr>
-            <td>2.</td>
+            <td>4.</td>
             <td>
                 <!--- no icon -->
             </td>
             <td>
                 <code><b>get_schema</b></code>
             </td>
-            <td>Discover available schema kinds — call this first when you don't know what kinds or filters exist.<br/><br/>Without a `<code>kind</code>`, returns the catalog of all kinds (compact JSON).<br/>With a `<code>kind</code>`, returns its attributes, relationships, and the full set<br/>of filter keys accepted by `<code>get_nodes</code>` (TOON-encoded for token efficiency).<br/><br/>Prefer reading the ``infrahub://schema`` resource if your client supports<br/>MCP resources — this tool provides the same data for clients that don't.</td>
+            <td>Discover available schema kinds — call this first when you don't know what kinds or filters exist.<br/><br/>Without a `<code>kind</code>`, returns the catalog of all kinds (compact JSON).<br/>With a `<code>kind</code>`, returns its attributes, relationships, and the full set<br/>of filter keys accepted by `<code>get_nodes</code>` (TOON-encoded for token efficiency).<br/>Each relationship inlines one level of its peer schema unless `<code>expand</code>` is<br/>`<code>False</code>` (or the server default disables it).<br/><br/>Prefer reading the ``infrahub://schema`` resource if your client supports<br/>MCP resources — this tool provides the same data for clients that don't.</td>
             <td>
                 <ul>
                     <li> <code>branch</code> : string | null<br /></li>
+                    <li> <code>expand</code> : boolean | null<br /></li>
                     <li> <code>kind</code> : string | null<br /></li>
                 </ul>
             </td>
         </tr>
         <tr>
-            <td>3.</td>
+            <td>5.</td>
             <td>
                 <!--- no icon -->
             </td>
@@ -68,7 +109,7 @@
             </td>
         </tr>
         <tr>
-            <td>4.</td>
+            <td>6.</td>
             <td>
                 <!--- no icon -->
             </td>
@@ -83,7 +124,7 @@
             </td>
         </tr>
         <tr>
-            <td>5.</td>
+            <td>7.</td>
             <td>
                 <!--- no icon -->
             </td>
@@ -100,7 +141,7 @@
             </td>
         </tr>
         <tr>
-            <td>6.</td>
+            <td>8.</td>
             <td>
                 <!--- no icon -->
             </td>
@@ -118,7 +159,7 @@
             </td>
         </tr>
         <tr>
-            <td>7.</td>
+            <td>9.</td>
             <td>
                 <!--- no icon -->
             </td>
@@ -135,7 +176,7 @@
             </td>
         </tr>
         <tr>
-            <td>8.</td>
+            <td>10.</td>
             <td>
                 <!--- no icon -->
             </td>
@@ -151,7 +192,7 @@
             </td>
         </tr>
         <tr>
-            <td>9.</td>
+            <td>11.</td>
             <td>
                 <!--- no icon -->
             </td>
@@ -166,7 +207,7 @@
             </td>
         </tr>
         <tr>
-            <td>10.</td>
+            <td>12.</td>
             <td>
                 <!--- no icon -->
             </td>
@@ -307,7 +348,7 @@
             <td>
                 <a>infrahub://schema/{kind}</a> <i>(text/plain)</i>
             </td>
-            <td>Full schema definition for a specific node kind: attributes, relationships, and the complete set of filters accepted by get_nodes. Fetch this before filtering nodes of an unfamiliar kind. Arrays are encoded in TOON tabular format: header declares fields once, each row is one entry.</td>
+            <td>Full schema definition for a specific node kind: attributes, relationships, and the complete set of filters accepted by get_nodes. Relationships include one level of inlined peer schemas when INFRAHUB_MCP_SCHEMA_EXPAND_PEERS is enabled (the default). Fetch this before filtering nodes of an unfamiliar kind. Arrays are encoded in TOON tabular format: header declares fields once, each row is one entry.</td>
         </tr>
 </tbody>
 </table>

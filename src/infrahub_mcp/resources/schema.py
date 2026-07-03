@@ -8,7 +8,7 @@ from fastmcp.exceptions import ResourceError
 from infrahub_sdk.exceptions import BranchNotFoundError, SchemaNotFoundError
 
 from infrahub_mcp.schema import get_schema_catalog, get_schema_detail
-from infrahub_mcp.utils import get_client
+from infrahub_mcp.utils import get_client, get_config
 
 mcp: FastMCP = FastMCP(name="Infrahub Schema Resources")
 
@@ -42,6 +42,8 @@ async def schema_catalog(ctx: Context) -> str:
     description=(
         "Full schema definition for a specific node kind: attributes, relationships, "
         "and the complete set of filters accepted by get_nodes. "
+        "Relationships include one level of inlined peer schemas when "
+        "INFRAHUB_MCP_SCHEMA_EXPAND_PEERS is enabled (the default). "
         "Fetch this before filtering nodes of an unfamiliar kind. "
         "Arrays are encoded in TOON tabular format: "
         "header declares fields once, each row is one entry."
@@ -51,9 +53,10 @@ async def schema_catalog(ctx: Context) -> str:
 async def schema_kind_detail(kind: str, ctx: Context) -> str:
     """Return full schema definition and available filters for *kind* encoded as TOON."""
     client = get_client(ctx)
+    config = get_config(ctx)
 
     try:
-        payload = await get_schema_detail(client, kind=kind)
+        payload = await get_schema_detail(client, kind=kind, expand_peers=config.schema_expand_peers)
     except SchemaNotFoundError as exc:
         msg = f"Schema not found for kind '{kind}'. Read infrahub://schema to list valid kind names."
         raise ResourceError(msg) from exc

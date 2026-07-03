@@ -29,16 +29,45 @@ async def get_schema_catalog(client: "InfrahubClient", branch: str | None = None
     return {kind: node.label or kind for kind, node in all_schemas.items() if node.namespace not in NAMESPACES_INTERNAL}
 
 
-async def get_schema_detail(client: "InfrahubClient", kind: str, branch: str | None = None) -> dict[str, Any]:
+def _shape_attribute(attr: Any) -> dict[str, Any]:
+    """Compact attribute shape, used identically for root and peer schemas."""
+    return {"name": attr.name, "kind": attr.kind, "optional": attr.optional}
+
+
+def _shape_relationship(rel: Any) -> dict[str, Any]:
+    """Compact relationship shape, used identically for root and peer schemas."""
+    return {"name": rel.name, "peer": rel.peer, "cardinality": rel.cardinality, "optional": rel.optional}
+
+
+def _build_peer_schema(peer: Any) -> dict[str, Any]:
+    """Build a one-level peer schema dict (no filters, no nested expansion)."""
+    return {
+        "kind": peer.kind,
+        "label": peer.label,
+        "namespace": peer.namespace,
+        "attributes": [_shape_attribute(a) for a in peer.attributes],
+        "relationships": [_shape_relationship(r) for r in peer.relationships],
+    }
+
+
+async def get_schema_detail(
+    client: "InfrahubClient", kind: str, branch: str | None = None, expand_peers: bool = True
+) -> dict[str, Any]:
     """Return full schema detail for a specific kind.
 
     Includes attributes, relationships, and the complete filter map
     (with filters derived from related peer schemas fetched in parallel).
 
+    When ``expand_peers`` is ``True``, each relationship whose peer kind exists
+    includes a ``peer_schema`` key holding that peer's attributes and
+    relationships, inlined a single level deep. Peer schemas omit filters and
+    are not expanded further (their relationships stay as plain peer references).
+
     Args:
         client: Infrahub SDK client.
         kind: Schema kind to retrieve.
         branch: Optional branch to query.
+        expand_peers: Inline one level of peer schemas on relationships.
 
     Returns:
         Dict with keys: kind, label, namespace, attributes, relationships, filters.
@@ -79,15 +108,19 @@ async def get_schema_detail(client: "InfrahubClient", kind: str, branch: str | N
             for attr in rel_schema.attributes
         )
 
+    relationships: list[dict[str, Any]] = []
+    for rel in schema.relationships:
+        rel_dict = _shape_relationship(rel)
+        if expand_peers and rel.peer in peer_schemas:
+            rel_dict["peer_schema"] = _build_peer_schema(peer_schemas[rel.peer])
+        relationships.append(rel_dict)
+
     return {
         "kind": schema.kind,
         "label": schema.label,
         "namespace": schema.namespace,
-        "attributes": [{"name": a.name, "kind": a.kind, "optional": a.optional} for a in schema.attributes],
-        "relationships": [
-            {"name": r.name, "peer": r.peer, "cardinality": r.cardinality, "optional": r.optional}
-            for r in schema.relationships
-        ],
+        "attributes": [_shape_attribute(a) for a in schema.attributes],
+        "relationships": relationships,
         "filters": filter_list,
     }
 

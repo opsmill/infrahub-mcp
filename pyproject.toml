@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fastmcp>=3.2.0",
-    "infrahub-sdk>=1.20.0",
+    "infrahub-sdk>=1.22.0",
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.6,<3",
     "toonify>=0.1.2",

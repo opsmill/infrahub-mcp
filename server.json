@@ -176,6 +176,13 @@
           "isRequired": false,
           "format": "string",
           "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_SCHEMA_EXPAND_PEERS",
+          "description": "Schema expand peers (default: true)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
         }
       ]
     }
