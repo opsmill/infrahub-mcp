@@ -76,7 +76,7 @@ def ui_dev(context: Context) -> None:
 @task(name="docs")
 def docs_build(context: Context) -> None:
     """Build documentation website."""
-    exec_cmd = "npm run build"
+    exec_cmd = "pnpm run build"
 
     with context.cd(DOCUMENTATION_DIRECTORY):
         output = context.run(exec_cmd)

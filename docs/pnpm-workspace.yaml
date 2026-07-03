@@ -1,0 +1,12 @@
+---
+# pnpm 11 reads settings from this file (no longer from the package.json "pnpm" field).
+# Version overrides preserve the security pins that previously lived in npm's "overrides".
+overrides:
+  serialize-javascript: "^7.0.5"
+  uuid: "^14.0.1"
+  minimatch@9: "^9.0.7"
+
+# core-js only ships a postinstall funding banner; it is not needed for the docs build,
+# so its build script is disabled to keep `pnpm install --frozen-lockfile` non-interactive.
+allowBuilds:
+  core-js: false

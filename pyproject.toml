@@ -27,6 +27,7 @@ dev = [
     "pylint>=4.0.5",
     "yamllint>=1.37.1",
     "infrahub-testcontainers>=1.10.0",
+    "towncrier>=25.8.0",
 ]
 
 [tool.pytest.ini_options]
@@ -190,6 +191,52 @@ front-matter-title = ""
 # MD060: require leading and trailing pipes
 [tool.rumdl.MD060]
 enabled = true
+
+[tool.towncrier]
+package = "infrahub_mcp"
+directory = "changelog"
+filename = "CHANGELOG.md"
+start_string = "<!-- towncrier release notes start -->\n"
+underlines = ["", "", ""]
+title_format = "## [Infrahub MCP - v{version}](https://github.com/opsmill/infrahub-mcp/tree/v{version}) - {project_date}"
+issue_format = "[#{issue}](https://github.com/opsmill/infrahub-mcp/issues/{issue})"
+orphan_prefix = "+"
+template = "changelog/towncrier.md.template"
+
+[[tool.towncrier.type]]
+directory = "security"
+name = "Security"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "removed"
+name = "Removed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "deprecated"
+name = "Deprecated"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "added"
+name = "Added"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "changed"
+name = "Changed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "fixed"
+name = "Fixed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "housekeeping"
+name = "Housekeeping"
+showcontent = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/infrahub_mcp"]
