@@ -772,6 +772,7 @@ dependencies = [
     { name = "infrahub-sdk" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "python-dotenv" },
     { name = "toonify" },
 ]
 
@@ -796,6 +797,7 @@ requires-dist = [
     { name = "infrahub-sdk", specifier = ">=1.22.0" },
     { name = "pydantic", specifier = ">=2.10,<3" },
     { name = "pydantic-settings", specifier = ">=2.6,<3" },
+    { name = "python-dotenv", specifier = ">=1.0,<2" },
     { name = "toonify", specifier = ">=0.1.2" },
 ]
 

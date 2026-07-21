@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import string
 from typing import Literal
 
@@ -177,8 +178,35 @@ def _validate_auth_requirements(config: ServerConfig) -> None:
             raise ValueError(msg)
 
 
+def _prime_env_from_dotenv() -> None:
+    """Load a ``.env`` file into ``os.environ`` before config/client construction.
+
+    The path comes from ``INFRAHUB_MCP_ENV_FILE`` read raw from the environment
+    (it must resolve before the :class:`ServerConfig` model exists), defaulting
+    to ``./.env``. A missing file is a silent no-op. Loading here means both the
+    MCP ``ServerConfig`` (``INFRAHUB_MCP_*``) and the Infrahub SDK client
+    (``INFRAHUB_*``) pick the values up, since both read ``os.environ``.
+
+    Real environment variables always win over the file. The precedence check is
+    **case-insensitive**: both settings models use ``case_sensitive=False``, so a
+    real ``infrahub_mcp_read_only`` must not be shadowed by a ``.env`` entry
+    spelled ``INFRAHUB_MCP_READ_ONLY``. ``python-dotenv``'s own ``override=False``
+    only compares exact spellings, which would let such a case-variant slip
+    through — so we apply the values ourselves, skipping any key already present
+    in any case.
+    """
+    from dotenv import dotenv_values  # noqa: PLC0415
+
+    path = os.environ.get("INFRAHUB_MCP_ENV_FILE") or ".env"
+    existing = {key.lower() for key in os.environ}
+    for key, value in dotenv_values(path).items():
+        if value is not None and key.lower() not in existing:
+            os.environ[key] = value
+
+
 def load_config() -> ServerConfig:
     """Load and validate server configuration from environment variables."""
+    _prime_env_from_dotenv()
     config = ServerConfig()
     _validate_auth_requirements(config)
     return config
