@@ -29,6 +29,48 @@ Create `.mcp.json` at the root of the repository where you want the Infrahub ser
 
 Claude Code loads the server on the next session. Run `claude` in the project directory and you should see `infrahub` listed under **/mcp**.
 
+## Keeping the token out of `.mcp.json`
+
+`.mcp.json` is usually committed to your repository, so it should not contain
+secrets. Instead, keep only the non-secret `INFRAHUB_ADDRESS` in its `env:`
+block and put the token in a `.env` file (kept out of version control) in the
+same directory.
+
+`.mcp.json` (committed):
+
+```json
+{
+  "mcpServers": {
+    "infrahub": {
+      "command": "uvx",
+      "args": ["infrahub-mcp"],
+      "env": {
+        "INFRAHUB_ADDRESS": "http://localhost:8000"
+      }
+    }
+  }
+}
+```
+
+`.env` (add it to `.gitignore`; place it in the directory Claude Code launches from):
+
+```bash
+INFRAHUB_API_TOKEN=your-token-here
+# or, instead of a token:
+# INFRAHUB_USERNAME=admin
+# INFRAHUB_PASSWORD=infrahub
+```
+
+The server loads `.env` at startup into its environment. Values already set in
+the real environment (including the `.mcp.json` `env:` block) take precedence,
+so `.env` never overrides an explicitly set variable. To load a file from a
+different location, set `INFRAHUB_MCP_ENV_FILE=/path/to/file`.
+
+`.env` applies to the default stdio / `.mcp.json` setup (`auth_mode=none`). In
+the HTTP `token-passthrough` and `basic-passthrough` modes the per-request
+credential comes from the HTTP `Authorization` header, so `.env` there only
+supplies `INFRAHUB_ADDRESS`.
+
 ## User-scoped setup
 
 For always-on access across every project, add the same block to `~/.claude/settings.json` instead. The server is spawned once per Claude Code session.
