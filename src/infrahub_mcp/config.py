@@ -18,10 +18,15 @@ from infrahub_mcp.constants import (
 
 logger = logging.getLogger(__name__)
 
-# Only keys with this prefix are copied from a .env file — this covers the SDK's
-# INFRAHUB_* connection variables (and INFRAHUB_MCP_*) while ignoring unrelated
-# keys in a foreign project .env (proxies, third-party secrets, logging flags).
-_DOTENV_KEY_PREFIX = "INFRAHUB_"
+# A .env file supplies only the Infrahub SDK connection variables: keys with the
+# INFRAHUB_ prefix but NOT the INFRAHUB_MCP_ prefix. This ignores unrelated keys
+# in a foreign project .env (proxies, third-party secrets, logging flags), and
+# deliberately excludes INFRAHUB_MCP_* server settings: ServerConfig is read once
+# at import, before .env priming runs, so loading those keys would set values that
+# never take effect. MCP server settings must come from the real environment or
+# the .mcp.json "env" block.
+_DOTENV_INCLUDE_PREFIX = "INFRAHUB_"
+_DOTENV_EXCLUDE_PREFIX = "INFRAHUB_MCP_"
 
 AuthMode = Literal["none", "oidc", "token-passthrough", "basic-passthrough"]
 
@@ -188,18 +193,22 @@ def _validate_auth_requirements(config: ServerConfig) -> None:
 
 
 def _prime_env_from_dotenv() -> None:
-    """Load ``INFRAHUB_``-prefixed variables from a ``.env`` file into ``os.environ``.
+    """Load Infrahub connection variables from a ``.env`` file into ``os.environ``.
 
     Called once at server startup (from the lifespan), never at import time, so
     importing the package neither reads the filesystem nor mutates the process
     environment.
 
-    Only keys beginning with ``INFRAHUB_`` are copied, so an unrelated project
-    ``.env`` in the launch directory cannot inject proxy settings, third-party
-    secrets, or logging flags the operator never set. Real environment variables
-    always win over the file; the comparison is case-insensitive to match the
-    settings models' ``case_sensitive=False`` resolution, and applied keys are
-    tracked so case-variant duplicates inside the file cannot both be set.
+    Only the Infrahub SDK connection variables are copied: keys with the
+    ``INFRAHUB_`` prefix excluding ``INFRAHUB_MCP_`` (``INFRAHUB_ADDRESS``,
+    ``INFRAHUB_API_TOKEN``, ``INFRAHUB_USERNAME``, ``INFRAHUB_PASSWORD``). An
+    unrelated project ``.env`` therefore cannot inject proxy settings, third-party
+    secrets, or logging flags, and ``INFRAHUB_MCP_*`` server settings are not
+    sourced from ``.env`` (``ServerConfig`` is built at import, before this runs,
+    so they would never take effect). Real environment variables always win over
+    the file; the comparison is case-insensitive to match the settings models'
+    ``case_sensitive=False`` resolution, and applied keys are tracked so
+    case-variant duplicates inside the file cannot both be set.
 
     Path resolution via ``INFRAHUB_MCP_ENV_FILE``:
 
@@ -225,7 +234,10 @@ def _prime_env_from_dotenv() -> None:
 
     existing = {key.lower() for key in os.environ}
     for key, value in values.items():
-        if value is None or not key.upper().startswith(_DOTENV_KEY_PREFIX):
+        key_upper = key.upper()
+        if value is None or not key_upper.startswith(_DOTENV_INCLUDE_PREFIX):
+            continue
+        if key_upper.startswith(_DOTENV_EXCLUDE_PREFIX):
             continue
         if key.lower() in existing:
             continue

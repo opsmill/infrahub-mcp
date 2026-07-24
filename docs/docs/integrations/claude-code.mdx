@@ -61,12 +61,13 @@ INFRAHUB_API_TOKEN=your-token-here
 # INFRAHUB_PASSWORD=infrahub
 ```
 
-At server startup the server loads `INFRAHUB_`-prefixed variables from `.env`
-into its environment (for example `INFRAHUB_ADDRESS`, `INFRAHUB_API_TOKEN`,
-`INFRAHUB_USERNAME`, `INFRAHUB_PASSWORD`); keys without that prefix are ignored.
-Values already set in the real environment (including the `.mcp.json` `env:`
-block) take precedence, so `.env` never overrides an explicitly set variable.
-Set `INFRAHUB_MCP_ENV_FILE=/path/to/file` to load a different file, or
+At server startup the server loads the Infrahub connection variables from `.env`
+into its environment: `INFRAHUB_ADDRESS`, `INFRAHUB_API_TOKEN`,
+`INFRAHUB_USERNAME`, and `INFRAHUB_PASSWORD`. Other keys are ignored, including
+`INFRAHUB_MCP_*` server settings (set those in the real environment or the
+`.mcp.json` `env:` block). Values already set in the real environment take
+precedence, so `.env` never overrides an explicitly set variable. Set
+`INFRAHUB_MCP_ENV_FILE=/path/to/file` to load a different file, or
 `INFRAHUB_MCP_ENV_FILE=` (empty) to disable loading.
 
 In the HTTP `token-passthrough` and `basic-passthrough` modes the Infrahub
