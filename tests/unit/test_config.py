@@ -489,7 +489,9 @@ class TestDotenv:
     def test_ignores_mcp_settings(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         # INFRAHUB_MCP_* server settings are NOT sourced from .env: ServerConfig is built
         # at import before priming, so loading them would set values that never take effect.
-        (tmp_path / ".env").write_text("INFRAHUB_MCP_READ_ONLY=true\nINFRAHUB_MCP_AUTH_MODE=token-passthrough\nINFRAHUB_API_TOKEN=t\n")
+        (tmp_path / ".env").write_text(
+            "INFRAHUB_MCP_READ_ONLY=true\nINFRAHUB_MCP_AUTH_MODE=token-passthrough\nINFRAHUB_API_TOKEN=t\n"
+        )
         monkeypatch.chdir(tmp_path)
         with patch.dict(os.environ, {}, clear=True):
             _prime_env_from_dotenv()
