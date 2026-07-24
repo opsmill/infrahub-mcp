@@ -61,15 +61,17 @@ INFRAHUB_API_TOKEN=your-token-here
 # INFRAHUB_PASSWORD=infrahub
 ```
 
-The server loads `.env` at startup into its environment. Values already set in
-the real environment (including the `.mcp.json` `env:` block) take precedence,
-so `.env` never overrides an explicitly set variable. To load a file from a
-different location, set `INFRAHUB_MCP_ENV_FILE=/path/to/file`.
+At server startup the server loads `INFRAHUB_`-prefixed variables from `.env`
+into its environment (for example `INFRAHUB_ADDRESS`, `INFRAHUB_API_TOKEN`,
+`INFRAHUB_USERNAME`, `INFRAHUB_PASSWORD`); keys without that prefix are ignored.
+Values already set in the real environment (including the `.mcp.json` `env:`
+block) take precedence, so `.env` never overrides an explicitly set variable.
+Set `INFRAHUB_MCP_ENV_FILE=/path/to/file` to load a different file, or
+`INFRAHUB_MCP_ENV_FILE=` (empty) to disable loading.
 
-`.env` applies to the default stdio / `.mcp.json` setup (`auth_mode=none`). In
-the HTTP `token-passthrough` and `basic-passthrough` modes the per-request
-credential comes from the HTTP `Authorization` header, so `.env` there only
-supplies `INFRAHUB_ADDRESS`.
+In the HTTP `token-passthrough` and `basic-passthrough` modes the Infrahub
+credential comes from the request `Authorization` header, so a token in `.env`
+is ignored; `.env` still supplies `INFRAHUB_ADDRESS`.
 
 ## User-scoped setup
 

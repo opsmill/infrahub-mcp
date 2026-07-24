@@ -18,7 +18,7 @@ from infrahub_mcp.auth import (
     set_passthrough_basic,
     set_passthrough_token,
 )
-from infrahub_mcp.config import ServerConfig, load_config
+from infrahub_mcp.config import ServerConfig, _prime_env_from_dotenv, load_config
 from infrahub_mcp.constants import (
     AUTH_MODE_BASIC_PASSTHROUGH,
     AUTH_MODE_OIDC,
@@ -72,7 +72,8 @@ def _validate_env() -> None:
 
 @asynccontextmanager
 async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: ARG001
-    """Manage the application lifecycle: validate config, create client, yield context."""
+    """Manage the application lifecycle: load .env, validate config, create client, yield context."""
+    _prime_env_from_dotenv()
     _validate_env()
     client = (
         None if _config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH} else InfrahubClient()

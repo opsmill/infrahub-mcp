@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import string
+from pathlib import Path
 from typing import Literal
 
 from pydantic import AliasChoices, Field, field_validator
@@ -13,6 +15,13 @@ from infrahub_mcp.constants import (
     _ALLOWED_PLACEHOLDERS,
     AUTH_MODE_OIDC,
 )
+
+logger = logging.getLogger(__name__)
+
+# Only keys with this prefix are copied from a .env file — this covers the SDK's
+# INFRAHUB_* connection variables (and INFRAHUB_MCP_*) while ignoring unrelated
+# keys in a foreign project .env (proxies, third-party secrets, logging flags).
+_DOTENV_KEY_PREFIX = "INFRAHUB_"
 
 AuthMode = Literal["none", "oidc", "token-passthrough", "basic-passthrough"]
 
@@ -179,34 +188,53 @@ def _validate_auth_requirements(config: ServerConfig) -> None:
 
 
 def _prime_env_from_dotenv() -> None:
-    """Load a ``.env`` file into ``os.environ`` before config/client construction.
+    """Load ``INFRAHUB_``-prefixed variables from a ``.env`` file into ``os.environ``.
 
-    The path comes from ``INFRAHUB_MCP_ENV_FILE`` read raw from the environment
-    (it must resolve before the :class:`ServerConfig` model exists), defaulting
-    to ``./.env``. A missing file is a silent no-op. Loading here means both the
-    MCP ``ServerConfig`` (``INFRAHUB_MCP_*``) and the Infrahub SDK client
-    (``INFRAHUB_*``) pick the values up, since both read ``os.environ``.
+    Called once at server startup (from the lifespan), never at import time, so
+    importing the package neither reads the filesystem nor mutates the process
+    environment.
 
-    Real environment variables always win over the file. The precedence check is
-    **case-insensitive**: both settings models use ``case_sensitive=False``, so a
-    real ``infrahub_mcp_read_only`` must not be shadowed by a ``.env`` entry
-    spelled ``INFRAHUB_MCP_READ_ONLY``. ``python-dotenv``'s own ``override=False``
-    only compares exact spellings, which would let such a case-variant slip
-    through — so we apply the values ourselves, skipping any key already present
-    in any case.
+    Only keys beginning with ``INFRAHUB_`` are copied, so an unrelated project
+    ``.env`` in the launch directory cannot inject proxy settings, third-party
+    secrets, or logging flags the operator never set. Real environment variables
+    always win over the file; the comparison is case-insensitive to match the
+    settings models' ``case_sensitive=False`` resolution, and applied keys are
+    tracked so case-variant duplicates inside the file cannot both be set.
+
+    Path resolution via ``INFRAHUB_MCP_ENV_FILE``:
+
+    - unset: default to ``./.env``; a missing file is a silent no-op.
+    - empty string: loading is disabled.
+    - set to a path: that file is loaded, with a warning when it does not exist.
     """
     from dotenv import dotenv_values  # noqa: PLC0415
 
-    path = os.environ.get("INFRAHUB_MCP_ENV_FILE") or ".env"
+    configured = os.environ.get("INFRAHUB_MCP_ENV_FILE")
+    if configured is not None and not configured:
+        return  # explicitly disabled via an empty value
+    path = configured or ".env"
+    if configured is not None and not Path(path).is_file():
+        logger.warning("INFRAHUB_MCP_ENV_FILE=%r is not a readable file; no .env values loaded.", path)
+        return
+
+    try:
+        values = dotenv_values(path)
+    except (OSError, UnicodeDecodeError) as exc:
+        logger.warning("Could not read .env file %r: %s", path, exc)
+        return
+
     existing = {key.lower() for key in os.environ}
-    for key, value in dotenv_values(path).items():
-        if value is not None and key.lower() not in existing:
-            os.environ[key] = value
+    for key, value in values.items():
+        if value is None or not key.upper().startswith(_DOTENV_KEY_PREFIX):
+            continue
+        if key.lower() in existing:
+            continue
+        os.environ[key] = value
+        existing.add(key.lower())
 
 
 def load_config() -> ServerConfig:
     """Load and validate server configuration from environment variables."""
-    _prime_env_from_dotenv()
     config = ServerConfig()
     _validate_auth_requirements(config)
     return config

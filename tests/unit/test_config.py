@@ -476,9 +476,55 @@ class TestDotenv:
             _prime_env_from_dotenv()
             assert "INFRAHUB_API_TOKEN" not in os.environ
 
-    def test_load_config_primes_env(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        (tmp_path / ".env").write_text("INFRAHUB_MCP_READ_ONLY=true\n")
+    def test_ignores_non_infrahub_keys(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # A foreign project .env must not inject unrelated vars (LOG_LEVEL, proxies, secrets).
+        (tmp_path / ".env").write_text("LOG_LEVEL=warn\nHTTPS_PROXY=http://x\nINFRAHUB_API_TOKEN=t\n")
         monkeypatch.chdir(tmp_path)
         with patch.dict(os.environ, {}, clear=True):
-            config = load_config()
-            assert config.read_only is True
+            _prime_env_from_dotenv()
+            assert os.environ["INFRAHUB_API_TOKEN"] == "t"  # noqa: S105
+            assert "LOG_LEVEL" not in os.environ
+            assert "HTTPS_PROXY" not in os.environ
+
+    def test_case_variant_within_file_applies_once(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Case-variant duplicates in the file must not both land in the environment.
+        (tmp_path / ".env").write_text("INFRAHUB_MCP_READ_ONLY=true\ninfrahub_mcp_read_only=false\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            _prime_env_from_dotenv()
+            assert os.environ["INFRAHUB_MCP_READ_ONLY"] == "true"
+            assert "infrahub_mcp_read_only" not in os.environ
+
+    def test_empty_path_disables_loading(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        (tmp_path / ".env").write_text("INFRAHUB_API_TOKEN=from-dotenv\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {"INFRAHUB_MCP_ENV_FILE": ""}, clear=True):
+            _prime_env_from_dotenv()
+            assert "INFRAHUB_API_TOKEN" not in os.environ
+
+    def test_explicit_missing_path_warns(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        missing = str(tmp_path / "nope.env")
+        with patch.dict(os.environ, {"INFRAHUB_MCP_ENV_FILE": missing}, clear=True), caplog.at_level("WARNING"):
+            _prime_env_from_dotenv()
+        assert "INFRAHUB_API_TOKEN" not in os.environ
+        assert "nope.env" in caplog.text
+
+    def test_unreadable_file_is_noop(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # A non-UTF-8 .env must not crash startup.
+        (tmp_path / ".env").write_bytes(b"\xff\xfeINFRAHUB_API_TOKEN=x\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            _prime_env_from_dotenv()  # must not raise
+            assert "INFRAHUB_API_TOKEN" not in os.environ
+
+    def test_load_config_does_not_read_dotenv(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Priming happens at server startup, not in load_config(), so importing/loading
+        # config never reads a CWD .env or mutates the environment.
+        (tmp_path / ".env").write_text("INFRAHUB_API_TOKEN=from-dotenv\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            load_config()
+            assert "INFRAHUB_API_TOKEN" not in os.environ
