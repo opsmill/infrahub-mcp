@@ -41,7 +41,7 @@ services:
     environment:
       <<: [*infrahub_mcp_config]
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\""]
+      test: curl -s -f -o /dev/null http://localhost:8001/health || exit 1
       interval: 10s
       timeout: 5s
       retries: 5
