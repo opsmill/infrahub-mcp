@@ -1,0 +1,37 @@
+tests/unit/test_server_env.py
+  s_f0e28343c8a5c2::t_fe65cfe2ba7b56 64-90,92-102
+  s_f0e28343c8a5c2::t_062e8357b66180 91
+  s_f0e28343c8a5c2::t_8dee2fc6895f37 11,16
+src/infrahub_mcp/server.py
+  s_f0e28343c8a5c2::t_09874d3b854b1e 72-86
+docs/docs/integrations/claude-code.mdx
+  s_f0e28343c8a5c2::t_3fb8addc7acd4e 64-67,71-76
+tests/unit/test_config.py
+  s_f0e28343c8a5c2::t_2eee620fe17d92 557-567
+  s_f0e28343c8a5c2::t_ac2f156c9d036a 489-495,497-543
+  s_f0e28343c8a5c2::t_91b4f94098830b 496
+docs/docs/references/configuration.mdx
+  s_f0e28343c8a5c2::t_05fe1d4c5586d5 13
+tests/integration/conftest.py
+  s_f0e28343c8a5c2::t_2b4d65a1c3f15b 52-71
+src/infrahub_mcp/config.py
+  s_f0e28343c8a5c2::t_ebcab4f113f0a8 204,208-211,213,224-226,230-232,234,238,241-242,244,248,251-257
+  s_f0e28343c8a5c2::t_5971365a2cc537 21-37
+  s_f0e28343c8a5c2::t_379bb48e308833 258
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "87daae9f067b8ad2a1faf8d03b40b58e6bd315bc",
+  "prompts": {},
+  "sessions": {
+    "s_f0e28343c8a5c2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a178adf6-81ac-452c-8a20-c24d2eefefde",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
