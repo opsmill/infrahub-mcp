@@ -76,6 +76,27 @@ class TestValidateEnv:
             with pytest.raises(RuntimeError, match="Conflicting credentials"):
                 _validate_env()
 
+    def test_lowercase_credentials_accepted(self) -> None:
+        # The SDK settings model is case-insensitive, so lowercase spellings do reach
+        # InfrahubClient() and must not be reported as missing here.
+        env = {"infrahub_address": "http://infrahub", "infrahub_api_token": "secret"}
+        with patch.dict(os.environ, env, clear=True):
+            _validate_env()
+
+    def test_lowercase_password_conflicts_with_token(self) -> None:
+        # Same case-insensitivity, seen from the other side: a lowercase password still
+        # reaches the SDK, so the conflict must surface here rather than as a raw
+        # pydantic ValidationError from InfrahubClient().
+        env = {
+            "INFRAHUB_ADDRESS": "http://infrahub",
+            "INFRAHUB_API_TOKEN": "secret",
+            "infrahub_username": "alice",
+            "infrahub_password": "hunter2",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            with pytest.raises(RuntimeError, match="Conflicting credentials"):
+                _validate_env()
+
     def test_token_combined_with_username_only_raises(self) -> None:
         env = {
             "INFRAHUB_ADDRESS": "http://infrahub",

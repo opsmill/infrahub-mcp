@@ -50,20 +50,34 @@ if TYPE_CHECKING:
 _config: ServerConfig = load_config()
 
 
+def _env_get(name: str) -> str | None:
+    """Read an environment variable the way the Infrahub SDK does — case-insensitively.
+
+    The SDK's settings model resolves ``infrahub_api_token`` and ``INFRAHUB_API_TOKEN``
+    alike, so a lowercase spelling reaches ``InfrahubClient()`` even though nothing here
+    reads it. The guards below must see the same credentials the SDK will.
+    """
+    value = os.environ.get(name)
+    if value is not None:
+        return value
+    lowered = name.lower()
+    return next((item for key, item in os.environ.items() if key.lower() == lowered), None)
+
+
 def _validate_env() -> None:
     """Validate required environment variables at startup and raise with clear guidance."""
     # Passthrough modes: credentials come from the client, not env vars.
     if _config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH}:
         return
 
-    address = os.environ.get("INFRAHUB_ADDRESS")
+    address = _env_get("INFRAHUB_ADDRESS")
     if not address:
         msg = "INFRAHUB_ADDRESS is required. Set it to the URL of your Infrahub instance (e.g. http://localhost:8000)."
         raise RuntimeError(msg)
 
-    api_token = os.environ.get("INFRAHUB_API_TOKEN")
-    username = os.environ.get("INFRAHUB_USERNAME")
-    password = os.environ.get("INFRAHUB_PASSWORD")
+    api_token = _env_get("INFRAHUB_API_TOKEN")
+    username = _env_get("INFRAHUB_USERNAME")
+    password = _env_get("INFRAHUB_PASSWORD")
 
     if not api_token and not (username and password):
         msg = "Authentication required. Set INFRAHUB_API_TOKEN  —or—  both INFRAHUB_USERNAME and INFRAHUB_PASSWORD."
@@ -80,7 +94,7 @@ def _validate_env() -> None:
         )
         raise RuntimeError(msg)
 
-    if ("INFRAHUB_USERNAME" in os.environ) != ("INFRAHUB_PASSWORD" in os.environ):
+    if (username is None) != (password is None):
         msg = "INFRAHUB_USERNAME and INFRAHUB_PASSWORD must be set together."
         raise RuntimeError(msg)
 
@@ -120,7 +134,7 @@ async def health_check(request: Request) -> JSONResponse:  # noqa: ARG001
     credentials exist so we only verify the Infrahub address is configured.
     Returns 200 when healthy, 503 when unhealthy.
     """
-    address = os.environ.get("INFRAHUB_ADDRESS", "")
+    address = _env_get("INFRAHUB_ADDRESS") or ""
 
     if _config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH}:
         if not address:
