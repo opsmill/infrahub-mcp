@@ -51,8 +51,11 @@ USER app
 EXPOSE ${MCP_PORT}
 
 # /health returns 503 until Infrahub is reachable, hence the generous start
-# period. A compose-level healthcheck overrides this one where one is declared.
-HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=5 \
-    CMD curl -fsSL --max-time 4 -o /dev/null -w '%{http_code}' http://localhost:${MCP_PORT}/health
+# period. In shared-credential modes it makes a live get_version() round-trip,
+# so the budget leaves room for a slow Infrahub. --max-time stays just under
+# --timeout so a slow probe reports curl's exit 28 rather than an opaque kill.
+# A compose-level healthcheck overrides this one where one is declared.
+HEALTHCHECK --interval=15s --timeout=10s --start-period=60s --retries=5 \
+    CMD curl -fsSL --max-time 8 -o /dev/null -w '%{http_code}' http://localhost:${MCP_PORT}/health
 
 CMD ["sh", "-c", "exec infrahub-mcp --transport streamable-http --host $MCP_HOST --port $MCP_PORT"]
