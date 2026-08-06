@@ -44,7 +44,8 @@ uv run rumdl check docs/docs/    # Check markdown linting
 uv run rumdl fmt docs/docs/      # Auto-fix markdown formatting
 cd docs && npm run build         # Test documentation build
 
-uv run pre-commit run            # Ruff + Mypy (runs automatically on commits)
+uv run pre-commit run            # Ruff, Mypy and rumdl on the staged files
+uv run pre-commit install        # Optional: run those same hooks on every commit
 ```
 
 `ruff` and `mypy` are authoritative for Python syntax, style, and type issues. Do not eyeball Python errors — run `uv run invoke format lint` and rely on the output.
