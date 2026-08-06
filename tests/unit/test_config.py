@@ -486,6 +486,61 @@ class TestDotenv:
             assert "LOG_LEVEL" not in os.environ
             assert "HTTPS_PROXY" not in os.environ
 
+    def test_ignores_sdk_transport_keys(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The SDK reads these from the environment too. A foreign project's .env must not be
+        # able to reroute credential-bearing traffic or disable certificate verification.
+        (tmp_path / ".env").write_text(
+            "INFRAHUB_PROXY=http://attacker:3128\n"
+            "INFRAHUB_PROXY_MOUNTS_HTTPS=http://attacker:3128\n"
+            "INFRAHUB_TLS_INSECURE=true\n"
+            "INFRAHUB_TLS_CA_FILE=/tmp/attacker.pem\n"
+            "INFRAHUB_DEFAULT_BRANCH=attacker\n"
+            "INFRAHUB_API_TOKEN=t\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            _prime_env_from_dotenv()
+            assert os.environ["INFRAHUB_API_TOKEN"] == "t"  # noqa: S105
+            for key in (
+                "INFRAHUB_PROXY",
+                "INFRAHUB_PROXY_MOUNTS_HTTPS",
+                "INFRAHUB_TLS_INSECURE",
+                "INFRAHUB_TLS_CA_FILE",
+                "INFRAHUB_DEFAULT_BRANCH",
+            ):
+                assert key not in os.environ
+
+    def test_lowercase_keys_normalized_to_uppercase(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The settings models are case-insensitive, but server.py and utils.py read
+        # os.environ by exact name — a lowercase .env key must still reach them.
+        (tmp_path / ".env").write_text("infrahub_address=http://infrahub\ninfrahub_api_token=from-dotenv\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            _prime_env_from_dotenv()
+            assert os.environ["INFRAHUB_ADDRESS"] == "http://infrahub"
+            assert os.environ["INFRAHUB_API_TOKEN"] == "from-dotenv"  # noqa: S105
+            assert "infrahub_api_token" not in os.environ
+
+    def test_values_are_not_interpolated(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Credentials are opaque strings: a "${...}" inside one must survive verbatim
+        # rather than being expanded away into a silently wrong secret.
+        (tmp_path / ".env").write_text("INFRAHUB_USERNAME=admin\nINFRAHUB_PASSWORD=pa${s}word\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            _prime_env_from_dotenv()
+            assert os.environ["INFRAHUB_PASSWORD"] == "pa${s}word"  # noqa: S105
+
+    def test_tilde_in_custom_path_expanded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # A .mcp.json "env" block performs no shell expansion, so "~" arrives literally.
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / "secrets.env").write_text("INFRAHUB_API_TOKEN=from-home\n")
+        monkeypatch.chdir(tmp_path)
+        env = {"INFRAHUB_MCP_ENV_FILE": "~/secrets.env", "HOME": str(home), "USERPROFILE": str(home)}
+        with patch.dict(os.environ, env, clear=True):
+            _prime_env_from_dotenv()
+            assert os.environ["INFRAHUB_API_TOKEN"] == "from-home"  # noqa: S105
+
     def test_ignores_mcp_settings(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         # INFRAHUB_MCP_* server settings are NOT sourced from .env: ServerConfig is built
         # at import before priming, so loading them would set values that never take effect.
@@ -498,6 +553,17 @@ class TestDotenv:
             assert os.environ["INFRAHUB_API_TOKEN"] == "t"  # noqa: S105
             assert "INFRAHUB_MCP_READ_ONLY" not in os.environ
             assert "INFRAHUB_MCP_AUTH_MODE" not in os.environ
+
+    def test_warns_about_ignored_mcp_settings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # Dropping INFRAHUB_MCP_READ_ONLY silently would leave the user believing
+        # write tools are disabled when they are not.
+        (tmp_path / ".env").write_text("INFRAHUB_MCP_READ_ONLY=true\nINFRAHUB_API_TOKEN=t\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True), caplog.at_level("WARNING"):
+            _prime_env_from_dotenv()
+        assert "INFRAHUB_MCP_READ_ONLY" in caplog.text
 
     def test_case_variant_within_file_applies_once(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         # Case-variant duplicates in the file must not both land in the environment.

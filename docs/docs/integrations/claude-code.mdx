@@ -61,14 +61,19 @@ INFRAHUB_API_TOKEN=your-token-here
 # INFRAHUB_PASSWORD=infrahub
 ```
 
-At server startup the server loads the Infrahub connection variables from `.env`
-into its environment: `INFRAHUB_ADDRESS`, `INFRAHUB_API_TOKEN`,
-`INFRAHUB_USERNAME`, and `INFRAHUB_PASSWORD`. Other keys are ignored, including
+At server startup the server loads exactly four keys from `.env`:
+`INFRAHUB_ADDRESS`, `INFRAHUB_API_TOKEN`, `INFRAHUB_USERNAME`, and
+`INFRAHUB_PASSWORD`. Every other key is ignored, including other Infrahub SDK
+settings such as `INFRAHUB_PROXY` and `INFRAHUB_TLS_INSECURE`, and the
 `INFRAHUB_MCP_*` server settings (set those in the real environment or the
 `.mcp.json` `env:` block). Values already set in the real environment take
 precedence, so `.env` never overrides an explicitly set variable. Set
-`INFRAHUB_MCP_ENV_FILE=/path/to/file` to load a different file, or
-`INFRAHUB_MCP_ENV_FILE=` (empty) to disable loading.
+`INFRAHUB_MCP_ENV_FILE=/path/to/file` to load a different file (`~` is expanded),
+or `INFRAHUB_MCP_ENV_FILE=` (empty) to disable loading.
+
+Use either a token or a username and password, not both. If `.env` and the
+`.mcp.json` `env:` block each supply one of the two, the server stops at startup
+with a message naming the conflict.
 
 In the HTTP `token-passthrough` and `basic-passthrough` modes the Infrahub
 credential comes from the request `Authorization` header, so a token in `.env`

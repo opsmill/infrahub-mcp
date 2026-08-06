@@ -69,6 +69,21 @@ def _validate_env() -> None:
         msg = "Authentication required. Set INFRAHUB_API_TOKEN  —or—  both INFRAHUB_USERNAME and INFRAHUB_PASSWORD."
         raise RuntimeError(msg)
 
+    # Below: mirror the SDK Config validators so a credential mix collected from
+    # several sources (.mcp.json "env" block, .env file, real environment) fails
+    # with actionable guidance instead of a raw pydantic ValidationError.
+    if api_token and password:
+        msg = (
+            "Conflicting credentials: INFRAHUB_API_TOKEN cannot be combined with "
+            "INFRAHUB_USERNAME/INFRAHUB_PASSWORD. Keep exactly one of the two, and check every "
+            "source in use (the .mcp.json 'env' block, the .env file, and the real environment)."
+        )
+        raise RuntimeError(msg)
+
+    if ("INFRAHUB_USERNAME" in os.environ) != ("INFRAHUB_PASSWORD" in os.environ):
+        msg = "INFRAHUB_USERNAME and INFRAHUB_PASSWORD must be set together."
+        raise RuntimeError(msg)
+
 
 @asynccontextmanager
 async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: ARG001

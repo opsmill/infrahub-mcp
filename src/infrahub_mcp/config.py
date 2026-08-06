@@ -18,15 +18,23 @@ from infrahub_mcp.constants import (
 
 logger = logging.getLogger(__name__)
 
-# A .env file supplies only the Infrahub SDK connection variables: keys with the
-# INFRAHUB_ prefix but NOT the INFRAHUB_MCP_ prefix. This ignores unrelated keys
-# in a foreign project .env (proxies, third-party secrets, logging flags), and
-# deliberately excludes INFRAHUB_MCP_* server settings: ServerConfig is read once
-# at import, before .env priming runs, so loading those keys would set values that
-# never take effect. MCP server settings must come from the real environment or
-# the .mcp.json "env" block.
-_DOTENV_INCLUDE_PREFIX = "INFRAHUB_"
-_DOTENV_EXCLUDE_PREFIX = "INFRAHUB_MCP_"
+# A .env file supplies only these four Infrahub SDK connection variables. The
+# allowlist is explicit rather than an INFRAHUB_ prefix match because the SDK also
+# reads INFRAHUB_PROXY, INFRAHUB_TLS_INSECURE and friends from the environment: a
+# foreign project's .env must not be able to reroute credential-bearing traffic
+# through a proxy or disable certificate verification. INFRAHUB_MCP_* server
+# settings are excluded for a different reason — ServerConfig is read once at
+# import, before priming runs, so they would never take effect; they must come
+# from the real environment or the .mcp.json "env" block.
+_DOTENV_ALLOWED_KEYS = frozenset(
+    {
+        "INFRAHUB_ADDRESS",
+        "INFRAHUB_API_TOKEN",
+        "INFRAHUB_USERNAME",
+        "INFRAHUB_PASSWORD",
+    }
+)
+_DOTENV_IGNORED_PREFIX = "INFRAHUB_MCP_"
 
 AuthMode = Literal["none", "oidc", "token-passthrough", "basic-passthrough"]
 
@@ -193,24 +201,16 @@ def _validate_auth_requirements(config: ServerConfig) -> None:
 
 
 def _prime_env_from_dotenv() -> None:
-    """Load Infrahub connection variables from a ``.env`` file into ``os.environ``.
+    """Copy the four ``_DOTENV_ALLOWED_KEYS`` connection variables from a ``.env`` file.
 
     Called once at server startup (from the lifespan), never at import time, so
     importing the package neither reads the filesystem nor mutates the process
-    environment.
+    environment. Real environment variables always win over the file; keys are
+    matched case-insensitively (mirroring ``case_sensitive=False`` on the settings
+    models) and always written back uppercase, since the readers in ``server.py``
+    and ``utils.py`` look them up by exact name.
 
-    Only the Infrahub SDK connection variables are copied: keys with the
-    ``INFRAHUB_`` prefix excluding ``INFRAHUB_MCP_`` (``INFRAHUB_ADDRESS``,
-    ``INFRAHUB_API_TOKEN``, ``INFRAHUB_USERNAME``, ``INFRAHUB_PASSWORD``). An
-    unrelated project ``.env`` therefore cannot inject proxy settings, third-party
-    secrets, or logging flags, and ``INFRAHUB_MCP_*`` server settings are not
-    sourced from ``.env`` (``ServerConfig`` is built at import, before this runs,
-    so they would never take effect). Real environment variables always win over
-    the file; the comparison is case-insensitive to match the settings models'
-    ``case_sensitive=False`` resolution, and applied keys are tracked so
-    case-variant duplicates inside the file cannot both be set.
-
-    Path resolution via ``INFRAHUB_MCP_ENV_FILE``:
+    Path resolution via ``INFRAHUB_MCP_ENV_FILE`` (``~`` is expanded):
 
     - unset: default to ``./.env``; a missing file is a silent no-op.
     - empty string: loading is disabled.
@@ -221,28 +221,40 @@ def _prime_env_from_dotenv() -> None:
     configured = os.environ.get("INFRAHUB_MCP_ENV_FILE")
     if configured is not None and not configured:
         return  # explicitly disabled via an empty value
-    path = configured or ".env"
-    if configured is not None and not Path(path).is_file():
-        logger.warning("INFRAHUB_MCP_ENV_FILE=%r is not a readable file; no .env values loaded.", path)
+    path = Path(configured or ".env").expanduser()
+    if configured is not None and not path.is_file():
+        logger.warning("INFRAHUB_MCP_ENV_FILE=%r is not a readable file; no .env values loaded.", str(path))
         return
 
     try:
-        values = dotenv_values(path)
+        # interpolate=False: credentials are opaque strings, so a "${" inside a
+        # password must be taken literally rather than expanded to nothing.
+        values = dotenv_values(path, interpolate=False)
     except (OSError, UnicodeDecodeError) as exc:
-        logger.warning("Could not read .env file %r: %s", path, exc)
+        logger.warning("Could not read .env file %r: %s", str(path), exc)
         return
 
     existing = {key.lower() for key in os.environ}
+    ignored_mcp_keys: list[str] = []
     for key, value in values.items():
         key_upper = key.upper()
-        if value is None or not key_upper.startswith(_DOTENV_INCLUDE_PREFIX):
+        if key_upper.startswith(_DOTENV_IGNORED_PREFIX):
+            ignored_mcp_keys.append(key_upper)
             continue
-        if key_upper.startswith(_DOTENV_EXCLUDE_PREFIX):
+        if value is None or key_upper not in _DOTENV_ALLOWED_KEYS:
             continue
         if key.lower() in existing:
             continue
-        os.environ[key] = value
+        os.environ[key_upper] = value
         existing.add(key.lower())
+
+    if ignored_mcp_keys:
+        logger.warning(
+            "Ignoring %s in %r: INFRAHUB_MCP_* server settings are not loaded from .env. "
+            'Set them in the real environment or the .mcp.json "env" block.',
+            ", ".join(sorted(set(ignored_mcp_keys))),
+            str(path),
+        )
 
 
 def load_config() -> ServerConfig:
