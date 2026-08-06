@@ -44,7 +44,7 @@ uv run rumdl check docs/docs/    # Check markdown linting
 uv run rumdl fmt docs/docs/      # Auto-fix markdown formatting
 cd docs && npm run build         # Test documentation build
 
-uv run pre-commit run            # Ruff, Mypy and rumdl on the staged files
+uv run pre-commit run            # Ruff + rumdl on staged files, Mypy on src/
 uv run pre-commit install        # Optional: run those same hooks on every commit
 ```
 
