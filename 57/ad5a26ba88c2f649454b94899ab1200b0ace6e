@@ -1,0 +1,25 @@
+AGENTS.md
+  s_f0e28343c8a5c2::t_409a9a19793ed3 47-48
+.pre-commit-config.yaml
+  s_f0e28343c8a5c2::t_409a9a19793ed3 2-3,5,8-11,13-22
+pyproject.toml
+  s_f0e28343c8a5c2::t_33b33b3c4b604f 31
+uv.lock
+  s_f0e28343c8a5c2::t_9cbb1debbc906c 253-261,447-455,623-631,785-793,820,845,1295-1303,1411-1426,1743-1754,2170-2171,2473-2487
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "57ad5a26ba88c2f649454b94899ab1200b0ace6e",
+  "prompts": {},
+  "sessions": {
+    "s_f0e28343c8a5c2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a178adf6-81ac-452c-8a20-c24d2eefefde",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
