@@ -92,6 +92,14 @@ ignore = [
     "FBT",    # Boolean-typed positional argument in function definition
     "ANN401", # Dynamically typed expressions (typing.Any) are disallowed in `value`
     "ERA001", # Found commented-out code
+    # Two preview rules that ruff 0.16 turned on here (this config sets
+    # `preview = true` with `select = ["ALL"]`). Both ask the repo to adopt ruff's
+    # new suppression spelling — `# ruff: ignore[rule-name]` over `# noqa: CODE`,
+    # and rule names over codes in this very list — which would rewrite ~175 lines
+    # across the codebase for no behavioural gain. Named, not coded, because
+    # `rule-codes-in-selectors` is the rule that objects to codes here.
+    "noqa-comments",
+    "rule-codes-in-selectors",
 ]
 
 [tool.ruff.format]
