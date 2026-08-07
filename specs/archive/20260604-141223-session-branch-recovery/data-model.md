@@ -15,6 +15,7 @@ _session_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 **After** (keyed by the per-session OBJECT via weak references — auto-evicts at session end; see research R2 / critique E1)
 ```python
 from weakref import WeakKeyDictionary
+
 # key type is the MCP ServerSession object (ctx.request_context.session); duck-typed at runtime
 _session_branches: "WeakKeyDictionary[Any, str]" = field(default_factory=WeakKeyDictionary)
 _session_locks: "WeakKeyDictionary[Any, asyncio.Lock]" = field(default_factory=WeakKeyDictionary)
