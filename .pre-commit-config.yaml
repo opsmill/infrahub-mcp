@@ -1,19 +1,29 @@
 ---
+# Every hook runs the tool from the project's uv environment rather than a pinned
+# mirror revision, so pre-commit, `invoke lint`, and CI always agree on versions.
 repos:
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.15.0
-    hooks:
-      - id: mypy
-        name: mypy
-        args: [--show-error-codes src/]
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.4
-    hooks:
-      - id: ruff-format
-      - id: ruff-check
-        args: [--fix]
   - repo: local
     hooks:
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi]
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types_or: [python, pyi]
+      # Scoped to src/ like `invoke lint-mypy`; `files` keeps the hook from
+      # running (and reporting success) when only tests changed. Whole-repo type
+      # checking is CI's `ty check .`.
+      - id: mypy
+        name: mypy
+        entry: uv run mypy --show-error-codes src/
+        language: system
+        types_or: [python, pyi]
+        files: ^src/
+        pass_filenames: false
       - id: rumdl
         name: rumdl
         entry: uv run rumdl check

@@ -28,6 +28,7 @@ dev = [
     "yamllint>=1.37.1",
     "infrahub-testcontainers>=1.10.0",
     "towncrier>=25.8.0",
+    "pre-commit>=4.6.1",
 ]
 
 [tool.pytest.ini_options]
