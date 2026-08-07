@@ -11,6 +11,11 @@ doc_files: &doc_files
 
 python_all: &python_all
   - "**/*.py"
+  # Linter settings and the resolved linter versions CI installs. Without these,
+  # a dependency bump can change what `ruff check .` reports while python-lint
+  # never runs on the PR that makes the change.
+  - "pyproject.toml"
+  - "uv.lock"
 
 mcp_all: &mcp_all
   - "src/**"
