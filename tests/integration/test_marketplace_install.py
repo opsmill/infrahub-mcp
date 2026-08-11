@@ -48,7 +48,10 @@ async def test_install_lands_on_session_branch_not_main(
     infrahub_client: InfrahubClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def fake_get_schema(self: MarketplaceClient, ref: str, version: str | None = None) -> SchemaPayload:  # noqa: ARG001
+    # Must stay async: it replaces the async MarketplaceClient.get_schema.
+    async def fake_get_schema(  # noqa: RUF029
+        self: MarketplaceClient, ref: str, version: str | None = None
+    ) -> SchemaPayload:
         return SchemaPayload(
             namespace="opsmill", name="gadget", resolved_version="1.0.0", yaml=_GADGET_YAML, metadata=None
         )

@@ -43,6 +43,7 @@ class TestMarketplaceToolMetadata:
     @pytest.mark.parametrize("name", ["marketplace_search", "marketplace_get_schema", "marketplace_get_collection"])
     async def test_read_tools_are_read_only(self, name: str) -> None:
         tool = await mcp.get_tool(name)
+        assert tool is not None
         assert tool.annotations is not None
         assert tool.annotations.readOnlyHint is True
         assert "retrieve" in tool.tags
@@ -51,6 +52,7 @@ class TestMarketplaceToolMetadata:
     async def test_install_is_write_tagged(self) -> None:
         # The "write" tag is what ReadOnlyMiddleware blocks and AuthMiddleware scopes (FR-005/FR-006).
         tool = await install_mcp.get_tool("marketplace_install")
+        assert tool is not None
         assert "write" in tool.tags
         assert tool.annotations is not None
         assert tool.annotations.readOnlyHint is False

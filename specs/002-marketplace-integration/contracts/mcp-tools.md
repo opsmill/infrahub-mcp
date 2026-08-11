@@ -55,7 +55,7 @@ The external interface this feature exposes = four MCP tools in `tools/marketpla
 
 ```python
 if _config.marketplace_enabled:
-    mcp.mount(marketplace_mcp)              # read tools
+    mcp.mount(marketplace_mcp)  # read tools
     if not _config.read_only:
         mcp.mount(marketplace_install_mcp)  # write install
 ```

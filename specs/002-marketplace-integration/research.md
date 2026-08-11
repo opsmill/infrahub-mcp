@@ -60,7 +60,7 @@ Grounded in the codebase (`tools/write.py`, `tools/schema.py`, `server.py`, `con
 - **Decision**: Add `marketplace_enabled: bool = True` (FR-007 — default ON per clarification) and `marketplace_url: str = "https://marketplace.infrahub.app"` (FR-008) to `ServerConfig`, validated at startup. In `server.py`:
   ```python
   if _config.marketplace_enabled:
-      mcp.mount(marketplace_mcp)              # read tools
+      mcp.mount(marketplace_mcp)  # read tools
       if not _config.read_only:
           mcp.mount(marketplace_install_mcp)  # write install
   ```

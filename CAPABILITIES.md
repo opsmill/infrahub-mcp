@@ -1,9 +1,9 @@
 ## Infrahub MCP Server 1.1.8
 
-| ✔ Tools (12) | ✔ Prompts (4) | ✔ Resources (3) | ✔ Logging | ~~<span style="opacity:0.6" class="error">✘ Completions</span>~~ | ~~<span style="opacity:0.6" class="error">✘ Tasks</span>~~ |
+| ✔ Tools (16) | ✔ Prompts (4) | ✔ Resources (3) | ✔ Logging | ~~<span style="opacity:0.6" class="error">✘ Completions</span>~~ | ~~<span style="opacity:0.6" class="error">✘ Tasks</span>~~ |
 | --- | --- | --- | --- | --- | --- |
 
-## 🛠️ Tools (12)
+## 🛠️ Tools (16)
 
 <table style="text-align: left;">
 <thead>
@@ -114,6 +114,72 @@
                 <!--- no icon -->
             </td>
             <td>
+                <code><b>marketplace_get_collection</b></code>
+            </td>
+            <td>Retrieve a marketplace collection's metadata and its assembled member schemas.<br/><br/>Returns the collection's ordered member schemas as a single valid multi-document<br/>YAML stream, so a themed bundle can be reviewed or adopted in one step. Read-only.</td>
+            <td>
+                <ul>
+                    <li> <code>ref</code> : string<br /></li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>7.</td>
+            <td>
+                <!--- no icon -->
+            </td>
+            <td>
+                <code><b>marketplace_get_schema</b></code>
+            </td>
+            <td>Retrieve a marketplace schema's catalog metadata and its YAML payload.<br/><br/>Resolves ``namespace/name`` (schema wins if the name is also a collection) and<br/>returns the schema's metadata plus its decompressed YAML — the artifact you would<br/>review before installing. Read-only and anonymous.</td>
+            <td>
+                <ul>
+                    <li> <code>ref</code> : string<br /></li>
+                    <li> <code>version</code> : string | null<br /></li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>8.</td>
+            <td>
+                <!--- no icon -->
+            </td>
+            <td>
+                <code><b>marketplace_install</b></code>
+            </td>
+            <td>Install a marketplace schema into the connected Infrahub on the session branch.<br/><br/>Downloads the schema YAML and loads it via the Infrahub SDK onto the auto-created<br/>session branch — the default branch is never modified. Review and merge via<br/>`<code>propose_changes</code>`. Blocked in read-only mode. This action is audited.</td>
+            <td>
+                <ul>
+                    <li> <code>ref</code> : string<br /></li>
+                    <li> <code>version</code> : string | null<br /></li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>9.</td>
+            <td>
+                <!--- no icon -->
+            </td>
+            <td>
+                <code><b>marketplace_search</b></code>
+            </td>
+            <td>Search the Infrahub Marketplace catalog for published schemas (or collections).<br/><br/>Returns a ranked JSON list of catalog entries (namespace, name, version, tags,<br/>downloads). Empty list when nothing matches. Read-only and anonymous.</td>
+            <td>
+                <ul>
+                    <li> <code>collections</code> : boolean<br /></li>
+                    <li> <code>limit</code> : integer | null<br /></li>
+                    <li> <code>namespace</code> : string | null<br /></li>
+                    <li> <code>query</code> : string<br /></li>
+                    <li> <code>tag</code> : string | null<br /></li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>10.</td>
+            <td>
+                <!--- no icon -->
+            </td>
+            <td>
                 <code><b>mutate_graphql</b></code>
             </td>
             <td>Execute a GraphQL mutation against Infrahub — use only for complex writes that typed tools can't express.<br/><br/>Prefer `<code>node_upsert</code>` (create/update scalar attributes) or `<code>node_delete</code>`<br/>(remove a node) for straightforward changes; they validate against the<br/>schema and produce clearer audit entries. Reach for `<code>mutate_graphql</code>`<br/>when you need relationship edits, bulk operations, or any mutation shape<br/>not covered by the typed tools. For reads, use `<code>query_graphql</code>`.<br/><br/>The mutation always runs on the **active session branch** (auto-created on the<br/>first write of the session, ``mcp/session-YYYYMMDD-<hex>``). There is no branch<br/>override — writes are isolated to the session, and changes reach the default<br/>branch only through `<code>propose_changes</code>` and human review. To target a different<br/>branch deliberately, switch the session with `<code>reset_session_branch</code>` first.<br/>Branch- and schema-management mutations are rejected.<br/><br/>To discover available kinds and their attributes, read the ``infrahub://schema``<br/>resource or call the `<code>get_schema</code>` tool.<br/>For the full GraphQL SDL, read ``infrahub://graphql-schema``.</td>
@@ -124,7 +190,7 @@
             </td>
         </tr>
         <tr>
-            <td>7.</td>
+            <td>11.</td>
             <td>
                 <!--- no icon -->
             </td>
@@ -141,7 +207,7 @@
             </td>
         </tr>
         <tr>
-            <td>8.</td>
+            <td>12.</td>
             <td>
                 <!--- no icon -->
             </td>
@@ -159,7 +225,7 @@
             </td>
         </tr>
         <tr>
-            <td>9.</td>
+            <td>13.</td>
             <td>
                 <!--- no icon -->
             </td>
@@ -176,7 +242,7 @@
             </td>
         </tr>
         <tr>
-            <td>10.</td>
+            <td>14.</td>
             <td>
                 <!--- no icon -->
             </td>
@@ -192,7 +258,7 @@
             </td>
         </tr>
         <tr>
-            <td>11.</td>
+            <td>15.</td>
             <td>
                 <!--- no icon -->
             </td>
@@ -207,7 +273,7 @@
             </td>
         </tr>
         <tr>
-            <td>12.</td>
+            <td>16.</td>
             <td>
                 <!--- no icon -->
             </td>

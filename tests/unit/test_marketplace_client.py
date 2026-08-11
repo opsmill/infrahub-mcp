@@ -141,7 +141,8 @@ async def test_search_server_error_is_unreachable() -> None:
 
 async def test_search_transport_failure_is_unreachable() -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError("boom")
+        msg = "boom"
+        raise httpx.ConnectError(msg)
 
     with pytest.raises(MarketplaceError) as exc:
         await _client(handler).search("x")
@@ -160,11 +161,11 @@ async def test_search_invalid_json_is_unreachable() -> None:
 def _schema_handler(*, download_status: int = 200, detail_status: int = 200, version_header: str = "1.0.0") -> Handler:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/download") or "/versions/" in request.url.path:
-            if download_status != 200:  # noqa: PLR2004
+            if download_status != 200:
                 return httpx.Response(download_status)
             return httpx.Response(200, text="version: '1.0'\nnodes: []\n", headers={"x-schema-version": version_header})
         # detail
-        if detail_status != 200:  # noqa: PLR2004
+        if detail_status != 200:
             return httpx.Response(detail_status)
         return httpx.Response(200, json={"namespace": "opsmill", "name": "dcim", "downloads": 5})
 
