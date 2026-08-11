@@ -183,6 +183,20 @@
           "isRequired": false,
           "format": "string",
           "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_MARKETPLACE_ENABLED",
+          "description": "Marketplace enabled (default: true)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_MARKETPLACE_URL",
+          "description": "Marketplace url (default: https://marketplace.infrahub.app)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
         }
       ]
     }
