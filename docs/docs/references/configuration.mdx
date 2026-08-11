@@ -24,6 +24,17 @@ Username/password authentication against Infrahub is not supported. Use [OIDC](.
 | `INFRAHUB_MCP_MAX_BRANCH_RETRIES` | Max collision retries when generating branch names (1–20) | `5` |
 | `INFRAHUB_MCP_LOG_LEVEL` | Set to `debug` for verbose logging with tracebacks | `info` |
 
+## Marketplace
+
+Discovery and install tools for the [Infrahub Marketplace](https://marketplace.infrahub.app). Enabled by default; discovery is read-only and anonymous, install is a write operation.
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `INFRAHUB_MCP_MARKETPLACE_ENABLED` | Register the marketplace tools. When `false`, no marketplace tool is available and no outbound request is made. | `true` |
+| `INFRAHUB_MCP_MARKETPLACE_URL` | Base URL of the marketplace (validated as an http(s) URL at startup). | `https://marketplace.infrahub.app` |
+
+Marketplace requests carry no Infrahub credentials and honour the SDK's proxy/TLS settings. `marketplace_install` is a write tool: it is blocked in [read-only mode](#server-behavior) and loads schemas onto your session branch for review, never the default branch.
+
 ## Rate limiting
 
 Token bucket rate limiter that protects the server from abuse. Disabled by default.

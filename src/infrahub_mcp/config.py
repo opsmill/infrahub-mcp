@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import string
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -61,6 +62,11 @@ class ServerConfig(BaseSettings):
         token_passthrough_header: HTTP header carrying the per-request credential
             (Bearer token or Basic user:pass) when ``auth_mode`` is ``token-passthrough``
             or ``basic-passthrough``.
+        marketplace_enabled: When True (default), marketplace discovery/install tools are
+            registered. When False, no marketplace tool is registered and no outbound
+            request to the marketplace is made.
+        marketplace_url: Base URL for the Infrahub Marketplace. Defaults to
+            ``https://marketplace.infrahub.app``. Validated as an http(s) URL at startup.
     """
 
     model_config = SettingsConfigDict(
@@ -99,6 +105,8 @@ class ServerConfig(BaseSettings):
     oidc_audience: str = ""
     oidc_user_claim: str = "email"
     token_passthrough_header: str = "Authorization"  # noqa: S105
+    marketplace_enabled: bool = True
+    marketplace_url: str = "https://marketplace.infrahub.app"
 
     @property
     def log_level_debug(self) -> bool:
@@ -119,6 +127,16 @@ class ServerConfig(BaseSettings):
     def _normalize_auth_mode(cls, raw: object) -> str:
         """Strip + lowercase the raw env value; Literal validation handles unknown values."""
         return str(raw).strip().lower()
+
+    @field_validator("marketplace_url")
+    @classmethod
+    def _validate_marketplace_url(cls, raw: str) -> str:
+        url = str(raw).strip().rstrip("/")
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            msg = f"INFRAHUB_MCP_MARKETPLACE_URL must be a valid http(s) URL, got {raw!r}."
+            raise ValueError(msg)
+        return url
 
     @field_validator("branch_pattern")
     @classmethod

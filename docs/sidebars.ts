@@ -30,6 +30,7 @@ const sidebars: SidebarsConfig = {
         'use-cases/compliance-analysis',
         'use-cases/brownfield-onboarding',
         'use-cases/safe-changes-branch-isolation',
+        'use-cases/marketplace-schema-discovery',
       ],
     },
     {

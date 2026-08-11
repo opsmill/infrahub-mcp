@@ -85,9 +85,21 @@ Tools live in `src/infrahub_mcp/tools/`, each as a sub-application:
 | `schema.py` | Schema introspection tools |
 | `session.py` | Branch/session management |
 | `write.py` | Write operations (upsert, delete, propose) |
+| `marketplace.py` | Marketplace discovery (`mcp`) + install (`install_mcp`) |
 
 Write tools are tagged `"write"` so `ReadOnlyMiddleware` and
 `AuthMiddleware` can enforce access control.
+
+### Marketplace external-service boundary
+
+`tools/marketplace.py` reaches an **external** service (`marketplace.infrahub.app`)
+via `MarketplaceClient` in `src/infrahub_mcp/marketplace.py` — a thin `httpx` client
+that carries no Infrahub credentials and inherits only the SDK's proxy/TLS. This is
+the one sanctioned direct-HTTP path: the SDK boundary is drawn at the *Infrahub
+instance*, not at "any HTTP" (see [ADR 0008](../adr/0008-marketplace-external-service-boundary.md)).
+The read tools are gated by `marketplace_enabled`; `marketplace_install` is
+`"write"`-tagged and loads YAML onto the session branch via `client.schema.load`, so
+it is blocked in read-only mode and audited like any other write.
 
 ## Resource Organization
 

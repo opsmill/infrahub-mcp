@@ -34,6 +34,8 @@ from infrahub_mcp.prompts.prompts import mcp as prompts_mcp
 from infrahub_mcp.resources.branches import mcp as branches_resources_mcp
 from infrahub_mcp.resources.schema import mcp as schema_resources_mcp
 from infrahub_mcp.tools.gql import mcp as graphql_mcp
+from infrahub_mcp.tools.marketplace import install_mcp as marketplace_install_mcp
+from infrahub_mcp.tools.marketplace import mcp as marketplace_mcp
 from infrahub_mcp.tools.nodes import mcp as nodes_mcp
 from infrahub_mcp.tools.schema import mcp as schema_tools_mcp
 from infrahub_mcp.tools.session import mcp as session_mcp
@@ -214,6 +216,20 @@ def infrahub_agent() -> str:
         "over hand-built deep GraphQL queries."
     )
 
+    if _config.marketplace_enabled:
+        prompt += (
+            "\n- **`marketplace_search`** — search the Infrahub Marketplace for published "
+            "schemas or collections.\n"
+            "- **`marketplace_get_schema`** — read a marketplace schema's metadata and YAML "
+            "(by `namespace/name`).\n"
+            "- **`marketplace_get_collection`** — fetch a collection's member schemas as multi-doc YAML."
+        )
+        if not _config.read_only:
+            prompt += (
+                "\n- **`marketplace_install`** — load a marketplace schema onto your session branch "
+                "for review (never touches the default branch)."
+            )
+
     if not _config.read_only:
         prompt += """
 
@@ -271,6 +287,12 @@ mcp.mount(traversal_mcp)
 # Write tools — hidden in read-only mode
 if not _config.read_only:
     mcp.mount(write_mcp)
+
+# Marketplace tools — gated by config; install is a write tool, hidden in read-only mode
+if _config.marketplace_enabled:
+    mcp.mount(marketplace_mcp)
+    if not _config.read_only:
+        mcp.mount(marketplace_install_mcp)
 
 
 # ---------------------------------------------------------------------------
