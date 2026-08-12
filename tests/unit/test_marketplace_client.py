@@ -158,13 +158,25 @@ async def test_search_invalid_json_is_unreachable() -> None:
 # --- get_schema -------------------------------------------------------------
 
 
-def _schema_handler(*, download_status: int = 200, detail_status: int = 200, version_header: str = "1.0.0") -> Handler:
+def _schema_handler(
+    *,
+    download_status: int = 200,
+    detail_status: int = 200,
+    collection_status: int = 404,
+    version_header: str = "1.0.0",
+) -> Handler:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/download") or "/versions/" in request.url.path:
             if download_status != 200:
                 return httpx.Response(download_status)
             return httpx.Response(200, text="version: '1.0'\nnodes: []\n", headers={"x-schema-version": version_header})
-        # detail
+        # get_schema probes the collections path too, to detect an ambiguous ref (FR-011).
+        # Default 404 = this ref is a schema only.
+        if "/collections/" in request.url.path:
+            if collection_status != 200:
+                return httpx.Response(collection_status)
+            return httpx.Response(200, json={"namespace": "opsmill", "name": "dcim"})
+        # schema detail
         if detail_status != 200:
             return httpx.Response(detail_status)
         return httpx.Response(200, json={"namespace": "opsmill", "name": "dcim", "downloads": 5})
@@ -221,6 +233,44 @@ async def test_get_schema_invalid_ref() -> None:
     assert exc.value.category is MarketplaceErrorCategory.INVALID_REF
 
 
+async def test_get_schema_unambiguous_ref_carries_no_note() -> None:
+    payload = await _client(_schema_handler()).get_schema("opsmill/dcim")
+    assert payload.ambiguity is None
+
+
+async def test_get_schema_ambiguous_ref_resolves_as_schema_and_says_so() -> None:
+    """FR-011: a ref naming both a schema and a collection resolves to the schema, noted."""
+    payload = await _client(_schema_handler(collection_status=200)).get_schema("opsmill/dcim")
+    assert "nodes" in payload.yaml  # the *schema* won
+    assert payload.ambiguity is not None
+    assert "also names a collection" in payload.ambiguity
+    assert "marketplace_get_collection" in payload.ambiguity
+
+
+async def test_get_schema_collection_only_ref_points_at_the_collection_tool() -> None:
+    handler = _schema_handler(detail_status=404, collection_status=200)
+    with pytest.raises(MarketplaceError) as exc:
+        await _client(handler).get_schema("opsmill/starter")
+    assert exc.value.category is MarketplaceErrorCategory.NOT_FOUND
+    assert exc.value.remediation is not None
+    assert "marketplace_get_collection" in exc.value.remediation
+
+
+async def test_get_schema_collection_probe_failure_does_not_fail_the_call() -> None:
+    """The ambiguity probe is best effort — a broken collections endpoint must not break get_schema."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/collections/" in request.url.path:
+            return httpx.Response(500)
+        if request.url.path.endswith("/download"):
+            return httpx.Response(200, text="version: '1.0'\nnodes: []\n")
+        return httpx.Response(200, json={"namespace": "opsmill", "name": "dcim"})
+
+    payload = await _client(handler).get_schema("opsmill/dcim")
+    assert "nodes" in payload.yaml
+    assert payload.ambiguity is None
+
+
 # --- get_collection ---------------------------------------------------------
 
 
@@ -275,6 +325,68 @@ async def test_requests_carry_no_infrahub_credentials() -> None:
     for headers in seen:
         assert "authorization" not in headers
         assert "x-infrahub-key" not in {k.lower() for k in headers}
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 429])
+async def test_unhandled_4xx_becomes_a_marketplace_error(status: int) -> None:
+    """FR-010: only 404/413 carry caller meaning; every other 4xx must still be categorised.
+
+    Previously these reached ``raise_for_status()`` and escaped as a raw
+    ``httpx.HTTPStatusError``, which the tool layer does not catch.
+    """
+    with pytest.raises(MarketplaceError) as exc:
+        await _client(lambda _r: httpx.Response(status)).search("dcim")
+    assert exc.value.category is MarketplaceErrorCategory.UNREACHABLE
+
+
+@pytest.mark.parametrize("status", [400, 403, 429])
+async def test_unhandled_4xx_on_schema_download_becomes_a_marketplace_error(status: int) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/download"):
+            return httpx.Response(status)
+        if "/collections/" in request.url.path:
+            return httpx.Response(404)
+        return httpx.Response(200, json={"namespace": "opsmill", "name": "dcim"})
+
+    with pytest.raises(MarketplaceError) as exc:
+        await _client(handler).get_schema("opsmill/dcim")
+    assert exc.value.category is MarketplaceErrorCategory.UNREACHABLE
+
+
+async def test_zero_downloads_is_reported_not_dropped() -> None:
+    """A real download_count of 0 is falsy — it must not fall through to None and vanish."""
+    entries = await _client(
+        lambda _r: _listing([{"namespace": "opsmill", "name": "fresh", "download_count": 0}])
+    ).search("fresh")
+    assert entries[0].downloads == 0
+    assert "downloads" in entries[0].model_dump(exclude_none=True)
+
+
+def test_proxy_mounts_inherit_the_sdk_tls_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A mounted transport does not inherit the client's ``verify``; it must be passed through.
+
+    Otherwise a custom CA configured on the SDK is silently dropped for proxied requests.
+    """
+    from infrahub_sdk import Config  # noqa: PLC0415 - keep the SDK import local to this test
+
+    from infrahub_mcp.marketplace import make_marketplace_http_client  # noqa: PLC0415
+
+    captured: list[dict[str, object]] = []
+    real_transport = httpx.AsyncHTTPTransport
+
+    class SpyTransport(real_transport):  # type: ignore[misc, valid-type]
+        def __init__(self, **kwargs: object) -> None:
+            captured.append(kwargs)
+            super().__init__(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(httpx, "AsyncHTTPTransport", SpyTransport)
+
+    config = Config(proxy_mounts={"http": "http://proxy.test:8080"}, api_token="x")  # type: ignore[arg-type]
+    make_marketplace_http_client(config)
+
+    assert captured, "expected a mounted transport to be constructed"
+    for kwargs in captured:
+        assert kwargs["verify"] is config.tls_context
 
 
 def test_error_json_payload_shape() -> None:

@@ -13,6 +13,7 @@ callers can distinguish a bad reference from an unreachable service (FR-010).
 
 from __future__ import annotations
 
+import asyncio
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -25,6 +26,10 @@ if TYPE_CHECKING:
 MarketplaceItemType = str  # "schemas" | "collections" (the API path segment)
 
 _IDENTIFIER_PARTS = 2  # a valid ref is exactly "namespace/name"
+
+# Statuses ``_get`` passes through because callers give them item-specific meaning:
+# 404 → not-found / no-such-version, 413 → collection too large.
+_CALLER_HANDLED_STATUSES = frozenset({httpx.codes.NOT_FOUND, httpx.codes.REQUEST_ENTITY_TOO_LARGE})
 
 
 class MarketplaceErrorCategory(StrEnum):
@@ -80,6 +85,8 @@ class SchemaPayload(BaseModel, frozen=True):
     resolved_version: str
     yaml: str
     metadata: dict[str, Any] | None = None
+    #: Set only when the ref also names a collection — schema wins, ambiguity surfaced (FR-011).
+    ambiguity: str | None = None
 
 
 class CollectionPayload(BaseModel, frozen=True):
@@ -130,8 +137,11 @@ def make_marketplace_http_client(sdk_config: ConfigBase | None) -> httpx.AsyncCl
         if sdk_config.proxy:
             kwargs["proxy"] = sdk_config.proxy
         elif sdk_config.proxy_mounts.is_set:
+            # A mounted transport does not inherit the client's ``verify``, so pass the
+            # SDK's TLS context to each one explicitly — otherwise a custom CA is silently
+            # dropped for proxied requests.
             kwargs["mounts"] = {
-                key: httpx.AsyncHTTPTransport(proxy=val)
+                key: httpx.AsyncHTTPTransport(proxy=val, verify=sdk_config.tls_context)
                 for key, val in sdk_config.proxy_mounts.model_dump(by_alias=True).items()
                 if val
             }
@@ -167,6 +177,11 @@ def _catalog_entry(item: dict[str, Any], item_type: MarketplaceItemType) -> Cata
     author = item.get("author")
     if isinstance(author, dict):
         author = author.get("username") or author.get("name")
+    # Explicit None check, not `or`: a real download count of 0 is falsy, and would
+    # otherwise fall through to None and be stripped by exclude_none=True.
+    downloads = item.get("download_count")
+    if downloads is None:
+        downloads = item.get("downloads")
     return CatalogEntry(
         namespace=str(item.get("namespace", "")),
         name=str(item.get("name", "")),
@@ -176,7 +191,7 @@ def _catalog_entry(item: dict[str, Any], item_type: MarketplaceItemType) -> Cata
         author=author,
         latest_version=item.get("semver") or latest_semver,
         tags=_tag_names(item.get("tags")),
-        downloads=item.get("download_count") or item.get("downloads"),
+        downloads=downloads,
         schema_count=item.get("schema_count"),
     )
 
@@ -194,7 +209,13 @@ class MarketplaceClient:
         self._http = http_client
 
     async def _get(self, url: str, *, params: dict[str, Any] | None = None) -> httpx.Response:
-        """GET a URL, mapping transport failures and 5xx to ``unreachable``."""
+        """GET a URL, mapping every non-success status to a :class:`MarketplaceError`.
+
+        Callers handle 404 and 413 themselves (they carry item-specific meaning), so those
+        two are passed through. Every other failure — transport, 5xx, or any other 4xx such
+        as 403/429 — is translated here, so no raw ``httpx`` exception can escape the
+        error-category contract (FR-010).
+        """
         try:
             resp = await self._http.get(url, params=params)
         except httpx.HTTPError as exc:
@@ -208,6 +229,12 @@ class MarketplaceClient:
                 MarketplaceErrorCategory.UNREACHABLE,
                 f"The marketplace at {self._base_url} returned a server error ({resp.status_code}).",
                 remediation="The marketplace may be temporarily unavailable — retry later.",
+            )
+        if resp.is_error and resp.status_code not in _CALLER_HANDLED_STATUSES:
+            raise MarketplaceError(
+                MarketplaceErrorCategory.UNREACHABLE,
+                f"The marketplace at {self._base_url} refused the request ({resp.status_code}).",
+                remediation="Check the configured marketplace URL, or retry later if rate-limited.",
             )
         return resp
 
@@ -291,23 +318,40 @@ class MarketplaceClient:
                 f"No schema named {str(ident)!r} found on the marketplace.",
                 remediation="Check the namespace/name, or search the catalog first.",
             )
-        resp.raise_for_status()
         resolved = version or resp.headers.get("x-schema-version", "latest")
         return resp.text, resolved
 
     async def get_schema(self, ref: str, version: str | None = None) -> SchemaPayload:
-        """Fetch a schema's catalog metadata (best effort) and its YAML payload (FR-002)."""
+        """Fetch a schema's catalog metadata (best effort) and its YAML payload (FR-002).
+
+        A ``namespace/name`` can name both a schema and a collection, so both item types
+        are probed concurrently: the schema always wins, but the ambiguity is surfaced on
+        the payload rather than silently discarded (FR-011). The collection probe is best
+        effort — if only it fails, the schema fetch still succeeds.
+        """
         ident = parse_identifier(ref)
-        detail_resp = await self._get(_detail_url(self._base_url, "schemas", ident.namespace, ident.name))
+        schema_url = _detail_url(self._base_url, "schemas", ident.namespace, ident.name)
+        collection_url = _detail_url(self._base_url, "collections", ident.namespace, ident.name)
+        detail_resp, collection_resp = await asyncio.gather(
+            self._get(schema_url), self._get(collection_url), return_exceptions=True
+        )
+        if isinstance(detail_resp, BaseException):
+            raise detail_resp
+        also_a_collection = isinstance(collection_resp, httpx.Response) and collection_resp.is_success
+
         if detail_resp.status_code == httpx.codes.NOT_FOUND:
             raise MarketplaceError(
                 MarketplaceErrorCategory.NOT_FOUND,
                 f"No schema named {str(ident)!r} found on the marketplace.",
-                remediation="Check the namespace/name, or search the catalog first.",
+                remediation=(
+                    f"{ident} is a collection, not a schema — fetch it with marketplace_get_collection."
+                    if also_a_collection
+                    else "Check the namespace/name, or search the catalog first."
+                ),
             )
         metadata: dict[str, Any] | None = None
         if detail_resp.is_success:
-            parsed = self._json(detail_resp, _detail_url(self._base_url, "schemas", ident.namespace, ident.name))
+            parsed = self._json(detail_resp, schema_url)
             metadata = parsed if isinstance(parsed, dict) else None
         yaml_text, resolved = await self._download_schema_yaml(ident, version, schema_exists=True)
         return SchemaPayload(
@@ -316,6 +360,12 @@ class MarketplaceClient:
             resolved_version=resolved,
             yaml=yaml_text,
             metadata=metadata,
+            ambiguity=(
+                f"{ident} also names a collection on the marketplace; resolved as the schema. "
+                "Use marketplace_get_collection to fetch the collection instead."
+                if also_a_collection
+                else None
+            ),
         )
 
     async def get_collection(self, ref: str) -> CollectionPayload:
@@ -335,7 +385,6 @@ class MarketplaceClient:
                 f"Collection {ident} is too large to assemble in one response.",
                 remediation="Fetch its member schemas individually with marketplace_get_schema.",
             )
-        resp.raise_for_status()
         payload = self._json(resp, url)
         items = payload.get("items", []) if isinstance(payload, dict) else []
 
