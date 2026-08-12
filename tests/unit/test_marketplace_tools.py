@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -13,6 +13,9 @@ from pydantic import ValidationError
 
 from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.tools.marketplace import install_mcp, mcp
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 
 class TestMarketplaceConfig:
@@ -85,7 +88,7 @@ class TestInstallErrorPaths:
         from infrahub_mcp.tools import marketplace as mp_tools  # noqa: PLC0415
 
         class _StubClient:
-            async def get_schema(self, ref: str, version: str | None = None) -> SchemaPayload:  # noqa: ARG002, RUF029
+            async def get_schema(self, ref: str, version: str | None = None) -> SchemaPayload:
                 # Unbalanced flow sequence — yaml.safe_load_all raises while iterating.
                 return SchemaPayload(
                     namespace="opsmill", name="broken", resolved_version="1.0.0", yaml="nodes: [unclosed", metadata=None
@@ -94,7 +97,7 @@ class TestInstallErrorPaths:
         # Stub the client factory, not the class: the tool builds its client from the
         # lifespan AppContext, which a bare in-process Client does not provide.
         @asynccontextmanager
-        async def _stub_factory(ctx: object) -> AsyncIterator[_StubClient]:  # noqa: ARG001, RUF029
+        async def _stub_factory(ctx: object) -> AsyncIterator[_StubClient]:
             yield _StubClient()
 
         monkeypatch.setattr(mp_tools, "_marketplace_client", _stub_factory)

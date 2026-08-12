@@ -5,6 +5,7 @@ from __future__ import annotations
 import gzip
 import json
 from collections.abc import Callable
+from typing import Any
 
 import httpx
 import pytest
@@ -371,17 +372,17 @@ def test_proxy_mounts_inherit_the_sdk_tls_context(monkeypatch: pytest.MonkeyPatc
 
     from infrahub_mcp.marketplace import make_marketplace_http_client  # noqa: PLC0415
 
-    captured: list[dict[str, object]] = []
+    captured: list[dict[str, Any]] = []
     real_transport = httpx.AsyncHTTPTransport
 
     class SpyTransport(real_transport):  # type: ignore[misc, valid-type]
-        def __init__(self, **kwargs: object) -> None:
+        def __init__(self, **kwargs: Any) -> None:
             captured.append(kwargs)
-            super().__init__(**kwargs)  # type: ignore[arg-type]
+            super().__init__(**kwargs)
 
     monkeypatch.setattr(httpx, "AsyncHTTPTransport", SpyTransport)
 
-    config = Config(proxy_mounts={"http": "http://proxy.test:8080"}, api_token="x")  # type: ignore[arg-type]
+    config = Config(proxy_mounts={"http": "http://proxy.test:8080"}, api_token="x")  # type: ignore[arg-type]  # noqa: S106
     make_marketplace_http_client(config)
 
     assert captured, "expected a mounted transport to be constructed"
