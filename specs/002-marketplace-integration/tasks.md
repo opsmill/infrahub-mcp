@@ -166,7 +166,7 @@ Foundation → US1 (MVP: discover/read) → US2 (install w/ review gate) → US3
 
 ## Implementation status
 
-All 29 tasks implemented; `uv run invoke format lint` clean (ruff, mypy, pylint 10.00/10) and `uv run pytest` green (339 passed, 37 new marketplace unit tests). Two items depend on live resources and are **verified only against mocks so far**:
+All 29 tasks implemented; `uv run invoke format lint` clean (ruff, mypy, pylint 10.00/10) and `uv run pytest` green (339 passed, 37 new marketplace unit tests). Two items depend on live resources: **T011 has been verified live**, **T022 is Docker-gated and mock-only so far**:
 
 - **T011** — ✅ **verified live** against `marketplace.infrahub.app` (2026-07-03): search, get_schema (latest + pinned + no-such-version), get_collection (5-member fan-out), and not-found all work. The live probe caught a field-name mismatch vs PR #1128's fixtures (`tags` are `{id,name}` dicts, `display_name`/`download_count`/`author.username`); `_catalog_entry` fixed and unit-tested against the real shape.
 - **T022** — E2E install test written but Docker-gated (`-m integration`, deselected by default), consistent with the existing `001-infrahub-testcontainers` harness state. Run `uv run pytest -m integration` with Docker to verify end-to-end.

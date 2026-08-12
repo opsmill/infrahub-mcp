@@ -1,6 +1,6 @@
 # Phase 1 Contracts: MCP tools
 
-The external interface this feature exposes = four MCP tools in `tools/marketplace.py`. All return `str` (JSON or YAML/TOON) consistent with existing tools. Gated by `marketplace_enabled`; install additionally requires not-read-only.
+The external interface this feature exposes = four MCP tools in `tools/marketplace.py`. The three read tools return `str` (JSON or YAML/TOON); `marketplace_install` returns `dict[str, Any]`, consistent with the existing write tools. Gated by `marketplace_enabled`; install additionally requires not-read-only.
 
 ## `marketplace_search` — read
 
@@ -10,8 +10,9 @@ The external interface this feature exposes = four MCP tools in `tools/marketpla
   - `tag: str | None = None` — filter by tag *(client-side unless a server param is confirmed — see research.md Decision 3 residual)*
   - `namespace: str | None = None` — filter by namespace *(client-side unless confirmed)*
   - `limit: int | None = None` — cap results to a single page; omit to fetch all pages
+  - `collections: bool = False` — search collections instead of schemas
 - **Pagination**: cursor-based internally (`cursor`/`end_cursor` via `page_info`), following SDK PR #1128; not exposed as a tool param.
-- **Returns**: compact JSON list of `CatalogEntry` (ranked). Empty list on no matches (not an error).
+- **Returns**: compact JSON list of `CatalogEntry` (ranked), each carrying `item_type` (`"schema"` or `"collection"`). Empty list on no matches (not an error).
 - **Errors**: `unreachable` on transport/5xx/invalid-JSON.
 - **FR**: FR-001, FR-004. *(Endpoint contract confirmed via research.md Decision 3 / SDK PR #1128.)*
 
@@ -47,7 +48,7 @@ The external interface this feature exposes = four MCP tools in `tools/marketpla
 ## Config contract (`ServerConfig`)
 
 | Field | Env var | Default | Validation |
-|-------|---------|---------|------------|
+| ------- | --------- | --------- | ------------ |
 | `marketplace_enabled` | `INFRAHUB_MCP_MARKETPLACE_ENABLED` | `true` | bool |
 | `marketplace_url` | `INFRAHUB_MCP_MARKETPLACE_URL` | `https://marketplace.infrahub.app` | well-formed http(s) URL, trailing slash stripped |
 

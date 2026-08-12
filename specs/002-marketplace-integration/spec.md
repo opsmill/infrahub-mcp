@@ -25,7 +25,7 @@ An infrastructure engineer, working through their AI assistant, searches the Inf
 
 ### User Story 2 - Install a marketplace schema into the connected Infrahub (Priority: P2)
 
-An engineer asks the agent to install a chosen marketplace schema into their connected Infrahub instance. The schema is loaded onto a session branch for human review as a Proposed Change; the default branch is never touched automatically.
+An engineer asks the agent to install a chosen marketplace schema into their connected Infrahub instance. The schema is loaded onto a session branch for human review; the default branch is never touched automatically, and promoting the branch to a Proposed Change is left to the existing session flow.
 
 **Why this priority**: Installation is the highest-value action but depends on discovery (P1) and carries write risk, so it ships second and behind explicit safeguards (read-only enforcement, config gating, session-branch isolation).
 
