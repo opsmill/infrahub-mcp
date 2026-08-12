@@ -236,10 +236,7 @@ class TestReadOnlyMiddleware:
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
-    @pytest.mark.parametrize(
-        "tool_name",
-        ["get_schema", "query_graphql", "get_nodes", "search_nodes"],
-    )
+    @pytest.mark.parametrize("tool_name", sorted(ReadOnlyMiddleware._KNOWN_READ_ONLY_TOOLS))  # noqa: SLF001
     async def test_allows_known_read_tools_without_context(self, tool_name: str) -> None:
         """Fail-closed fallback permits all known read-only tools."""
         middleware = ReadOnlyMiddleware()
@@ -251,6 +248,20 @@ class TestReadOnlyMiddleware:
 
         result = await middleware.on_call_tool(ctx, call_next)
         assert result is expected
+
+    @pytest.mark.anyio
+    async def test_allowlist_covers_every_registered_read_tool(self) -> None:
+        """The fallback allowlist must list every non-write tool the server registers.
+
+        Hand-maintaining this set is what let it drift: read tools added later were
+        silently rejected on the no-context path. Derive the truth from the registry
+        instead of trusting a comment to be honoured.
+        """
+        from infrahub_mcp.server import mcp as server_mcp  # noqa: PLC0415 - import-time env dependency
+
+        read_tools = {tool.name for tool in await server_mcp.list_tools() if "write" not in (tool.tags or set())}
+        missing = read_tools - ReadOnlyMiddleware._KNOWN_READ_ONLY_TOOLS  # noqa: SLF001
+        assert not missing, f"read tools missing from _KNOWN_READ_ONLY_TOOLS: {sorted(missing)}"
 
 
 # ---------------------------------------------------------------------------

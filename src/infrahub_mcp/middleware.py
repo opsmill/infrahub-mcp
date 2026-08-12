@@ -155,12 +155,21 @@ class ReadOnlyMiddleware(Middleware):
     # Known read-only tools used as an allowlist when tag-based resolution
     # is unavailable (fastmcp_context is None).  Fail-closed: any tool NOT
     # in this set is blocked.
+    #
+    # Keep in sync with every tool registered WITHOUT the "write" tag — a read tool
+    # missing here is silently rejected on the no-context path.
     _KNOWN_READ_ONLY_TOOLS: frozenset[str] = frozenset(
         {
             "get_schema",
             "query_graphql",
             "get_nodes",
             "search_nodes",
+            "get_session_info",
+            "find_paths",
+            "find_reachable",
+            "marketplace_search",
+            "marketplace_get_schema",
+            "marketplace_get_collection",
         }
     )
 
