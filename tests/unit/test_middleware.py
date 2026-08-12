@@ -259,9 +259,17 @@ class TestReadOnlyMiddleware:
         """
         from infrahub_mcp.server import mcp as server_mcp  # noqa: PLC0415 - import-time env dependency
 
-        read_tools = {tool.name for tool in await server_mcp.list_tools() if "write" not in (tool.tags or set())}
+        tools = await server_mcp.list_tools()
+        read_tools = {tool.name for tool in tools if "write" not in (tool.tags or set())}
+        write_tools = {tool.name for tool in tools if "write" in (tool.tags or set())}
+
         missing = read_tools - ReadOnlyMiddleware._KNOWN_READ_ONLY_TOOLS  # noqa: SLF001
         assert not missing, f"read tools missing from _KNOWN_READ_ONLY_TOOLS: {sorted(missing)}"
+
+        # The security-relevant direction: a write tool in the allowlist would be permitted
+        # by the no-context path (`tool_name not in _KNOWN_READ_ONLY_TOOLS`) in read-only mode.
+        leaked = write_tools & ReadOnlyMiddleware._KNOWN_READ_ONLY_TOOLS  # noqa: SLF001
+        assert not leaked, f"write tools present in _KNOWN_READ_ONLY_TOOLS: {sorted(leaked)}"
 
 
 # ---------------------------------------------------------------------------

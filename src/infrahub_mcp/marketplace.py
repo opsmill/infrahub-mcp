@@ -318,6 +318,14 @@ class MarketplaceClient:
                 f"No schema named {str(ident)!r} found on the marketplace.",
                 remediation="Check the namespace/name, or search the catalog first.",
             )
+        if resp.is_error:
+            # _get only passes 404 (handled above) and 413 through, so this is a 413.
+            # Without it the error body would be returned as the schema YAML.
+            raise MarketplaceError(
+                MarketplaceErrorCategory.TOO_LARGE,
+                f"The schema payload for {ident} is too large to download ({resp.status_code}).",
+                remediation="Fetch the schema directly from the marketplace instead.",
+            )
         resolved = version or resp.headers.get("x-schema-version", "latest")
         return resp.text, resolved
 
@@ -337,7 +345,11 @@ class MarketplaceClient:
         )
         if isinstance(detail_resp, BaseException):
             raise detail_resp
-        also_a_collection = isinstance(collection_resp, httpx.Response) and collection_resp.is_success
+        # A 413 means the collection exists but is too large to assemble — still evidence
+        # that the ref names a collection, so it must not be lost from the remediation.
+        also_a_collection = isinstance(collection_resp, httpx.Response) and (
+            collection_resp.is_success or collection_resp.status_code == httpx.codes.REQUEST_ENTITY_TOO_LARGE
+        )
 
         if detail_resp.status_code == httpx.codes.NOT_FOUND:
             raise MarketplaceError(

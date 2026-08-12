@@ -8,6 +8,7 @@ FR-006 (read-only blocks install).
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 import pytest
@@ -59,13 +60,15 @@ async def test_install_lands_on_session_branch_not_main(
     monkeypatch.setattr(MarketplaceClient, "get_schema", fake_get_schema)
 
     result = await mcp_client.call_tool("marketplace_install", {"ref": "opsmill/gadget"})
-    assert not result.is_error
-    data = result.data  # type: ignore[attr-defined]
-    branch = data["branch"]
 
     # The Infrahub container is session-scoped, so the branch this tool created must be
-    # torn down here — nothing else owns it, and it would accumulate across runs.
+    # torn down here — nothing else owns it, and it would accumulate across runs. The
+    # extraction lives inside the try so a failed install still reaches the teardown.
+    branch: str | None = None
     try:
+        assert not result.is_error
+        data = result.data  # type: ignore[attr-defined]
+        branch = data["branch"]
         assert branch != "main"
         assert data["installed"] == "opsmill/gadget"
 
@@ -77,7 +80,11 @@ async def test_install_lands_on_session_branch_not_main(
         with pytest.raises(SchemaNotFoundError):
             await infrahub_client.schema.get(kind=_GADGET_KIND, branch="main")
     finally:
-        await infrahub_client.branch.delete(branch_name=branch)
+        # Best-effort, like _delete_branch in test_live_session_branch.py: a teardown
+        # failure must not mask the test's real outcome.
+        if branch is not None:
+            with contextlib.suppress(Exception):
+                await infrahub_client.branch.delete(branch_name=branch)
 
 
 async def test_install_blocked_in_read_only(mcp_client_readonly: Client) -> None:

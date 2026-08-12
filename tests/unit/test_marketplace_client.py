@@ -305,6 +305,23 @@ async def test_get_collection_too_large() -> None:
     assert exc.value.category is MarketplaceErrorCategory.TOO_LARGE
 
 
+async def test_get_schema_download_too_large_is_not_returned_as_yaml() -> None:
+    """A 413 on the *download* must raise, not hand the error body back as schema YAML.
+
+    ``_get`` passes 413 through for the collection path, so the download path has to
+    reject it explicitly — otherwise the body would be parsed and installed.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/download"):
+            return httpx.Response(413, text="payload too large")
+        return httpx.Response(200, json={"namespace": "opsmill", "name": "dcim"})
+
+    with pytest.raises(MarketplaceError) as exc:
+        await _client(handler).get_schema("opsmill/dcim")
+    assert exc.value.category is MarketplaceErrorCategory.TOO_LARGE
+
+
 async def test_get_collection_not_found() -> None:
     with pytest.raises(MarketplaceError) as exc:
         await _client(lambda _r: httpx.Response(404)).get_collection("opsmill/nope")
