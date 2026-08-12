@@ -7,7 +7,7 @@
 
 Add a marketplace-aware capability to the MCP server: agents can **search** the public Infrahub Marketplace catalog, **read** a schema's or collection's metadata and YAML (read-only, anonymous), and — when enabled and not read-only — **install** a chosen schema into the connected Infrahub on a session branch for human approval.
 
-Technical approach: a net-new async `MarketplaceClient` service (`src/infrahub_mcp/marketplace.py`) over the marketplace's public `/api/v1` API, mirroring the URL scheme and schema-vs-collection auto-detect of `infrahub_sdk.ctl.marketplace`. A new `tools/marketplace.py` exposes three `readOnlyHint` read tools plus a `"write"`-tagged `marketplace_install` that loads YAML through the SDK's `client.schema.load(...)` onto the session branch. Two `ServerConfig` fields gate it (`marketplace_enabled`, `marketplace_url`); mounting follows the existing `if not read_only: mcp.mount(write_mcp)` idiom. No new dependency — `httpx` ships with the SDK.
+Technical approach: a net-new async `MarketplaceClient` service (`src/infrahub_mcp/marketplace.py`) over the marketplace's public `/api/v1` API, mirroring the URL scheme and schema-vs-collection auto-detect of `infrahub_sdk.ctl.marketplace`. A new `tools/marketplace.py` exposes three `readOnlyHint` read tools plus a `"write"`-tagged `marketplace_install` that loads YAML through the SDK's `client.schema.load(...)` onto the session branch. Two `ServerConfig` fields gate it (`marketplace_enabled`, `marketplace_url`); mounting follows the existing `if not read_only: mcp.mount(write_mcp)` idiom. No new *package* — `httpx` and `pyyaml` both already ship with the SDK — but both are now declared directly in `pyproject.toml`, since this feature imports them directly rather than relying on a transitive pin.
 
 ## Technical Context
 
@@ -21,14 +21,14 @@ Technical approach: a net-new async `MarketplaceClient` service (`src/infrahub_m
 **Constraints**: No Infrahub credentials on marketplace requests; honour SDK proxy/TLS; errors sanitised (no internal detail); install branch-isolated
 **Scale/Scope**: 3 read tools + 1 write tool + 1 service module + 2 config fields; ~1 new source module pair plus tests
 
-**Open unknown (see research.md)**: the marketplace **search** endpoint is not exercised by `ctl.marketplace` (which only downloads by known ref). Its exact path/params are assumed and must be confirmed against the live API before implementing FR-001.
+**Resolved unknown (see research.md Decision 3)**: the marketplace **search** endpoint is not exercised by `ctl.marketplace` (which only downloads by known ref), so its path/params started out assumed. Now confirmed — the `list`/`search`/`detail` contract came from SDK PR #1128 and was verified live against `marketplace.infrahub.app` (2026-07-03).
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
 | Principle | Gate | Status |
-|-----------|------|--------|
+| ----------- | ------ | -------- |
 | I. MCP Protocol Compliance | Read tools `readOnlyHint`; install tagged `"write"`; MCP-standard errors, no internal leak | PASS — tools follow FastMCP sub-app pattern; errors via `_log_and_raise_error` |
 | II. Infrahub SDK Integration | No raw HTTP **to Infrahub**; install loads via SDK | PASS — marketplace HTTP is to a *separate external service* (explicitly allowed by spec/PRD); the Infrahub-side load uses `client.schema.load` |
 | III. Branch-Safe by Default | Install session-branch isolated; blocked in read-only | PASS — `get_or_create_session_branch`; write-tagged so `ReadOnlyMiddleware` blocks it; also not mounted when `read_only` |

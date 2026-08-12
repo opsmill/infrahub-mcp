@@ -6,9 +6,14 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fastmcp>=3.2.0",
+    # Imported directly by marketplace.py / tools/marketplace.py. Both also ship via
+    # infrahub-sdk, but a direct import warrants a direct declaration — server.py imports
+    # the marketplace module unconditionally, so losing either breaks startup outright.
+    "httpx>=0.27",
     "infrahub-sdk>=1.22.0",
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.6,<3",
+    "pyyaml>=6.0",
     "toonify>=0.1.2",
 ]
 
