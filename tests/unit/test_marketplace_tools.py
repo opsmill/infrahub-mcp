@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from unittest.mock import patch
 
 import pytest
@@ -63,3 +65,40 @@ class TestMarketplaceToolMetadata:
             names = {tool.name for tool in await client.list_tools()}
         assert names == {"marketplace_search", "marketplace_get_schema", "marketplace_get_collection"}
         assert "marketplace_install" not in names
+
+
+class TestInstallErrorPaths:
+    """``marketplace_install`` must route every failure through the sanitised MCP error path.
+
+    Both of these previously escaped as raw exceptions: the ref preflight raised
+    ``MarketplaceError`` outside the ``try``, and a malformed payload raised ``yaml.YAMLError``.
+    """
+
+    async def test_invalid_ref_is_a_tool_error_not_a_raw_exception(self) -> None:
+        async with Client(install_mcp) as client:
+            result = await client.call_tool("marketplace_install", {"ref": "not-a-valid-ref"}, raise_on_error=False)
+        assert result.is_error
+        assert "namespace/name" in str(result.content)
+
+    async def test_malformed_yaml_is_a_tool_error_not_a_raw_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from infrahub_mcp.marketplace import SchemaPayload  # noqa: PLC0415
+        from infrahub_mcp.tools import marketplace as mp_tools  # noqa: PLC0415
+
+        class _StubClient:
+            async def get_schema(self, ref: str, version: str | None = None) -> SchemaPayload:  # noqa: ARG002, RUF029
+                # Unbalanced flow sequence — yaml.safe_load_all raises while iterating.
+                return SchemaPayload(
+                    namespace="opsmill", name="broken", resolved_version="1.0.0", yaml="nodes: [unclosed", metadata=None
+                )
+
+        # Stub the client factory, not the class: the tool builds its client from the
+        # lifespan AppContext, which a bare in-process Client does not provide.
+        @asynccontextmanager
+        async def _stub_factory(ctx: object) -> AsyncIterator[_StubClient]:  # noqa: ARG001, RUF029
+            yield _StubClient()
+
+        monkeypatch.setattr(mp_tools, "_marketplace_client", _stub_factory)
+        async with Client(install_mcp) as client:
+            result = await client.call_tool("marketplace_install", {"ref": "opsmill/broken"}, raise_on_error=False)
+        assert result.is_error
+        assert "not valid YAML" in str(result.content)

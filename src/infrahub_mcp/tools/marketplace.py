@@ -176,7 +176,10 @@ async def marketplace_install(
         of what was applied.
     """
     # Validate the ref before any network work (fails fast on a bad ref).
-    parse_identifier(ref)
+    try:
+        parse_identifier(ref)
+    except MarketplaceError as exc:
+        await _fail(ctx, exc)
 
     async with _marketplace_client(ctx) as client:
         try:
@@ -184,7 +187,14 @@ async def marketplace_install(
         except MarketplaceError as exc:
             await _fail(ctx, exc)
 
-    schemas = [doc for doc in yaml.safe_load_all(payload.yaml) if isinstance(doc, dict)]
+    try:
+        schemas = [doc for doc in yaml.safe_load_all(payload.yaml) if isinstance(doc, dict)]
+    except yaml.YAMLError as exc:
+        await _log_and_raise_error(
+            ctx=ctx,
+            error=f"The downloaded schema {ref!r} is not valid YAML: {exc}",
+            remediation="The marketplace payload may be malformed — inspect it with marketplace_get_schema.",
+        )
     if not schemas:
         await _log_and_raise_error(
             ctx=ctx,
