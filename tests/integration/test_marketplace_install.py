@@ -62,16 +62,22 @@ async def test_install_lands_on_session_branch_not_main(
     assert not result.is_error
     data = result.data  # type: ignore[attr-defined]
     branch = data["branch"]
-    assert branch != "main"
-    assert data["installed"] == "opsmill/gadget"
 
-    # The new kind exists on the session branch...
-    on_branch = await infrahub_client.schema.get(kind=_GADGET_KIND, branch=branch)
-    assert on_branch.kind == _GADGET_KIND
+    # The Infrahub container is session-scoped, so the branch this tool created must be
+    # torn down here — nothing else owns it, and it would accumulate across runs.
+    try:
+        assert branch != "main"
+        assert data["installed"] == "opsmill/gadget"
 
-    # ...but NOT on main (branch-safe by default — Constitution III / SC-002).
-    with pytest.raises(SchemaNotFoundError):
-        await infrahub_client.schema.get(kind=_GADGET_KIND, branch="main")
+        # The new kind exists on the session branch...
+        on_branch = await infrahub_client.schema.get(kind=_GADGET_KIND, branch=branch)
+        assert on_branch.kind == _GADGET_KIND
+
+        # ...but NOT on main (branch-safe by default — Constitution III / SC-002).
+        with pytest.raises(SchemaNotFoundError):
+            await infrahub_client.schema.get(kind=_GADGET_KIND, branch="main")
+    finally:
+        await infrahub_client.branch.delete(branch_name=branch)
 
 
 async def test_install_blocked_in_read_only(mcp_client_readonly: Client) -> None:
