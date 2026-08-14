@@ -200,6 +200,21 @@ def _validate_auth_requirements(config: ServerConfig) -> None:
             raise ValueError(msg)
 
 
+def env_get(name: str) -> str | None:
+    """Read an environment variable the way the Infrahub SDK does — case-insensitively.
+
+    The SDK's settings model resolves ``infrahub_api_token`` and ``INFRAHUB_API_TOKEN``
+    alike, so a lowercase spelling reaches ``InfrahubClient()`` even though nothing here
+    reads it. Every guard and client factory in this package must see the same
+    credentials the SDK will, so they all go through this helper.
+    """
+    value = os.environ.get(name)
+    if value is not None:
+        return value
+    lowered = name.lower()
+    return next((item for key, item in os.environ.items() if key.lower() == lowered), None)
+
+
 def _prime_env_from_dotenv() -> None:
     """Copy the four ``_DOTENV_ALLOWED_KEYS`` connection variables from a ``.env`` file.
 
@@ -207,8 +222,8 @@ def _prime_env_from_dotenv() -> None:
     importing the package neither reads the filesystem nor mutates the process
     environment. Real environment variables always win over the file; keys are
     matched case-insensitively (mirroring ``case_sensitive=False`` on the settings
-    models) and always written back uppercase, since the readers in ``server.py``
-    and ``utils.py`` look them up by exact name.
+    models) and always written back uppercase, the canonical spelling the readers
+    in ``server.py`` and ``utils.py`` try first via :func:`env_get`.
 
     Path resolution via ``INFRAHUB_MCP_ENV_FILE`` (``~`` is expanded):
 

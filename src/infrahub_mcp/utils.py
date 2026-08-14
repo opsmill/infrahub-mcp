@@ -1,5 +1,4 @@
 import asyncio
-import os
 import re
 import secrets
 import string
@@ -24,7 +23,7 @@ from infrahub_mcp.auth import (
     get_passthrough_token,
     get_user_from_token,
 )
-from infrahub_mcp.config import ServerConfig
+from infrahub_mcp.config import ServerConfig, env_get
 from infrahub_mcp.constants import AUTH_MODE_BASIC_PASSTHROUGH, AUTH_MODE_TOKEN_PASSTHROUGH
 
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
@@ -70,7 +69,7 @@ def get_client(ctx: Context) -> InfrahubClient:
     app_ctx: AppContext = ctx.request_context.lifespan_context
 
     if app_ctx.config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH}:
-        address = os.environ.get("INFRAHUB_ADDRESS")
+        address = env_get("INFRAHUB_ADDRESS")
         if not address:
             msg = (
                 "INFRAHUB_ADDRESS is required. "
