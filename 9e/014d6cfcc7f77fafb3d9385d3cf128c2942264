@@ -1,0 +1,21 @@
+specs/archive/20260504-203256-schema-cache/data-model.md
+  s_35e88ed6d92b4a::t_7490c333e78c39 18,21-26,62,112
+specs/archive/20260504-203256-schema-cache/quickstart.md
+  s_35e88ed6d92b4a::t_278852b88ca194 96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "9e014d6cfcc7f77fafb3d9385d3cf128c2942264",
+  "prompts": {},
+  "sessions": {
+    "s_35e88ed6d92b4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "373bd85b-fea2-446f-bce2-188b9298d5b8",
+        "model": "unknown"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
