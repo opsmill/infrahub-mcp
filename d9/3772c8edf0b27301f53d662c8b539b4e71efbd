@@ -1,0 +1,19 @@
+tests/unit/test_schema_expand.py
+  s_35e88ed6d92b4a::t_66d1ebd3ee469a 6,42-43,45-50,55,77-78,86-87,96-97,111-112,127-128,137-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "d93772c8edf0b27301f53d662c8b539b4e71efbd",
+  "prompts": {},
+  "sessions": {
+    "s_35e88ed6d92b4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "373bd85b-fea2-446f-bce2-188b9298d5b8",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
