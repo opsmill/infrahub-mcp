@@ -9,6 +9,11 @@ DOCUMENTATION_DIRECTORY = CURRENT_DIRECTORY.parent / "docs"
 
 MAIN_DIRECTORY_PATH = Path(__file__).parent
 
+# Directories under docs/ that hold generated or vendored files. They are
+# gitignored (see docs/.gitignore), so they never exist in CI's fresh
+# checkout — Vale must skip them locally to match CI's file set.
+VALE_PRUNED_DIRECTORIES = ("node_modules", "build", ".docusaurus", ".cache-loader")
+
 
 @task(name="format")
 def format_all(context: Context) -> None:
@@ -69,6 +74,13 @@ def lint_vale(context: Context) -> None:
     Skips with a clear warning if neither is available so a missing
     local install doesn't break the lint pipeline for backend-only
     changes.
+
+    CI runs a bare ``find ./docs`` on a freshly checked-out tree, which
+    never contains npm dependencies or Docusaurus build output. Locally
+    those directories usually *do* exist, and a bare ``find`` sweeps up
+    every dependency README under ``docs/node_modules`` (thousands of
+    files, none of them ours). Pruning the directories listed in
+    ``docs/.gitignore`` makes the local run scan exactly the set CI sees.
     """
     print(" - Check documentation style with vale")
     repo_vale = MAIN_DIRECTORY_PATH / "vale"
@@ -86,7 +98,9 @@ def lint_vale(context: Context) -> None:
             return
         vale_bin = "vale"
 
-    exec_cmd = f'{vale_bin} $(find ./docs -type f \\( -name "*.mdx" -o -name "*.md" \\))'
+    prune = " -o ".join(f'-name "{d}"' for d in VALE_PRUNED_DIRECTORIES)
+    find_cmd = f'find ./docs \\( {prune} \\) -prune -o -type f \\( -name "*.mdx" -o -name "*.md" \\) -print'
+    exec_cmd = f"{find_cmd} | xargs {vale_bin}"
     with context.cd(MAIN_DIRECTORY_PATH):
         context.run(exec_cmd)
 
