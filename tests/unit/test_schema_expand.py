@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from infrahub_sdk.exceptions import SchemaNotFoundError
 
@@ -39,16 +39,20 @@ def _make_schema_node(
     return node
 
 
-def _make_client(schemas: dict[str, MagicMock]) -> AsyncMock:
-    client = AsyncMock()
+def _patch_cached_kind(schemas: dict[str, MagicMock]) -> Any:
+    """Patch the schema-cache lookup ``get_schema_detail`` uses to resolve kinds.
 
-    def _get_schema(kind: str, branch: str | None = None) -> MagicMock:
+    ``get_schema_detail`` takes a FastMCP ``Context`` and resolves kinds through
+    the hash-validated schema cache. These tests cover peer-expansion *shaping*
+    only, so the cache lookup is stubbed rather than exercised.
+    """
+
+    def _get_cached_kind(ctx: Any, *, kind: str, branch: str | None = None) -> MagicMock:
         if kind not in schemas:
             raise SchemaNotFoundError(kind)
         return schemas[kind]
 
-    client.schema.get = AsyncMock(side_effect=_get_schema)
-    return client
+    return patch("infrahub_mcp.schema.get_cached_kind", new=AsyncMock(side_effect=_get_cached_kind))
 
 
 def _schemas_a_b() -> dict[str, MagicMock]:
@@ -70,7 +74,8 @@ def _schemas_a_b() -> dict[str, MagicMock]:
 
 
 async def test_no_peer_schema_when_disabled() -> None:
-    result = await get_schema_detail(_make_client(_schemas_a_b()), kind="KindA", expand_peers=False)
+    with _patch_cached_kind(_schemas_a_b()):
+        result = await get_schema_detail(MagicMock(), kind="KindA", expand_peers=False)
     assert result["kind"] == "KindA"
     assert "filters" in result
     for rel in result["relationships"]:
@@ -78,7 +83,8 @@ async def test_no_peer_schema_when_disabled() -> None:
 
 
 async def test_peer_schema_present_when_enabled() -> None:
-    result = await get_schema_detail(_make_client(_schemas_a_b()), kind="KindA", expand_peers=True)
+    with _patch_cached_kind(_schemas_a_b()):
+        result = await get_schema_detail(MagicMock(), kind="KindA", expand_peers=True)
     children = next(r for r in result["relationships"] if r["name"] == "children")
     assert children["peer_schema"]["kind"] == "KindB"
     assert "attributes" in children["peer_schema"]
@@ -87,7 +93,8 @@ async def test_peer_schema_present_when_enabled() -> None:
 
 
 async def test_peer_schema_relationships_not_expanded() -> None:
-    result = await get_schema_detail(_make_client(_schemas_a_b()), kind="KindA", expand_peers=True)
+    with _patch_cached_kind(_schemas_a_b()):
+        result = await get_schema_detail(MagicMock(), kind="KindA", expand_peers=True)
     children = next(r for r in result["relationships"] if r["name"] == "children")
     for rel in children["peer_schema"]["relationships"]:
         assert "peer_schema" not in rel
@@ -101,7 +108,8 @@ async def test_self_referential_kind_expands_one_level() -> None:
         attributes=[_make_attribute("name")],
         relationships=[_make_relationship("parent", "KindA")],
     )
-    result = await get_schema_detail(_make_client({"KindA": schema_a}), kind="KindA", expand_peers=True)
+    with _patch_cached_kind({"KindA": schema_a}):
+        result = await get_schema_detail(MagicMock(), kind="KindA", expand_peers=True)
     parent = next(r for r in result["relationships"] if r["name"] == "parent")
     assert parent["peer_schema"]["kind"] == "KindA"
     for rel in parent["peer_schema"]["relationships"]:
@@ -116,7 +124,8 @@ async def test_missing_peer_kind_skipped() -> None:
         attributes=[_make_attribute("name")],
         relationships=[_make_relationship("broken", "NonExistent")],
     )
-    result = await get_schema_detail(_make_client({"KindA": schema_a}), kind="KindA", expand_peers=True)
+    with _patch_cached_kind({"KindA": schema_a}):
+        result = await get_schema_detail(MagicMock(), kind="KindA", expand_peers=True)
     broken = next(r for r in result["relationships"] if r["name"] == "broken")
     assert broken["peer"] == "NonExistent"
     assert broken["cardinality"] == "many"
@@ -125,7 +134,8 @@ async def test_missing_peer_kind_skipped() -> None:
 
 
 async def test_filters_include_peer_attributes() -> None:
-    result = await get_schema_detail(_make_client(_schemas_a_b()), kind="KindA", expand_peers=True)
+    with _patch_cached_kind(_schemas_a_b()):
+        result = await get_schema_detail(MagicMock(), kind="KindA", expand_peers=True)
     filters = {f["filter"] for f in result["filters"]}
     assert "name__value" in filters
     assert "children__label__value" in filters
