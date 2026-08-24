@@ -15,14 +15,15 @@ Immutable snapshot of a single branch's cached schema state. Stored as the value
 from dataclasses import dataclass, field
 from typing import Any  # placeholder; real type is infrahub_sdk.schema.BranchSchema
 
+
 @dataclass(frozen=True, slots=True)
 class CachedSchemaEntry:
-    branch: str                  # Resolved canonical branch name (None already mapped to default)
-    schema: BranchSchema          # SDK's BranchSchema; loaded into fresh clients via set_cache()
-    schema_hash: str              # BranchSchema.hash at fetch time; equality test against /summary.main
-    graphql_sdl: str              # Cached GraphQL SDL string; invalidated together with schema
-    fetched_at_monotonic: float   # asyncio.get_event_loop().time() at last successful fetch/revalidation
-    consecutive_failures: int     # Count of revalidation failures since last success; 0 when fresh
+    branch: str  # Resolved canonical branch name (None already mapped to default)
+    schema: BranchSchema  # SDK's BranchSchema; loaded into fresh clients via set_cache()
+    schema_hash: str  # BranchSchema.hash at fetch time; equality test against /summary.main
+    graphql_sdl: str  # Cached GraphQL SDL string; invalidated together with schema
+    fetched_at_monotonic: float  # asyncio.get_event_loop().time() at last successful fetch/revalidation
+    consecutive_failures: int  # Count of revalidation failures since last success; 0 when fresh
 ```
 
 **Invariants**:
@@ -57,6 +58,7 @@ def is_circuit_broken(self, *, max_consecutive_failures: int, max_staleness_seco
     if max_staleness_seconds and (now - self.fetched_at_monotonic) >= max_staleness_seconds:
         return True
     return False
+
 
 def is_within_skip_window(self, *, skip_window_seconds: int, now: float) -> bool:
     """Return True iff the cache may be served without revalidation."""
@@ -106,6 +108,7 @@ async def get_cached_branch_schema(ctx: Context, branch: str | None = None) -> B
     Honors skip-window TTL, hash-validated revalidation, lazy refetch on missing kinds,
     serve-stale on transient failures, and circuit-break thresholds.
     """
+
 
 async def get_cached_graphql_sdl(ctx: Context, branch: str | None = None) -> str:
     """Return the cached GraphQL SDL for *branch*, sharing hash gating with get_cached_branch_schema."""

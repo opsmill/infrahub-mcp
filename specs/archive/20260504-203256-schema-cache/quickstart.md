@@ -93,6 +93,7 @@ From a controlled test (parallel coroutines hitting the same cold-cache branch):
 
 ```python
 import asyncio
+
 results = await asyncio.gather(*[read_schema_resource() for _ in range(10)])
 ```
 
