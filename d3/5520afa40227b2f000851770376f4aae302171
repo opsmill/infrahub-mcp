@@ -4,6 +4,7 @@ src/infrahub_mcp/config.py
   dc8391d561ca7996 64-76,115-118
 src/infrahub_mcp/tools/schema.py
   dc8391d561ca7996 63,71
+  s_35e88ed6d92b4a::t_d9610b81420d57 13,69
 src/infrahub_mcp/schema_cache.py
   dc8391d561ca7996 1-482
 specs/20260504-203256-schema-cache/tasks.md
@@ -28,10 +29,12 @@ tests/unit/test_get_nodes_pagination.py
   dc8391d561ca7996 43-46,66-69,88-91
 src/infrahub_mcp/resources/schema.py
   dc8391d561ca7996 11,30,75-76
+  s_35e88ed6d92b4a::t_d9610b81420d57 12,57
 src/infrahub_mcp/utils.py
   dc8391d561ca7996 9,30-32,57-58
 src/infrahub_mcp/schema.py
   dc8391d561ca7996 13,16,19-26,56-57,76,90,126,132
+  s_35e88ed6d92b4a::t_d9610b81420d57 51,65
 src/infrahub_mcp/tools/nodes.py
   dc8391d561ca7996 14,88,119,235,237,245,361,363
 tests/unit/test_schema_cache.py
@@ -59,6 +62,16 @@ server.json
       "total_deletions": 343,
       "accepted_lines": 2527,
       "overriden_lines": 0
+    }
+  },
+  "sessions": {
+    "s_35e88ed6d92b4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "373bd85b-fea2-446f-bce2-188b9298d5b8",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
     }
   }
 }
