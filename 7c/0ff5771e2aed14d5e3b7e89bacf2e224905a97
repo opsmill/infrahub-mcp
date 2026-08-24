@@ -1,0 +1,21 @@
+tasks.py
+  s_35e88ed6d92b4a::t_45974a77e46eb3 101-103
+  s_35e88ed6d92b4a::t_f54bb1aacbf137 77-83
+  s_35e88ed6d92b4a::t_d21aee10baa869 12-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "7c0ff5771e2aed14d5e3b7e89bacf2e224905a97",
+  "prompts": {},
+  "sessions": {
+    "s_35e88ed6d92b4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "373bd85b-fea2-446f-bce2-188b9298d5b8",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
