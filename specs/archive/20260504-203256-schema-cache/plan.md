@@ -1,7 +1,7 @@
 # Implementation Plan: Hash-Validated Schema Cache
 
 **Branch**: `feat/schema-cache` | **Date**: 2026-05-04 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `specs/20260504-203256-schema-cache/spec.md`
+**Input**: Feature specification from `specs/archive/20260504-203256-schema-cache/spec.md`
 
 ## Summary
 
@@ -48,7 +48,7 @@ Evaluated against `dev/constitution.md` v1.0.0:
 ### Documentation (this feature)
 
 ```text
-specs/20260504-203256-schema-cache/
+specs/archive/20260504-203256-schema-cache/
 ├── plan.md              # This file
 ├── spec.md              # Feature specification (clarified)
 ├── research.md          # Phase 0 output

@@ -35,7 +35,7 @@ uv run pytest                    # Run full test suite
 
 uv run invoke format             # Auto-format with ruff and apply lint autofixes
 uv run invoke lint               # All linters (yaml -s, ruff check + format-check, mypy, ty, pylint, rumdl, vale)
-uv run invoke validate           # docker-compose env vars + server.json env vars
+uv run invoke validate           # docker-compose env vars + server.json env vars + CAPABILITIES.md freshness
 uv run invoke ci                 # Full CI mirror: lint + validate + docs build + pytest. Run before pushing.
 uv run invoke ci --no-docs       # Same, minus the docs website build (prints a skipped-gate banner)
 uv run invoke lint-ruff          # Ruff only (mirrors CI: check + format --check --diff)
@@ -58,7 +58,7 @@ uv run pre-commit install        # Optional: run those same hooks on every commi
 
 `ruff`, `mypy`, and `ty` are authoritative for Python syntax, style, and type issues. Do not eyeball Python errors — run `uv run invoke format ci` and rely on the output.
 
-The `invoke ci` task mirrors every gate in `.github/workflows/ci.yml`: the lint jobs (ruff, ty, yamllint, rumdl, Vale), the `validate-*` jobs, the docs website build, and the unit tests. It runs them unconditionally, whereas CI path-gates most jobs off `files-changed` — so `invoke ci` is stricter than CI, never looser. Two things break that symmetry: `--no-docs` drops the docs build (the run then prints a skipped-gate banner and no longer predicts CI), and CI lints the PR merged with its base while `invoke ci` only sees the working tree. A clean `invoke ci` otherwise predicts CI pass; if CI flags something it missed, treat that gap as a bug in `tasks.py` and patch the task.
+The `invoke ci` task mirrors every gate a pull request runs: the lint jobs (ruff, ty, yamllint, rumdl, Vale), the `validate-*` jobs, the docs website build, and the unit tests from `.github/workflows/ci.yml`, plus the `validate-capabilities` job from `.github/workflows/ci-mcp-discovery.yml` — a separate workflow that fires on any change under `src/infrahub_mcp/**`. It runs them unconditionally, whereas CI path-gates most jobs off `files-changed` — so `invoke ci` is stricter than CI, never looser. Two things break that symmetry: `--no-docs` drops the docs build (the run then prints a skipped-gate banner and no longer predicts CI), and CI lints the PR merged with its base while `invoke ci` only sees the working tree. A clean `invoke ci` otherwise predicts CI pass; if CI flags something it missed, treat that gap as a bug in `tasks.py` and patch the task.
 
 ## MCP Objects
 

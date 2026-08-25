@@ -198,9 +198,15 @@ def validate_all(context: Context) -> None:
       sorted and complete relative to ``ServerConfig``.
     - ``invoke validate-serverjson`` — checks ``server.json`` lists
       every (non-OIDC-only) ``INFRAHUB_MCP_*`` env var.
+    - ``invoke check-capabilities`` — checks ``CAPABILITIES.md`` matches the
+      live server definition. This one mirrors the ``validate-capabilities``
+      job in ``.github/workflows/ci-mcp-discovery.yml``, a *separate*
+      workflow that fires on any change under ``src/infrahub_mcp/**``.
+      Requires the ``mcp-discovery`` CLI on PATH.
     """
     validate_dockercomposeenv(context)
     validate_serverjson(context)
+    check_capabilities(context)
 
 
 @task(name="ci")
@@ -214,10 +220,15 @@ def ci_all(context: Context, docs: bool = True) -> None:
        (rumdl check docs/) and ``validate-documentation-style`` (vale)
        jobs, plus mypy, which CI does not run.
     2. ``invoke validate`` — mirrors ``validate-docker-compose-env-vars``
-       (docker-compose env vars, server.json env vars).
+       (docker-compose env vars, server.json env vars) and the
+       ``validate-capabilities`` job from ``ci-mcp-discovery.yml``
+       (``CAPABILITIES.md`` freshness).
     3. ``invoke docs`` — mirrors the ``documentation`` job (Docusaurus
        build). Needs ``docs/node_modules``; pass ``--no-docs`` to skip it.
     4. ``uv run pytest`` — mirrors ``python-unit-tests``.
+
+    Pull requests also trigger ``ci-mcp-discovery.yml`` whenever
+    ``src/infrahub_mcp/**`` changes; its one job is covered by step 2.
 
     Known divergences from ``.github/workflows/ci.yml``:
 
