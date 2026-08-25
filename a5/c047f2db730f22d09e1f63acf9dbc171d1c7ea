@@ -1,0 +1,24 @@
+AGENTS.md
+  s_357243306b47bc::t_3e8970bb712119 38,61
+tasks.py
+  s_357243306b47bc::t_909623c29ba0f5 201-205,209,223-225,230-231
+  s_357243306b47bc::t_40cd74ee75a5db 232
+specs/archive/20260504-203256-schema-cache/plan.md
+  s_357243306b47bc::t_909623c29ba0f5 4,51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "a5c047f2db730f22d09e1f63acf9dbc171d1c7ea",
+  "prompts": {},
+  "sessions": {
+    "s_357243306b47bc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "093f32bc-878d-44c6-a0ce-645c03555b33",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
