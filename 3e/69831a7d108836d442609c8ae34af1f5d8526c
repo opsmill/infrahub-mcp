@@ -1,0 +1,19 @@
+specs/archive/20260504-203256-schema-cache/plan.md
+  s_357243306b47bc::t_1be9eace9ba5bb 20,34,101,112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "3e69831a7d108836d442609c8ae34af1f5d8526c",
+  "prompts": {},
+  "sessions": {
+    "s_357243306b47bc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "093f32bc-878d-44c6-a0ce-645c03555b33",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
