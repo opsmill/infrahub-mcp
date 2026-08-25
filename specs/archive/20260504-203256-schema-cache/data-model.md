@@ -160,7 +160,8 @@ Aggregate `Counter` types — no labels:
 | `/summary` failure (any error) | Serve stale, increment failure counter on entry | `schema_cache_revalidate_failures++` | WARN with branch name + exception |
 | Refetch failure after detected hash diff | Serve stale, increment failure counter on entry | `schema_cache_revalidate_failures++` | WARN with branch name + exception |
 | `/summary` 404 | Evict entry; subsequent reads are cache misses | (none specific) | WARN: branch removed |
-| Circuit-break threshold crossed | Fail closed; raise ToolError to agent | `schema_cache_circuit_breaks++` (once per state transition) | ERROR with branch name + which threshold + last-success time |
+| Circuit-break threshold crossed | Attempt one recovery probe, then fail closed if it also fails; raise ToolError to agent | `schema_cache_circuit_breaks++` (once per state transition) | ERROR with branch name + which threshold + last-success time |
+| Read against a tripped entry, probe still throttled | Fail closed without an upstream call; raise ToolError to agent | (none — the transition was already counted) | (none — the trip was already logged) |
 | Successful revalidation/refetch | Reset `consecutive_failures` to 0; circuit-break clears | (existing hit/diff counter applies) | (none) |
 | Cold fetch failure (no cache) | Bubble error to agent | (none specific) | ERROR with branch name + exception |
 | `SchemaNotFoundError` on cached kind, hash matches | Propagate the not-found error | `schema_cache_hash_matches++` | (none) |
