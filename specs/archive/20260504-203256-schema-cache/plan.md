@@ -17,6 +17,7 @@ Introduce a process-wide, hash-validated schema cache for the Infrahub MCP serve
 **Project Type**: Internal infrastructure feature in an existing single-project Python package (`src/infrahub_mcp/`).
 **Performance Goals**: SC-001/SC-006: zero upstream schema-body transfer on cache-hit paths within the skip-window. SC-003: single upstream fetch under 10-coroutine cold-cache burst. SC-004: ≥90 % cache-hit ratio in steady state.
 **Constraints**:
+
 - Passthrough modes only (FR-001); other auth modes already benefit from SDK-level cache and remain untouched.
 - Cache key by branch only (FR-002, FR-017) — schema is global per branch.
 - No new runtime dependencies (Constitution Principle VII).
@@ -30,7 +31,7 @@ Introduce a process-wide, hash-validated schema cache for the Infrahub MCP serve
 Evaluated against `dev/constitution.md` v1.0.0:
 
 | Principle | Verdict | Rationale |
-|---|---|---|
+| --- | --- | --- |
 | I. MCP Protocol Compliance | PASS | No new tools/resources/prompts; the cache is internal. Existing schema resources continue to expose the same MCP contract. |
 | II. Infrahub SDK Integration | PASS w/ noted exception | All schema fetches go through `client.schema._fetch()` and `client.schema.set_cache()`. The hash-summary call uses `client._get()` because the SDK does not yet expose a public `client.schema.summary()`; the existing code already does this for the GraphQL SDL fetch. **Mitigation:** open upstream PR adding `client.schema.summary()` and swap when released. |
 | III. Branch-Safe by Default | PASS | Read-only feature. No write paths added. |
@@ -97,6 +98,7 @@ No formal `contracts/` directory: the only external surface that changes is the 
 ## Phase 2 (deferred to /speckit-tasks)
 
 Tasks generation will produce a vertical-slice TDD task list that maps each user story (P1 first) to:
+
 1. Failing test
 2. Minimum implementation
 3. Refactor pass + lint/type-check
@@ -107,7 +109,7 @@ Tasks generation will produce a vertical-slice TDD task list that maps each user
 ## Complexity Tracking
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |
-|---|---|---|
+| --- | --- | --- |
 | `client._get(/api/schema/summary)` (Principle II partial bypass) | The Infrahub SDK does not yet expose a public `client.schema.summary()` wrapper, even though the server endpoint exists. Without this call we cannot detect schema staleness cheaply. | Filing the upstream PR alone defers shipping by an SDK release cycle. The existing `resources/schema.py:79` graphql_schema resource already uses `client._get()` with the same justification, so this is a precedent rather than a new violation. **Follow-up**: open SDK PR; swap once landed. |
 
 No other deviations from the constitution.
