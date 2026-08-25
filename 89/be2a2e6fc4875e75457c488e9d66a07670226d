@@ -1,0 +1,42 @@
+docs/docs/references/configuration.mdx
+  s_d0ba4e748f52b8::t_1aa2be233192f7 78
+src/infrahub_mcp/schema_cache.py
+  s_d0ba4e748f52b8::t_4d5fffcf6bca2f 119-121,128-145
+  s_d0ba4e748f52b8::t_608e6c3d56ba8f 467
+  s_d0ba4e748f52b8::t_7da75f7f2258af 23-24
+  s_d0ba4e748f52b8::t_beaf86d154156b 452-453
+  s_d0ba4e748f52b8::t_b56b901cac0bfe 146-147
+dev/adr/0009-hash-validated-schema-cache.md
+  s_d0ba4e748f52b8::t_db0aeed4c526ce 24
+specs/archive/20260504-203256-schema-cache/data-model.md
+  s_d0ba4e748f52b8::t_4ce91bd3a019fd 51
+specs/archive/20260504-203256-schema-cache/quickstart.md
+  s_d0ba4e748f52b8::t_4ce91bd3a019fd 164
+tests/unit/test_schema_cache.py
+  s_d0ba4e748f52b8::t_6798d4b288c26a 649-681
+  s_d595ae0dff0489::t_a084effcd035c2 648
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "89be2a2e6fc4875e75457c488e9d66a07670226d",
+  "prompts": {},
+  "sessions": {
+    "s_d0ba4e748f52b8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bc6f642-51b8-4be6-b588-6f474b19f442",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    },
+    "s_d595ae0dff0489": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae2bee22-6f7d-4ef6-be90-f2ece94c1a19",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
