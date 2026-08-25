@@ -646,6 +646,40 @@ class TestCircuitBreak:
         mock_client.schema._fetch.assert_not_awaited()
 
     @pytest.mark.anyio
+    async def test_recovery_probe_interval_is_clamped_below_a_large_ttl(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        """A long skip-window must not delay recovery by a whole TTL.
+
+        With ``schema_cache_ttl`` at an hour, throttling recovery by the TTL
+        would keep a tripped entry rejecting reads for an hour after Infrahub
+        healed. The probe interval is clamped, so a probe one minute old is
+        already due again.
+        """
+        app_ctx.config = _make_config(schema_cache_ttl=3600)
+        now = schema_cache._now()
+        healed = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=healed,
+            schema_hash="H1",
+            graphql_sdl="sdl",
+            fetched_at_monotonic=now - 10_000,
+            consecutive_failures=50,
+            last_attempt_monotonic=now - 60,  # one minute since the last probe
+        )
+        mock_client._get.return_value = _make_response(json_body={"main": "H1"})
+
+        result = await get_cached_branch_schema(mock_ctx)
+
+        assert result is healed
+        mock_client._get.assert_awaited_once()
+        assert app_ctx.schema_cache["main"].consecutive_failures == 0
+
+    @pytest.mark.anyio
     async def test_recovery_probe_runs_once_per_window_under_burst(
         self,
         mock_ctx: MagicMock,

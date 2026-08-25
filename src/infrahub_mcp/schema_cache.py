@@ -20,8 +20,8 @@ schema hash returned from ``GET /api/schema/summary``:
 - Transient revalidation/refetch failures serve stale + emit a WARN log;
   configurable circuit-break thresholds bound how long stale data may be
   served before reads fail closed. A broken entry is not terminal: reads
-  retry revalidation (at most one probe per skip-window) so the cache
-  recovers on its own once Infrahub is healthy again.
+  retry revalidation (at most one probe per ``min(schema_cache_ttl, 30 s)``)
+  so the cache recovers on its own once Infrahub is healthy again.
 
 See ``specs/archive/20260504-203256-schema-cache/`` for the full design.
 """
@@ -116,12 +116,33 @@ def _is_retry_throttled(entry: CachedSchemaEntry, *, throttle_seconds: int, now:
     """Return True when a broken *entry* has probed upstream too recently.
 
     Bounds recovery attempts to one per ``throttle_seconds`` while an entry
-    is circuit-broken, so a sustained outage costs one upstream timeout per
-    window rather than one per request.
+    is circuit-broken, so a *tripped* branch costs one upstream timeout per
+    window rather than one per request. Reads before the breaker trips are
+    not throttled — each one past the skip-window still revalidates.
     """
     if throttle_seconds <= 0:
         return False
     return (now - entry.last_attempt_monotonic) < throttle_seconds
+
+
+_MAX_RECOVERY_PROBE_SECONDS = 30
+"""Upper bound, in seconds, on the circuit-break recovery-probe interval.
+
+The interval is ``min(schema_cache_ttl, _MAX_RECOVERY_PROBE_SECONDS)``.
+Throttling recovery by the skip-window alone would tie recovery latency to a
+freshness knob: an operator raising ``schema_cache_ttl`` to an hour to cut
+upstream load would also leave a tripped entry rejecting reads for an hour
+after Infrahub came back, which defeats the self-healing breaker. Clamping
+bounds worst-case recovery at half a minute whatever the TTL, and one probe
+per 30 s is negligible load even through a sustained outage — probes are
+single-flight under the cache lock. ``schema_cache_ttl = 0`` still disables
+the throttle entirely.
+"""
+
+
+def _recovery_probe_seconds(config: ServerConfig) -> int:
+    """Return the probe-throttle window for a circuit-broken entry."""
+    return min(config.schema_cache_ttl, _MAX_RECOVERY_PROBE_SECONDS)
 
 
 def _get_app_ctx(ctx: Context) -> AppContext:
@@ -428,8 +449,8 @@ def _try_serve_from_cache(
     A circuit-broken entry is *not* served and *not* rejected outright:
     it falls through to the lock path so revalidation can heal it once
     Infrahub recovers. Only while a probe is still throttled does the read
-    fail fast, which keeps an outage from costing one upstream timeout per
-    request.
+    fail fast, which keeps a tripped branch from costing one upstream
+    timeout per request.
     """
     entry = app_ctx.schema_cache.get(resolved_branch)
     if entry is None or force_revalidate:
@@ -443,7 +464,7 @@ def _try_serve_from_cache(
         max_staleness_seconds=config.schema_cache_max_staleness_seconds,
         now=now,
     ):
-        if _is_retry_throttled(entry, throttle_seconds=config.schema_cache_ttl, now=now):
+        if _is_retry_throttled(entry, throttle_seconds=_recovery_probe_seconds(config), now=now):
             _raise_circuit_broken(resolved_branch, _CIRCUIT_BREAK_MSG)
         return None
 

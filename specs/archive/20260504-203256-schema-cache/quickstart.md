@@ -161,7 +161,7 @@ Expected:
 - Metric: `infrahub_mcp_schema_cache_circuit_break_total 1` — this counts breaker *trips*, so it increments once when the entry crosses a threshold, not once per rejected read.
 - ERROR log: `schema_cache_circuit_break branch=main threshold=consecutive_failures last_success_age_seconds=...`
 
-A tripped entry is not written off. Reads keep probing upstream — at most one probe per `schema_cache_ttl`, so an outage costs one upstream timeout per window rather than one per request — and fail closed only while those probes keep failing. Reads inside a throttle window return the same error without touching Infrahub.
+A tripped entry is not written off. Reads keep probing upstream — at most one probe per `min(schema_cache_ttl, 30 s)`, so a tripped branch costs one upstream timeout per window rather than one per request — and fail closed only while those probes keep failing. Reads inside a throttle window return the same error without touching Infrahub.
 
 After Infrahub recovers, the next probe succeeds on its own:
 

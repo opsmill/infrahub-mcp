@@ -48,7 +48,7 @@ class CachedSchemaEntry:
 | `/summary` returns 404 | Entry removed from dict (no replacement entry produced); the caller raises the SDK's public `BranchNotFoundError` |
 | Consecutive-failure threshold reached | Entry remains in dict but `is_circuit_broken()` returns True; reads attempt one revalidation and fail closed only if it also fails |
 | Absolute-staleness threshold reached | Entry remains in dict but `is_circuit_broken()` returns True; same retry-then-fail-closed behaviour |
-| Read against a broken entry, probe throttled | No new entry; the read fails closed without an upstream call (one probe per `schema_cache_ttl`) |
+| Read against a broken entry, probe throttled | No new entry; the read fails closed without an upstream call (one probe per `min(schema_cache_ttl, 30 s)`) |
 
 **Methods (computed properties on the dataclass)**:
 
