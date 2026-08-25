@@ -11,7 +11,8 @@ This is the operator-facing walkthrough for verifying the schema cache delivers 
 
 - Infrahub instance reachable at `INFRAHUB_ADDRESS`.
 - A valid Infrahub API token in your client (the one the MCP-connected agent will pass).
-- `curl` (for direct `/metrics` probes) and `jq` (optional, for filtering).
+- The server running with `--transport streamable-http`; `/metrics` is only reachable over HTTP.
+- `curl` (for direct `/metrics` probes), plus `awk` and `bc` for the ratio computation in step 9.
 
 ---
 
@@ -20,15 +21,43 @@ This is the operator-facing walkthrough for verifying the schema cache delivers 
 ```bash
 INFRAHUB_MCP_SCHEMA_CACHE_ENABLED=true \
 INFRAHUB_MCP_SCHEMA_CACHE_TTL=30 \
-INFRAHUB_AUTH_MODE=token-passthrough \
-uv run infrahub-mcp serve
+INFRAHUB_MCP_PROMETHEUS_ENABLED=true \
+INFRAHUB_MCP_CACHE_ENABLED=true \
+INFRAHUB_MCP_AUTH_MODE=token-passthrough \
+uv run infrahub-mcp --transport streamable-http --port 8000
 ```
 
-Server start log should include:
+`INFRAHUB_MCP_PROMETHEUS_ENABLED=true` makes `/metrics` serve Prometheus exposition text, which every probe below relies on.
 
+There is no dedicated `schema_cache` startup log line. Read the resolved settings straight off `ServerConfig`, with the same environment exported:
+
+```bash
+uv run python -c "from infrahub_mcp.config import ServerConfig; print({k: v for k, v in ServerConfig().model_dump().items() if k.startswith('schema_cache')})"
 ```
-schema_cache enabled=true ttl=30 max_consecutive_failures=10 max_staleness=900
+
+```text
+{'schema_cache_enabled': True, 'schema_cache_ttl': 30, 'schema_cache_max_consecutive_failures': 10, 'schema_cache_max_staleness_seconds': 900}
 ```
+
+Two startup cross-checks confirm the wiring:
+
+- Because `INFRAHUB_MCP_CACHE_ENABLED=true`, the middleware stack logs `response_caching enabled=true list_ttl=300 read_ttl=3600 schema_uris_bypassed=True`. The `schema_uris_bypassed` field echoes `schema_cache_enabled` — when it is `True`, the schema cache owns the schema URIs and `ResponseCachingMiddleware` stays out of the way.
+- The six schema-cache counters are registered at process start, so they are already exposed (at zero) before the first read:
+
+```bash
+curl -s http://localhost:8000/metrics | grep '^infrahub_mcp_schema_cache'
+```
+
+```text
+infrahub_mcp_schema_cache_circuit_break_total 0
+infrahub_mcp_schema_cache_hash_diff_total 0
+infrahub_mcp_schema_cache_hash_match_total 0
+infrahub_mcp_schema_cache_hit_total 0
+infrahub_mcp_schema_cache_miss_total 0
+infrahub_mcp_schema_cache_revalidate_failure_total 0
+```
+
+> With `INFRAHUB_MCP_PROMETHEUS_ENABLED` unset, `/metrics` returns JSON instead and the same six counters live under a `schema_cache` object — `{"schema_cache": {"hit": 0, "miss": 0, "hash_match": 0, "hash_diff": 0, "revalidate_failure": 0, "circuit_break": 0}}`. The rest of this walkthrough assumes the Prometheus output.
 
 ---
 
@@ -44,14 +73,14 @@ Expected: second read significantly faster (no upstream `/api/schema` call).
 Verify via metrics:
 
 ```bash
-curl -s http://localhost:8000/metrics | grep schema_cache
+curl -s http://localhost:8000/metrics | grep '^infrahub_mcp_schema_cache'
 ```
 
-Expected counters:
+Expected counters (the zeroed ones are omitted here for brevity):
 
-```
-schema_cache_misses 1
-schema_cache_hits 1
+```text
+infrahub_mcp_schema_cache_hit_total 1
+infrahub_mcp_schema_cache_miss_total 1
 ```
 
 ---
@@ -63,11 +92,11 @@ schema_cache_hits 1
 
 Expected:
 
-```
-schema_cache_hash_matches 1   # /summary confirmed cache is current
+```text
+infrahub_mcp_schema_cache_hash_match_total 1   # /summary confirmed cache is current
 ```
 
-No new `schema_cache_misses`.
+No new `infrahub_mcp_schema_cache_miss_total`.
 
 ---
 
@@ -79,8 +108,8 @@ No new `schema_cache_misses`.
 
 Expected:
 
-```
-schema_cache_hash_diffs 1     # /summary returned a different hash; full refetch performed
+```text
+infrahub_mcp_schema_cache_hash_diff_total 1     # /summary returned a different hash; full refetch performed
 ```
 
 The agent sees the new schema on this read.
@@ -97,13 +126,13 @@ import asyncio
 results = await asyncio.gather(*[read_schema_resource() for _ in range(10)])
 ```
 
-Expected: `schema_cache_misses` increments by exactly 1, not 10.
+Expected: `infrahub_mcp_schema_cache_miss_total` increments by exactly 1, not 10.
 
 Inspect via metrics:
 
 ```bash
-curl -s http://localhost:8000/metrics | grep schema_cache_misses
-# schema_cache_misses 1
+curl -s http://localhost:8000/metrics | grep '^infrahub_mcp_schema_cache_miss_total'
+# infrahub_mcp_schema_cache_miss_total 1
 ```
 
 ---
@@ -115,9 +144,10 @@ curl -s http://localhost:8000/metrics | grep schema_cache_misses
 3. Read `infrahub://schema`.
 
 Expected:
+
 - The request succeeds (cached data returned).
 - A WARN log line: `schema_cache_revalidate_failure branch=main exception=...`
-- Metric: `schema_cache_revalidate_failures 1`
+- Metric: `infrahub_mcp_schema_cache_revalidate_failure_total 1`
 
 ---
 
@@ -126,18 +156,22 @@ Expected:
 Continue the outage from step 6. After 10 consecutive failed revalidations *or* 900 seconds since last success (whichever first):
 
 Expected:
+
 - Subsequent reads return a "schema unavailable" error to the agent.
-- Metric: `schema_cache_circuit_breaks 1`
+- Metric: `infrahub_mcp_schema_cache_circuit_break_total 1` — this counts breaker *trips*, so it increments once when the entry crosses a threshold, not once per rejected read.
 - ERROR log: `schema_cache_circuit_break branch=main threshold=consecutive_failures last_success_age_seconds=...`
 
-After Infrahub recovers and the next revalidation succeeds:
-- Counter resets, reads resume serving.
+A tripped entry is not written off. Reads keep probing upstream — at most one probe per `schema_cache_ttl`, so an outage costs one upstream timeout per window rather than one per request — and fail closed only while those probes keep failing. Reads inside a throttle window return the same error without touching Infrahub.
+
+After Infrahub recovers, the next probe succeeds on its own:
+
+- The entry's `consecutive_failures` resets to 0 and reads resume serving, with no restart needed. The `circuit_break` metric is a cumulative counter, so it does not decrease.
 
 ---
 
 ## 8. Verify operator override (US5)
 
-Restart with `INFRAHUB_MCP_SCHEMA_CACHE_ENABLED=false`. Confirm metrics show no schema-cache counter activity (every read goes upstream — pre-feature baseline).
+Restart with `INFRAHUB_MCP_SCHEMA_CACHE_ENABLED=false`. The six `infrahub_mcp_schema_cache_*_total` counters are still exported, but all of them stay at `0` no matter how many schema reads run — every read goes upstream (pre-feature baseline).
 
 Restart with `INFRAHUB_MCP_SCHEMA_CACHE_TTL=300`. Confirm hash-revalidation only fires past the new 5-minute skip-window.
 
@@ -148,11 +182,27 @@ Restart with `INFRAHUB_MCP_SCHEMA_CACHE_TTL=300`. Confirm hash-revalidation only
 After warmup, run a representative agent workload for several minutes. Compute:
 
 ```bash
-hits=$(curl -s http://localhost:8000/metrics | awk '/^schema_cache_hits/ {print $2}')
-misses=$(curl -s http://localhost:8000/metrics | awk '/^schema_cache_misses/ {print $2}')
-matches=$(curl -s http://localhost:8000/metrics | awk '/^schema_cache_hash_matches/ {print $2}')
-echo "hit ratio: $(echo "scale=2; ($hits + $matches) / ($hits + $misses + $matches)" | bc)"
+metrics=$(curl -s http://localhost:8000/metrics)
+counter() {
+  printf '%s\n' "$metrics" |
+    awk -v name="infrahub_mcp_schema_cache_$1_total" \
+      '$1 == name { print $2; found = 1 } END { if (!found) print 0 }'
+}
+
+hits=$(counter hit)
+misses=$(counter miss)
+matches=$(counter hash_match)
+
+served=$((hits + matches))
+total=$((served + misses))
+if [ "$total" -gt 0 ]; then
+  echo "hit ratio: $(echo "scale=2; $served / $total" | bc)"
+else
+  echo "no schema reads recorded yet"
+fi
 ```
+
+The `$1 == name` comparison is what makes this exact: it matches only the metric line and skips the `# HELP` / `# TYPE` lines that share the same prefix.
 
 Expected: ≥ 0.90 in steady state with no schema changes.
 
@@ -164,9 +214,9 @@ If the cache misbehaves in production:
 
 1. Set `INFRAHUB_MCP_SCHEMA_CACHE_ENABLED=false` and restart the server. Behaviour reverts to pre-feature baseline.
 2. File a bug report including:
-   - The full set of `schema_cache_*` counters at the time of the issue.
+   - The full set of `infrahub_mcp_schema_cache_*_total` counters at the time of the issue.
    - The branch(es) named in WARN/ERROR log lines.
-   - The configured `schema_cache_*` settings.
+   - The configured `INFRAHUB_MCP_SCHEMA_CACHE_*` settings.
    - The Infrahub server version (different `/api/schema/summary` shapes across versions could surface here).
 
 The cache-disabled path is identical to today's behaviour, so the rollback is zero-risk.

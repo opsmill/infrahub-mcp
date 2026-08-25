@@ -19,9 +19,11 @@ schema hash returned from ``GET /api/schema/summary``:
   calls inside the same request hit the SDK cache.
 - Transient revalidation/refetch failures serve stale + emit a WARN log;
   configurable circuit-break thresholds bound how long stale data may be
-  served before reads fail closed.
+  served before reads fail closed. A broken entry is not terminal: reads
+  retry revalidation (at most one probe per skip-window) so the cache
+  recovers on its own once Infrahub is healthy again.
 
-See ``specs/20260504-203256-schema-cache/`` for the full design.
+See ``specs/archive/20260504-203256-schema-cache/`` for the full design.
 """
 
 from __future__ import annotations
@@ -33,16 +35,18 @@ from typing import TYPE_CHECKING
 
 import httpx
 from fastmcp.exceptions import ToolError
-from infrahub_sdk.exceptions import SchemaNotFoundError
+from infrahub_sdk.exceptions import BranchNotFoundError, SchemaNotFoundError
 
 from infrahub_mcp.utils import AppContext, get_client, get_default_branch
 
 if TYPE_CHECKING:
-    from typing import Any
+    from typing import Any, NoReturn
 
     from fastmcp import Context
     from infrahub_sdk.client import InfrahubClient
     from infrahub_sdk.schema import BranchSchema
+
+    from infrahub_mcp.config import ServerConfig
 
 logger = logging.getLogger("infrahub_mcp.schema_cache")
 
@@ -63,6 +67,23 @@ class CachedSchemaEntry:
     graphql_sdl: str
     fetched_at_monotonic: float
     consecutive_failures: int = 0
+    last_attempt_monotonic: float = 0.0
+    """Monotonic time of the last revalidation *attempt*, successful or not.
+
+    Distinct from ``fetched_at_monotonic`` (last *success*, which drives the
+    skip-window and the staleness threshold). This field throttles retries
+    while an entry is circuit-broken: without it, every read during an
+    Infrahub outage would queue on the cache lock behind its own upstream
+    timeout.
+    """
+    circuit_break_recorded: bool = False
+    """Whether the current broken streak has already been counted.
+
+    Keeps the ``circuit_break`` metric at one event per streak rather than
+    one per blocked read. Any successful fetch or revalidation builds a
+    fresh entry with this back to ``False``, so a later trip is counted
+    again.
+    """
 
 
 class _BranchGoneError(Exception):
@@ -89,6 +110,18 @@ def _is_within_skip_window(entry: CachedSchemaEntry, *, skip_window_seconds: int
     if skip_window_seconds <= 0:
         return False
     return (now - entry.fetched_at_monotonic) < skip_window_seconds
+
+
+def _is_retry_throttled(entry: CachedSchemaEntry, *, throttle_seconds: int, now: float) -> bool:
+    """Return True when a broken *entry* has probed upstream too recently.
+
+    Bounds recovery attempts to one per ``throttle_seconds`` while an entry
+    is circuit-broken, so a sustained outage costs one upstream timeout per
+    window rather than one per request.
+    """
+    if throttle_seconds <= 0:
+        return False
+    return (now - entry.last_attempt_monotonic) < throttle_seconds
 
 
 def _get_app_ctx(ctx: Context) -> AppContext:
@@ -130,14 +163,15 @@ async def _fetch_summary_hash(client: InfrahubClient, branch: str) -> str:
     return str(main_hash)
 
 
-async def _fetch_graphql_sdl(client: InfrahubClient) -> str:
-    """Fetch the raw GraphQL SDL via ``GET /schema.graphql``.
+async def _fetch_graphql_sdl(client: InfrahubClient, branch: str) -> str:
+    """Fetch the raw GraphQL SDL for *branch* via ``GET /schema.graphql``.
 
-    Mirrors the existing call in ``resources/schema.py``.
+    The SDL is branch-specific and is cached alongside the structured
+    ``BranchSchema`` for the same branch, so the branch must be threaded
+    through — otherwise a non-default branch's schema would be paired with
+    the default branch's SDL.
     """
-    response = await client._get(url=f"{client.address}/schema.graphql")  # noqa: SLF001  # pylint: disable=protected-access
-    response.raise_for_status()
-    return response.text
+    return await client.schema.get_graphql_schema(branch=branch)
 
 
 async def _full_fetch(
@@ -159,18 +193,72 @@ async def _full_fetch(
     TODO: swap for a public SDK accessor when one lands.
     """
     branch_schema: BranchSchema = await client.schema._fetch(branch=branch)  # noqa: SLF001  # pylint: disable=protected-access
-    graphql_sdl = await _fetch_graphql_sdl(client)
+    graphql_sdl = await _fetch_graphql_sdl(client, branch)
     return branch_schema, graphql_sdl
 
 
 def _record_circuit_break(metrics: Any, branch: str, threshold: str, age: float) -> None:
-    metrics.record_schema_cache_event("circuit_break")
+    """Record a circuit-break *transition* (entry newly crossed a threshold).
+
+    Called once per transition, not once per blocked read, so the counter
+    measures how often the breaker tripped rather than how many requests it
+    rejected.
+    """
+    if metrics is not None:
+        metrics.record_schema_cache_event("circuit_break")
     logger.error(
         "schema_cache_circuit_break branch=%s threshold=%s last_success_age_seconds=%.1f",
         branch,
         threshold,
         age,
     )
+
+
+def _breach_threshold_name(entry: CachedSchemaEntry, *, max_failures: int) -> str:
+    return "consecutive_failures" if max_failures and entry.consecutive_failures >= max_failures else "max_staleness"
+
+
+def _note_failure(
+    *,
+    app_ctx: AppContext,
+    entry: CachedSchemaEntry,
+    metrics: Any,
+    now: float,
+) -> CachedSchemaEntry:
+    """Store a failure-incremented copy of *entry* and report a fresh break.
+
+    Returns the stored entry. Emits the ``circuit_break`` metric/log at most
+    once per broken streak — the first failed probe that leaves the entry
+    broken — so the counter measures trips rather than rejected reads.
+    """
+    config = app_ctx.config
+    max_failures = config.schema_cache_max_consecutive_failures
+    max_staleness = config.schema_cache_max_staleness_seconds
+
+    new_entry = replace(
+        entry,
+        consecutive_failures=entry.consecutive_failures + 1,
+        last_attempt_monotonic=now,
+    )
+    if metrics is not None:
+        metrics.record_schema_cache_event("revalidate_failure")
+
+    broken = _is_circuit_broken(
+        new_entry,
+        max_consecutive_failures=max_failures,
+        max_staleness_seconds=max_staleness,
+        now=now,
+    )
+    if broken and not new_entry.circuit_break_recorded:
+        new_entry = replace(new_entry, circuit_break_recorded=True)
+        _record_circuit_break(
+            metrics,
+            entry.branch,
+            _breach_threshold_name(new_entry, max_failures=max_failures),
+            now - new_entry.fetched_at_monotonic,
+        )
+    app_ctx.schema_cache[entry.branch] = new_entry
+    return new_entry
 
 
 async def _cold_fetch_under_lock(
@@ -181,13 +269,15 @@ async def _cold_fetch_under_lock(
 ) -> CachedSchemaEntry:
     """Cold-fetch path: no entry exists for *branch*. Caller holds the lock."""
     branch_schema, graphql_sdl = await _full_fetch(client, branch)
+    now = _now()
     entry = CachedSchemaEntry(
         branch=branch,
         schema=branch_schema,
         schema_hash=branch_schema.hash or "",
         graphql_sdl=graphql_sdl,
-        fetched_at_monotonic=_now(),
+        fetched_at_monotonic=now,
         consecutive_failures=0,
+        last_attempt_monotonic=now,
     )
     app_ctx.schema_cache[branch] = entry
     return entry
@@ -207,8 +297,11 @@ async def _revalidate_under_lock(
 
     On hash differ: full refetch and replace the entry.
 
-    On 404 from ``/summary``: evict the entry and re-raise the original
-    error path (cold-fetch on next call).
+    On 404 from ``/summary``: evict the entry and raise the public
+    :class:`~infrahub_sdk.exceptions.BranchNotFoundError`. The private
+    ``_BranchGoneError`` never escapes this module, so a deleted branch
+    fails the same way here as it does on a cold cache miss — where the
+    SDK itself raises ``BranchNotFoundError`` from ``/api/schema``.
 
     On any other failure (transient): preserve the existing entry's
     schema/hash/SDL but increment ``consecutive_failures`` and update
@@ -217,15 +310,12 @@ async def _revalidate_under_lock(
     branch = entry.branch
     try:
         upstream_hash = await _fetch_summary_hash(client, branch)
-    except _BranchGoneError:
+    except _BranchGoneError as exc:
         del app_ctx.schema_cache[branch]
         logger.warning("schema_cache_branch_gone branch=%s", branch)
-        raise
+        raise BranchNotFoundError(identifier=branch) from exc
     except Exception as exc:  # noqa: BLE001
-        new_entry = replace(entry, consecutive_failures=entry.consecutive_failures + 1)
-        app_ctx.schema_cache[branch] = new_entry
-        if metrics is not None:
-            metrics.record_schema_cache_event("revalidate_failure")
+        new_entry = _note_failure(app_ctx=app_ctx, entry=entry, metrics=metrics, now=_now())
         logger.warning(
             "schema_cache_revalidate_failure branch=%s exception=%r",
             branch,
@@ -234,7 +324,14 @@ async def _revalidate_under_lock(
         return new_entry
 
     if upstream_hash == entry.schema_hash:
-        refreshed = replace(entry, fetched_at_monotonic=_now(), consecutive_failures=0)
+        now = _now()
+        refreshed = replace(
+            entry,
+            fetched_at_monotonic=now,
+            consecutive_failures=0,
+            last_attempt_monotonic=now,
+            circuit_break_recorded=False,
+        )
         app_ctx.schema_cache[branch] = refreshed
         if metrics is not None:
             metrics.record_schema_cache_event("hash_match")
@@ -244,10 +341,7 @@ async def _revalidate_under_lock(
     try:
         branch_schema, graphql_sdl = await _full_fetch(client, branch)
     except Exception as exc:  # noqa: BLE001
-        new_entry = replace(entry, consecutive_failures=entry.consecutive_failures + 1)
-        app_ctx.schema_cache[branch] = new_entry
-        if metrics is not None:
-            metrics.record_schema_cache_event("revalidate_failure")
+        new_entry = _note_failure(app_ctx=app_ctx, entry=entry, metrics=metrics, now=_now())
         logger.warning(
             "schema_cache_refetch_failure branch=%s exception=%r",
             branch,
@@ -255,13 +349,15 @@ async def _revalidate_under_lock(
         )
         return new_entry
 
+    now = _now()
     refreshed = CachedSchemaEntry(
         branch=branch,
         schema=branch_schema,
         schema_hash=branch_schema.hash or upstream_hash,
         graphql_sdl=graphql_sdl,
-        fetched_at_monotonic=_now(),
+        fetched_at_monotonic=now,
         consecutive_failures=0,
+        last_attempt_monotonic=now,
     )
     app_ctx.schema_cache[branch] = refreshed
     if metrics is not None:
@@ -279,30 +375,40 @@ def _install_into_client(client: InfrahubClient, entry: CachedSchemaEntry) -> No
     client.schema.set_cache(schema=entry.schema, branch=entry.branch)
 
 
-def _check_circuit_break(  # noqa: PLR0913
+_CIRCUIT_BREAK_MSG = (
+    "circuit-break threshold reached. The Infrahub server may be unreachable; check server health and try again."
+)
+
+
+def _raise_circuit_broken(branch: str, msg_suffix: str) -> NoReturn:
+    msg = f"Schema temporarily unavailable for branch {branch!r}: {msg_suffix}"
+    raise ToolError(msg)
+
+
+def _check_circuit_break(
     entry: CachedSchemaEntry,
     *,
-    max_failures: int,
-    max_staleness: int,
-    metrics: Any,
+    config: ServerConfig,
     branch: str,
     now: float,
-    msg_suffix: str = "circuit-break threshold reached. The Infrahub server may be unreachable; check server health and try again.",
+    msg_suffix: str = _CIRCUIT_BREAK_MSG,
 ) -> None:
-    """Raise ``ToolError`` if *entry* has crossed a circuit-break threshold."""
+    """Raise ``ToolError`` if *entry* has crossed a circuit-break threshold.
+
+    Call this *after* a revalidation attempt: the breaker is a fail-closed
+    exit for reads whose recovery attempt just failed, never a latch that
+    rejects reads without trying upstream first. The ``circuit_break``
+    metric is recorded at the transition in :func:`_note_failure`, not
+    here, so it counts trips rather than rejected requests.
+    """
     if not _is_circuit_broken(
         entry,
-        max_consecutive_failures=max_failures,
-        max_staleness_seconds=max_staleness,
+        max_consecutive_failures=config.schema_cache_max_consecutive_failures,
+        max_staleness_seconds=config.schema_cache_max_staleness_seconds,
         now=now,
     ):
         return
-    threshold = (
-        "consecutive_failures" if max_failures and entry.consecutive_failures >= max_failures else "max_staleness"
-    )
-    _record_circuit_break(metrics, branch, threshold, now - entry.fetched_at_monotonic)
-    msg = f"Schema temporarily unavailable for branch {branch!r}: {msg_suffix}"
-    raise ToolError(msg)
+    _raise_circuit_broken(branch, msg_suffix)
 
 
 def _try_serve_from_cache(
@@ -316,8 +422,14 @@ def _try_serve_from_cache(
     """Hot-path attempt: return a current entry without acquiring the cache lock.
 
     Returns the entry if it is within the skip-window, or ``None`` if the
-    caller must take the lock (cold cache or past skip-window). Raises
-    ``ToolError`` if the entry has crossed a circuit-break threshold.
+    caller must take the lock (cold cache, past skip-window, or a broken
+    entry due for a recovery probe).
+
+    A circuit-broken entry is *not* served and *not* rejected outright:
+    it falls through to the lock path so revalidation can heal it once
+    Infrahub recovers. Only while a probe is still throttled does the read
+    fail fast, which keeps an outage from costing one upstream timeout per
+    request.
     """
     entry = app_ctx.schema_cache.get(resolved_branch)
     if entry is None or force_revalidate:
@@ -325,14 +437,16 @@ def _try_serve_from_cache(
 
     config = app_ctx.config
     now = _now()
-    _check_circuit_break(
+    if _is_circuit_broken(
         entry,
-        max_failures=config.schema_cache_max_consecutive_failures,
-        max_staleness=config.schema_cache_max_staleness_seconds,
-        metrics=metrics,
-        branch=resolved_branch,
+        max_consecutive_failures=config.schema_cache_max_consecutive_failures,
+        max_staleness_seconds=config.schema_cache_max_staleness_seconds,
         now=now,
-    )
+    ):
+        if _is_retry_throttled(entry, throttle_seconds=config.schema_cache_ttl, now=now):
+            _raise_circuit_broken(resolved_branch, _CIRCUIT_BREAK_MSG)
+        return None
+
     if _is_within_skip_window(entry, skip_window_seconds=config.schema_cache_ttl, now=now):
         if metrics is not None:
             metrics.record_schema_cache_event("hit")
@@ -399,9 +513,7 @@ async def _ensure_entry(
 
     _check_circuit_break(
         new_entry,
-        max_failures=config.schema_cache_max_consecutive_failures,
-        max_staleness=config.schema_cache_max_staleness_seconds,
-        metrics=metrics,
+        config=config,
         branch=resolved_branch,
         now=_now(),
         msg_suffix="circuit-break threshold reached after revalidation failure.",
@@ -456,7 +568,8 @@ async def get_cached_graphql_sdl(ctx: Context, branch: str | None = None) -> str
     app_ctx = _get_app_ctx(ctx)
     if not app_ctx.config.schema_cache_enabled:
         client = get_client(ctx)
-        return await _fetch_graphql_sdl(client)
+        resolved_branch = await _resolve_branch(ctx, branch)
+        return await _fetch_graphql_sdl(client, resolved_branch)
 
     entry = await _ensure_entry(ctx=ctx, branch=branch, force_revalidate=False)
     return entry.graphql_sdl

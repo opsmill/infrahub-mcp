@@ -24,11 +24,16 @@ from fastmcp.server.middleware.caching import (
     ListToolsSettings,
     ReadResourceSettings,
 )
-from infrahub_sdk.exceptions import SchemaNotFoundError
+from infrahub_sdk.exceptions import BranchNotFoundError, SchemaNotFoundError
 
 from infrahub_mcp import schema_cache
 from infrahub_mcp.config import ServerConfig
-from infrahub_mcp.middleware import MetricsMiddleware, _SchemaAwareResponseCachingMiddleware
+from infrahub_mcp.middleware import (
+    MetricsMiddleware,
+    _build_response_caching_middleware,
+    _SchemaAwareResponseCachingMiddleware,
+)
+from infrahub_mcp.schema import get_schema_catalog
 from infrahub_mcp.schema_cache import (
     CachedSchemaEntry,
     _BranchGoneError,
@@ -89,6 +94,7 @@ def mock_client() -> MagicMock:
     client.address = "http://infrahub.test"
     client.schema = MagicMock()
     client.schema._fetch = AsyncMock()
+    client.schema.get_graphql_schema = AsyncMock(return_value="sdl")
     client.schema.set_cache = MagicMock()
     client._get = AsyncMock()
     return client
@@ -143,7 +149,7 @@ class TestUS1ColdAndWarm:
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1", kinds=["InfraDevice"])
         mock_client.schema._fetch.return_value = schema
-        mock_client._get.return_value = _make_response(text="schema { Query }")
+        mock_client.schema.get_graphql_schema.return_value = "schema { Query }"
 
         result = await get_cached_branch_schema(mock_ctx)
 
@@ -216,7 +222,6 @@ class TestSingleFlight:
             return schema
 
         mock_client.schema._fetch.side_effect = slow_fetch
-        mock_client._get.return_value = _make_response(text="sdl")
 
         async def runner() -> Any:
             return await get_cached_branch_schema(mock_ctx)
@@ -283,11 +288,9 @@ class TestUS2Revalidation:
             consecutive_failures=0,
         )
 
-        # First _get is for /api/schema/summary, second is for /schema.graphql
-        mock_client._get.side_effect = [
-            _make_response(json_body={"main": "H2"}),
-            _make_response(text="new-sdl"),
-        ]
+        # client._get only carries /api/schema/summary; the SDL uses the SDK method.
+        mock_client._get.return_value = _make_response(json_body={"main": "H2"})
+        mock_client.schema.get_graphql_schema.return_value = "new-sdl"
         mock_client.schema._fetch.return_value = new_schema
 
         result = await get_cached_branch_schema(mock_ctx)
@@ -317,10 +320,36 @@ class TestUS2Revalidation:
         )
         mock_client._get.return_value = _make_response(status_code=httpx.codes.NOT_FOUND)
 
-        with pytest.raises(_BranchGoneError):
+        # The private _BranchGoneError is translated at the eviction site, so
+        # callers see the same public error a cold cache miss produces (the SDK
+        # raises BranchNotFoundError from /api/schema on an unknown branch).
+        with pytest.raises(BranchNotFoundError):
             await get_cached_branch_schema(mock_ctx)
 
         assert "main" not in app_ctx.schema_cache
+
+    @pytest.mark.anyio
+    async def test_branch_gone_does_not_leak_private_error(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=_make_branch_schema(schema_hash="H1"),
+            schema_hash="H1",
+            graphql_sdl="sdl",
+            fetched_at_monotonic=schema_cache._now() - 100,
+            consecutive_failures=0,
+        )
+        mock_client._get.return_value = _make_response(status_code=httpx.codes.NOT_FOUND)
+
+        with pytest.raises(BranchNotFoundError) as excinfo:
+            await get_cached_graphql_sdl(mock_ctx)
+
+        assert not isinstance(excinfo.value, _BranchGoneError)
+        assert excinfo.value.identifier == "main"
 
 
 class TestUS2LazyOnMissingKind:
@@ -391,10 +420,8 @@ class TestUS2LazyOnMissingKind:
             consecutive_failures=0,
         )
 
-        mock_client._get.side_effect = [
-            _make_response(json_body={"main": "H2"}),
-            _make_response(text="new-sdl"),
-        ]
+        mock_client._get.return_value = _make_response(json_body={"main": "H2"})
+        mock_client.schema.get_graphql_schema.return_value = "new-sdl"
         mock_client.schema._fetch.return_value = new_schema
 
         kind = await get_cached_kind(mock_ctx, kind="NewKind")
@@ -510,13 +537,15 @@ class TestUS3Resilience:
 
 class TestCircuitBreak:
     @pytest.mark.anyio
-    async def test_consecutive_failure_threshold_triggers_circuit_break(
+    async def test_broken_entry_fails_closed_when_recovery_probe_fails(
         self,
         mock_ctx: MagicMock,
         app_ctx: AppContext,
+        mock_client: MagicMock,
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1")
-        # 10 consecutive failures already, next read fails closed.
+        # 10 consecutive failures already; the read retries upstream first and
+        # only fails closed because that retry fails too.
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=schema,
@@ -525,30 +554,125 @@ class TestCircuitBreak:
             fetched_at_monotonic=schema_cache._now(),
             consecutive_failures=10,
         )
+        mock_client._get.side_effect = httpx.NetworkError("still down")
 
         with pytest.raises(ToolError, match="circuit-break threshold"):
             await get_cached_branch_schema(mock_ctx)
 
+        mock_client._get.assert_awaited()
+
     @pytest.mark.anyio
-    async def test_absolute_staleness_threshold_triggers_circuit_break(
+    async def test_broken_entry_recovers_when_upstream_returns(
         self,
         mock_ctx: MagicMock,
         app_ctx: AppContext,
+        mock_client: MagicMock,
     ) -> None:
+        """A tripped breaker must not latch for the process lifetime."""
         schema = _make_branch_schema(schema_hash="H1")
-        # last success > max_staleness ago.
-        very_old = schema_cache._now() - 10_000
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=schema,
             schema_hash="H1",
             graphql_sdl="sdl",
-            fetched_at_monotonic=very_old,
-            consecutive_failures=0,
+            fetched_at_monotonic=schema_cache._now() - 10_000,
+            consecutive_failures=50,
+        )
+        mock_client._get.return_value = _make_response(json_body={"main": "H1"})
+
+        result = await get_cached_branch_schema(mock_ctx)
+
+        assert result is schema
+        entry = app_ctx.schema_cache["main"]
+        assert entry.consecutive_failures == 0
+        assert not schema_cache._is_circuit_broken(
+            entry,
+            max_consecutive_failures=app_ctx.config.schema_cache_max_consecutive_failures,
+            max_staleness_seconds=app_ctx.config.schema_cache_max_staleness_seconds,
+            now=schema_cache._now(),
+        )
+
+    @pytest.mark.anyio
+    async def test_broken_entry_recovers_on_hash_diff(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        old_schema = _make_branch_schema(schema_hash="H1")
+        new_schema = _make_branch_schema(schema_hash="H2")
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=old_schema,
+            schema_hash="H1",
+            graphql_sdl="old-sdl",
+            fetched_at_monotonic=schema_cache._now() - 10_000,
+            consecutive_failures=50,
+        )
+        mock_client._get.return_value = _make_response(json_body={"main": "H2"})
+        mock_client.schema._fetch.return_value = new_schema
+        mock_client.schema.get_graphql_schema.return_value = "new-sdl"
+
+        result = await get_cached_branch_schema(mock_ctx)
+
+        assert result is new_schema
+        assert app_ctx.schema_cache["main"].consecutive_failures == 0
+        assert app_ctx.schema_cache["main"].graphql_sdl == "new-sdl"
+
+    @pytest.mark.anyio
+    async def test_broken_entry_throttles_recovery_probes(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        """Reads during an outage fail fast instead of each paying a timeout."""
+        schema = _make_branch_schema(schema_hash="H1")
+        now = schema_cache._now()
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=schema,
+            schema_hash="H1",
+            graphql_sdl="sdl",
+            fetched_at_monotonic=now - 10_000,
+            consecutive_failures=50,
+            last_attempt_monotonic=now,  # probe just happened
         )
 
         with pytest.raises(ToolError, match="circuit-break threshold"):
             await get_cached_branch_schema(mock_ctx)
+
+        mock_client._get.assert_not_awaited()
+        mock_client.schema._fetch.assert_not_awaited()
+
+    @pytest.mark.anyio
+    async def test_recovery_probe_runs_once_per_window_under_burst(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        """A burst against a broken entry costs one upstream probe, not N."""
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=schema,
+            schema_hash="H1",
+            graphql_sdl="sdl",
+            fetched_at_monotonic=schema_cache._now() - 10_000,
+            consecutive_failures=50,
+        )
+        mock_client._get.side_effect = httpx.NetworkError("still down")
+
+        async def runner() -> Any:
+            with pytest.raises(ToolError):
+                await get_cached_branch_schema(mock_ctx)
+
+        await asyncio.gather(*[asyncio.create_task(runner()) for _ in range(10)])
+
+        assert mock_client._get.await_count == 1, (
+            f"expected one recovery probe per window, got {mock_client._get.await_count}"
+        )
 
     @pytest.mark.anyio
     async def test_threshold_zero_disables_circuit_break(
@@ -600,6 +724,111 @@ class TestCircuitBreak:
 
         assert app_ctx.schema_cache["main"].consecutive_failures == 0
 
+    @pytest.mark.anyio
+    async def test_circuit_break_metric_counts_transitions_not_blocked_reads(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        mock_metrics: MagicMock,
+    ) -> None:
+        # ttl=0 disables both the skip-window and the retry throttle, so every
+        # read below really does attempt revalidation.
+        app_ctx.config = _make_config(schema_cache_ttl=0, schema_cache_max_consecutive_failures=2)
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=_make_branch_schema(schema_hash="H1"),
+            schema_hash="H1",
+            graphql_sdl="sdl",
+            fetched_at_monotonic=schema_cache._now(),
+            consecutive_failures=1,
+        )
+        mock_client._get.side_effect = httpx.NetworkError("down")
+
+        for _ in range(3):
+            with pytest.raises(ToolError):
+                await get_cached_branch_schema(mock_ctx)
+
+        breaks = [c for c in mock_metrics.record_schema_cache_event.call_args_list if c.args[0] == "circuit_break"]
+        assert len(breaks) == 1, f"expected one transition, got {len(breaks)} (counting blocked reads)"
+
+    @pytest.mark.anyio
+    async def test_staleness_trip_is_recorded_on_the_first_failed_probe(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        mock_metrics: MagicMock,
+    ) -> None:
+        """A staleness trip has no read to observe the threshold elapsing.
+
+        The entry is already past ``max_staleness`` before anyone reads it, so
+        comparing broken-before to broken-after would see no transition and
+        never count the trip.
+        """
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=_make_branch_schema(schema_hash="H1"),
+            schema_hash="H1",
+            graphql_sdl="sdl",
+            fetched_at_monotonic=schema_cache._now() - 10_000,  # already past max_staleness
+            consecutive_failures=0,
+        )
+        mock_client._get.side_effect = httpx.NetworkError("down")
+
+        with pytest.raises(ToolError, match="circuit-break threshold"):
+            await get_cached_branch_schema(mock_ctx)
+
+        breaks = [c for c in mock_metrics.record_schema_cache_event.call_args_list if c.args[0] == "circuit_break"]
+        assert len(breaks) == 1
+        assert app_ctx.schema_cache["main"].circuit_break_recorded is True
+
+    @pytest.mark.anyio
+    async def test_recovery_clears_the_recorded_break_so_a_later_trip_counts(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=_make_branch_schema(schema_hash="H1"),
+            schema_hash="H1",
+            graphql_sdl="sdl",
+            fetched_at_monotonic=schema_cache._now() - 10_000,
+            consecutive_failures=50,
+            circuit_break_recorded=True,
+        )
+        mock_client._get.return_value = _make_response(json_body={"main": "H1"})
+
+        await get_cached_branch_schema(mock_ctx)
+
+        assert app_ctx.schema_cache["main"].circuit_break_recorded is False
+
+    @pytest.mark.anyio
+    async def test_circuit_break_without_metrics_middleware_raises_tool_error(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A break with metrics unconfigured must surface ToolError, not AttributeError."""
+        monkeypatch.setattr(schema_cache, "_get_metrics", lambda: None)
+        app_ctx.config = _make_config(schema_cache_max_consecutive_failures=1)
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=_make_branch_schema(schema_hash="H1"),
+            schema_hash="H1",
+            graphql_sdl="sdl",
+            fetched_at_monotonic=schema_cache._now() - 100,  # past skip-window
+            consecutive_failures=0,
+        )
+        mock_client._get.side_effect = httpx.NetworkError("down")
+
+        with pytest.raises(ToolError, match="circuit-break threshold"):
+            await get_cached_branch_schema(mock_ctx)
+
 
 # ---------------------------------------------------------------------------
 # US4 — Metrics
@@ -618,7 +847,6 @@ class TestMetrics:
         # Cold fetch.
         schema = _make_branch_schema(schema_hash="H1")
         mock_client.schema._fetch.return_value = schema
-        mock_client._get.return_value = _make_response(text="sdl")
         await get_cached_branch_schema(mock_ctx)
 
         # Warm hit.
@@ -683,7 +911,7 @@ class TestGraphQLSDL:
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1")
         mock_client.schema._fetch.return_value = schema
-        mock_client._get.return_value = _make_response(text="schema { Query }")
+        mock_client.schema.get_graphql_schema.return_value = "schema { Query }"
 
         sdl = await get_cached_graphql_sdl(mock_ctx)
 
@@ -708,15 +936,46 @@ class TestGraphQLSDL:
             fetched_at_monotonic=old_time,
             consecutive_failures=0,
         )
-        mock_client._get.side_effect = [
-            _make_response(json_body={"main": "H2"}),
-            _make_response(text="new-sdl"),
-        ]
+        mock_client._get.return_value = _make_response(json_body={"main": "H2"})
+        mock_client.schema.get_graphql_schema.return_value = "new-sdl"
         mock_client.schema._fetch.return_value = new_schema
 
         sdl = await get_cached_graphql_sdl(mock_ctx)
 
         assert sdl == "new-sdl"
+
+    @pytest.mark.anyio
+    async def test_sdl_is_fetched_for_the_requested_branch(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        """The SDL must be pinned to the same branch as the structured schema."""
+        schema = _make_branch_schema(schema_hash="H1")
+        mock_client.schema._fetch.return_value = schema
+        mock_client.schema.get_graphql_schema.return_value = "branch-sdl"
+
+        sdl = await get_cached_graphql_sdl(mock_ctx, branch="feature-x")
+
+        assert sdl == "branch-sdl"
+        mock_client.schema.get_graphql_schema.assert_awaited_once_with(branch="feature-x")
+        assert app_ctx.schema_cache["feature-x"].graphql_sdl == "branch-sdl"
+
+    @pytest.mark.anyio
+    async def test_disabled_cache_still_fetches_sdl_for_the_requested_branch(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        app_ctx.config = _make_config(schema_cache_enabled=False)
+        mock_client.schema.get_graphql_schema.return_value = "branch-sdl"
+
+        sdl = await get_cached_graphql_sdl(mock_ctx, branch="feature-x")
+
+        assert sdl == "branch-sdl"
+        mock_client.schema.get_graphql_schema.assert_awaited_once_with(branch="feature-x")
 
 
 # ---------------------------------------------------------------------------
@@ -732,7 +991,7 @@ class TestSchemaAwareCachingMiddleware:
             list_resources_settings=ListResourcesSettings(ttl=300),
             list_prompts_settings=ListPromptsSettings(ttl=300),
             read_resource_settings=ReadResourceSettings(ttl=300),
-            call_tool_settings=CallToolSettings(ttl=300, excluded_tools=["get_schema"]),
+            call_tool_settings=CallToolSettings(ttl=300),
         )
 
         mock_msg = MagicMock()
@@ -762,7 +1021,7 @@ class TestSchemaAwareCachingMiddleware:
             list_resources_settings=ListResourcesSettings(ttl=300),
             list_prompts_settings=ListPromptsSettings(ttl=300),
             read_resource_settings=ReadResourceSettings(ttl=300),
-            call_tool_settings=CallToolSettings(ttl=300, excluded_tools=["get_schema"]),
+            call_tool_settings=CallToolSettings(ttl=300),
         )
 
         mock_msg = MagicMock()
@@ -783,3 +1042,106 @@ class TestSchemaAwareCachingMiddleware:
 
         assert result == "via-parent"
         parent.assert_awaited_once()
+
+    @pytest.mark.anyio
+    async def test_tool_calls_are_never_cached(self) -> None:
+        """No tool result may be replayed at the TTL layer.
+
+        ``get_schema`` is owned by the schema cache; every other tool either
+        returns live data or mutates state. Regression guard for an
+        ``excluded_tools=["get_schema"]`` setting, which FastMCP reads as
+        "cache everything except get_schema".
+        """
+        mw = _SchemaAwareResponseCachingMiddleware(
+            list_tools_settings=ListToolsSettings(ttl=300),
+            list_resources_settings=ListResourcesSettings(ttl=300),
+            list_prompts_settings=ListPromptsSettings(ttl=300),
+            read_resource_settings=ReadResourceSettings(ttl=300),
+            call_tool_settings=CallToolSettings(ttl=300),
+        )
+
+        calls = 0
+
+        async def call_next(context: Any) -> str:  # noqa: RUF029  # FastMCP middleware contract requires async
+            del context
+            nonlocal calls
+            calls += 1
+            return f"result-{calls}"
+
+        for tool_name in ("get_schema", "get_nodes", "node_upsert", "mutate_graphql"):
+            mock_msg = MagicMock()
+            mock_msg.name = tool_name
+            mock_msg.arguments = {"same": "args"}
+            mock_ctx = MagicMock()
+            mock_ctx.message = mock_msg
+
+            first = await mw.on_call_tool(mock_ctx, call_next)
+            second = await mw.on_call_tool(mock_ctx, call_next)
+            assert first != second, f"{tool_name} result was replayed from cache"
+
+        assert calls == 8, f"expected every call to reach the tool, got {calls}"
+
+
+class TestResponseCachingMiddlewareBuilder:
+    def test_schema_cache_enabled_leaves_no_tool_allowlist(self) -> None:
+        """An empty allowlist must be expressed by the bypass, not by settings.
+
+        FastMCP's ``_matches_tool_cache_settings`` reads both filters with a
+        truthiness check, so ``included_tools=[]`` means "no filter" and
+        ``excluded_tools=["get_schema"]`` means "cache every other tool".
+        """
+        mw = _build_response_caching_middleware(_make_config(schema_cache_enabled=True, cache_enabled=True))
+
+        assert isinstance(mw, _SchemaAwareResponseCachingMiddleware)
+        assert not mw._call_tool_settings.get("included_tools")
+        assert not mw._call_tool_settings.get("excluded_tools")
+        assert mw._matches_tool_cache_settings("node_upsert") is True, (
+            "settings alone do not block tool caching — on_call_tool must"
+        )
+
+    def test_schema_cache_disabled_keeps_get_schema_allowlist(self) -> None:
+        mw = _build_response_caching_middleware(_make_config(schema_cache_enabled=False, cache_enabled=True))
+
+        assert not isinstance(mw, _SchemaAwareResponseCachingMiddleware)
+        assert mw._call_tool_settings.get("included_tools") == ["get_schema"]
+        assert mw._matches_tool_cache_settings("get_schema") is True
+        assert mw._matches_tool_cache_settings("node_upsert") is False
+
+
+# ---------------------------------------------------------------------------
+# Catalog coverage
+# ---------------------------------------------------------------------------
+
+
+class TestCatalogIncludesGenerics:
+    @pytest.mark.anyio
+    async def test_generic_kinds_are_discoverable(
+        self,
+        mock_ctx: MagicMock,
+        mock_client: MagicMock,
+    ) -> None:
+        """Generics reach the catalog because the SDK folds them into ``nodes``.
+
+        ``BranchSchema.from_api_response`` merges the API's ``nodes``,
+        ``generics``, ``profiles`` and ``templates`` lists into one ``nodes``
+        mapping, which is exactly what ``client.schema.all()`` returns. Reading
+        ``branch_schema.nodes`` is therefore not a node-only view, and generic
+        kinds such as ``CoreNode`` stay reachable through ``get_schema`` and the
+        schema resource. Guard against "fixing" this by reaching for a separate
+        ``generics`` attribute that does not exist.
+        """
+        schema = _make_branch_schema(schema_hash="H1")
+        for kind, namespace in (("InfraDevice", "Infra"), ("CoreNode", "Core")):
+            node = MagicMock()
+            node.kind = kind
+            node.namespace = namespace
+            node.label = kind
+            schema.nodes[kind] = node
+        mock_client.schema._fetch.return_value = schema
+
+        catalog = await get_schema_catalog(mock_ctx)
+
+        assert "CoreNode" in catalog
+        assert "InfraDevice" in catalog
+        kind_obj = await get_cached_kind(mock_ctx, kind="CoreNode")
+        assert kind_obj is schema.nodes["CoreNode"]

@@ -5,7 +5,7 @@ description: "Task list for hash-validated schema cache feature"
 
 # Tasks: Hash-Validated Schema Cache
 
-**Input**: Design documents from `specs/20260504-203256-schema-cache/`
+**Input**: Design documents from `specs/archive/20260504-203256-schema-cache/`
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, quickstart.md
 
 **Tests**: Required (TDD per Constitution Principle V).
@@ -171,7 +171,7 @@ Single-project layout: `src/infrahub_mcp/`, `tests/unit/`. Per `plan.md` Project
 
 - [ ] T046 In `src/infrahub_mcp/middleware.py`, modify `configure_middleware()` so that when `cache_enabled=True`, schema URIs (`infrahub://schema`, `infrahub://schema/{kind}`, `infrahub://graphql-schema`) and the `get_schema` tool are excluded from `ResponseCachingMiddleware`. The new schema cache owns correctness for these endpoints; other resources/tools keep their middleware caching.
 - [ ] T047 [P] End-to-end middleware-exclusion test in `tests/unit/test_middleware.py` (or extend the existing test file): with caching enabled, calling `read_resource("infrahub://schema")` does NOT register a hit in the FastMCP cache statistics, while calling a non-schema cached resource still does.
-- [ ] T048 [P] Add a brief section to `dev/knowledge/architecture.md` describing the schema-cache layer: purpose, lifetime, invalidation model, interaction with `ResponseCachingMiddleware`. One short paragraph + link to `specs/20260504-203256-schema-cache/`.
+- [ ] T048 [P] Add a brief section to `dev/knowledge/architecture.md` describing the schema-cache layer: purpose, lifetime, invalidation model, interaction with `ResponseCachingMiddleware`. One short paragraph + link to `specs/archive/20260504-203256-schema-cache/`.
 - [ ] T049 [P] Add operator-facing documentation for the four new `INFRAHUB_MCP_SCHEMA_CACHE_*` environment variables under `docs/docs/` if a runtime-config reference page exists; otherwise skip.
 - [ ] T050 Run `uv run invoke format` to auto-format the changes.
 - [ ] T051 Run `uv run invoke lint` and ensure ruff, pylint (10.00/10), mypy (0 issues), yamllint are all clean.

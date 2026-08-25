@@ -22,28 +22,33 @@ class CachedSchemaEntry:
     schema: BranchSchema  # SDK's BranchSchema; loaded into fresh clients via set_cache()
     schema_hash: str  # BranchSchema.hash at fetch time; equality test against /summary.main
     graphql_sdl: str  # Cached GraphQL SDL string; invalidated together with schema
-    fetched_at_monotonic: float  # asyncio.get_event_loop().time() at last successful fetch/revalidation
+    fetched_at_monotonic: float  # time.monotonic() at last successful fetch/revalidation
     consecutive_failures: int  # Count of revalidation failures since last success; 0 when fresh
+    last_attempt_monotonic: float  # time.monotonic() at last revalidation *attempt*; throttles recovery probes
+    circuit_break_recorded: bool  # Whether this broken streak was already counted; cleared on recovery
 ```
 
 **Invariants**:
+
 - `branch` is non-empty and is the canonical resolved name (FR-015).
 - `schema_hash` is non-empty (set from `BranchSchema.hash` after a successful fetch).
 - `consecutive_failures >= 0`.
 - `fetched_at_monotonic` is monotonic-clock time; do not compare against wall-clock or persist.
+- `last_attempt_monotonic` is the same clock, and always `>= fetched_at_monotonic` once an attempt has run. It advances on every revalidation attempt including failures, so it is the wrong field to measure freshness with.
 
 **State transitions**:
 
 | Trigger | New entry produced |
-|---|---|
+| --- | --- |
 | Cold fetch succeeds | `consecutive_failures = 0`, `fetched_at_monotonic = now`, hash + schema + SDL populated |
 | Hash matches at revalidation | Same `schema` and `schema_hash`; `fetched_at_monotonic = now`, `consecutive_failures = 0` |
 | Hash differs at revalidation | New `schema`, `schema_hash`, `graphql_sdl`; `fetched_at_monotonic = now`, `consecutive_failures = 0` |
 | Revalidation fails (F1) | `schema/schema_hash/graphql_sdl` unchanged; `fetched_at_monotonic` unchanged; `consecutive_failures += 1` |
 | Refetch fails (F2) after hash diff | Same as F1: previous entry is preserved |
-| `/summary` returns 404 | Entry removed from dict (no replacement entry produced) |
-| Consecutive-failure threshold reached | Entry remains in dict but `is_circuit_broken()` returns True; reads fail-closed |
-| Absolute-staleness threshold reached | Entry remains in dict but `is_circuit_broken()` returns True; reads fail-closed |
+| `/summary` returns 404 | Entry removed from dict (no replacement entry produced); the caller raises the SDK's public `BranchNotFoundError` |
+| Consecutive-failure threshold reached | Entry remains in dict but `is_circuit_broken()` returns True; reads attempt one revalidation and fail closed only if it also fails |
+| Absolute-staleness threshold reached | Entry remains in dict but `is_circuit_broken()` returns True; same retry-then-fail-closed behaviour |
+| Read against a broken entry, probe throttled | No new entry; the read fails closed without an upstream call (one probe per `schema_cache_ttl`) |
 
 **Methods (computed properties on the dataclass)**:
 
@@ -115,14 +120,16 @@ async def get_cached_graphql_sdl(ctx: Context, branch: str | None = None) -> str
 ```
 
 Both are async. Both raise `ToolError` (or `ResourceError` from the calling resource) when:
+
 - The cache is empty AND a cold fetch fails (F3).
-- A circuit-break threshold has been crossed for the requested branch.
+- A circuit-break threshold has been crossed for the requested branch *and* the recovery probe for this read also failed (or is still throttled). A broken entry is not a latch: once Infrahub answers again, the next probe clears it without a restart.
 
 Both never raise on transient revalidation failures when a cached entry exists; instead they emit a WARN log line and serve stale.
 
 **Internal helpers** (private to the module):
+
 - `_fetch_summary_hash(client, branch)` — calls `client._get(/api/schema/summary?branch=...)`, returns the `main` field. Raises if 404 (caller evicts).
-- `_full_fetch(client, branch)` — calls `client.schema._fetch(branch)` and `client._get(/schema.graphql)`, returns the new `CachedSchemaEntry`.
+- `_full_fetch(client, branch)` — calls `client.schema._fetch(branch)` and `client.schema.get_graphql_schema(branch=branch)`, returning a `(BranchSchema, sdl)` tuple the caller wraps in a `CachedSchemaEntry`. The SDL fetch takes the same branch as the structured schema; the two are cached as one unit and must not disagree on branch.
 - `_install_cache_into_client(client, entry)` — calls `client.schema.set_cache(entry.schema, entry.branch)` so subsequent `client.schema.*` calls within this request hit the SDK cache.
 
 ---
@@ -132,7 +139,7 @@ Both never raise on transient revalidation failures when a cached entry exists; 
 Aggregate `Counter` types — no labels:
 
 | Name | Increment when |
-|---|---|
+| --- | --- |
 | `schema_cache_hits` | Cache served without revalidation (skip-window active). |
 | `schema_cache_misses` | Cold fetch performed (no entry existed). |
 | `schema_cache_hash_matches` | `/summary` confirmed unchanged hash; cache extended. |
@@ -145,7 +152,7 @@ Aggregate `Counter` types — no labels:
 ## Failure semantics summary
 
 | Condition | Outcome | Counter | Log |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Cache hit within skip-window | Serve cached | `schema_cache_hits++` | (none) |
 | Cache hit past skip-window, hash match | Serve cached, extend timestamp | `schema_cache_hash_matches++` | (none) |
 | Cache hit past skip-window, hash diff | Refetch, replace, serve fresh | `schema_cache_hash_diffs++` | (none) |

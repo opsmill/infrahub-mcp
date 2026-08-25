@@ -37,7 +37,7 @@ _UNWRITABLE_STATUSES = frozenset({BranchStatus.MERGED, BranchStatus.DELETING})
 
 
 @dataclass
-class AppContext:
+class AppContext:  # pylint: disable=too-many-instance-attributes  # context aggregate, not behaviour
     """Application context shared for the lifetime of the MCP server process.
 
     The active session branch is tracked **per MCP session/connection**, not

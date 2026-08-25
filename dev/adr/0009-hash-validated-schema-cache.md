@@ -1,4 +1,4 @@
-# 7. Hash-validated schema cache for passthrough auth modes
+# 9. Hash-validated schema cache for passthrough auth modes
 
 **Status:** Accepted
 **Date:** 2026-05-04
@@ -16,27 +16,27 @@ The Infrahub server exposes a cheap `GET /api/schema/summary` endpoint that retu
 
 Introduce a process-wide, hash-validated schema cache anchored on `AppContext`, with explicit helper functions in `src/infrahub_mcp/schema_cache.py` consumed by every code path that needs schema data.
 
-- Cache scope: passthrough modes only (`schema_cache_enabled` defaults to `True`). Other auth modes already benefit from the SDK's per-client cache via the shared lifespan client.
-- Cache key: branch name only. Schema content is global per branch in Infrahub — per-user filtering applies to node data, not to schema definitions.
+- Cache scope: every auth mode (`schema_cache_enabled` defaults to `True`). Passthrough is the motivating case, but the helpers are the single schema entry point for all modes rather than a second code path guarded by `auth_mode`. In `none`/`oidc` the shared lifespan client made this look unnecessary — and it is not: `client.schema.all()` populates its per-client cache once and never revalidates it, so those modes previously served schema of *unbounded* age until restart. Routing them through the same hash-validated helpers bounds that staleness. The cost is that the circuit breaker now applies there too, which is the intended failure mode.
+- Cache key: branch name only. Schema content is global per branch in Infrahub — per-user filtering applies to node data, not to schema definitions (spec FR-017). Passthrough callers therefore share entries safely. This is the one assumption the shared key rests on: if Infrahub ever filters schema visibility per credential, the key must gain the caller's authorization identity.
 - Cache value: an immutable `CachedSchemaEntry` carrying the `BranchSchema`, the schema hash, the cached GraphQL SDL string, the monotonic timestamp of the last successful fetch, and a consecutive-revalidation-failure counter.
 - Cache currency: a configurable skip-window (`schema_cache_ttl`, default 30 s) lets bursts serve from cache without any upstream call. Past the skip-window the helper calls `/api/schema/summary` and compares `main` against the cached `BranchSchema.hash`. Match extends the entry; differ triggers a full refetch under the cache lock.
 - Single-flight: a single `asyncio.Lock` per `AppContext` with double-checked locking guarantees exactly one upstream fetch per cache-miss event under bursts.
-- Resilience: 4xx, 5xx, and network failures during revalidation/refetch are treated uniformly — preserve the existing entry, increment its `consecutive_failures`, emit a WARN log. Sustained failures are bounded by two configurable circuit-break thresholds (`schema_cache_max_consecutive_failures` default 10, `schema_cache_max_staleness_seconds` default 900). When either threshold is crossed the entry is marked unsafe and reads return a `ToolError` until a successful revalidation resets both counters. Setting either threshold to 0 disables it.
-- 404 from `/summary` evicts the cache entry for that branch.
-- The `/api/schema/summary` call uses `client._get(...)` because the SDK does not yet expose a public wrapper. This mirrors the precedent set by the GraphQL SDL fetch in `resources/schema.py`. An upstream SDK PR adding `client.schema.summary()` is a planned follow-up.
+- Resilience: 4xx, 5xx, and network failures during revalidation/refetch are treated uniformly — preserve the existing entry, increment its `consecutive_failures`, emit a WARN log. Sustained failures are bounded by two configurable circuit-break thresholds (`schema_cache_max_consecutive_failures` default 10, `schema_cache_max_staleness_seconds` default 900). When either threshold is crossed the entry is marked unsafe and reads return a `ToolError`. The breaker is not a latch: a read against a broken entry still attempts revalidation and fails closed only if that attempt also fails, so the cache heals itself once Infrahub recovers. Recovery probes are throttled to one per `schema_cache_ttl` (tracked by `last_attempt_monotonic`, distinct from the last-success timestamp) so a sustained outage costs one upstream timeout per window rather than one per request. Setting either threshold to 0 disables it.
+- 404 from `/summary` evicts the cache entry for that branch and raises the SDK's public `BranchNotFoundError`, matching what a cold cache miss raises from `/api/schema`. The private sentinel used internally never escapes the module.
+- The `/api/schema/summary` call uses `client._get(...)` because the SDK does not yet expose a public wrapper. An upstream SDK PR adding `client.schema.summary()` is a planned follow-up. The GraphQL SDL, by contrast, goes through the SDK's public `client.schema.get_graphql_schema(branch=...)`; it is cached alongside the structured schema for the same branch, so the branch is threaded through rather than defaulted.
 - Successful fetches call `client.schema.set_cache(branch_schema, branch)` so subsequent `client.schema.*` calls within the same request hit the SDK cache transparently — the helper is the only place that knows about the cache, but every existing code path benefits.
-- A thin `_SchemaAwareResponseCachingMiddleware` subclass of `ResponseCachingMiddleware` bypasses caching for `infrahub://schema*` and `infrahub://graphql-schema` URIs, and `get_schema` is moved to `excluded_tools`. The new schema cache is the single layer that owns correctness for those endpoints.
+- A thin `_SchemaAwareResponseCachingMiddleware` subclass of `ResponseCachingMiddleware` bypasses caching for `infrahub://schema*` and `infrahub://graphql-schema` URIs, and overrides `on_call_tool` to bypass tool caching entirely. `get_schema` was the only tool ever TTL-cached and the schema cache now owns its freshness; no other tool result is safe to replay. The bypass has to live in the override rather than in `CallToolSettings`, because FastMCP's `_matches_tool_cache_settings` reads `included_tools`/`excluded_tools` with a truthiness check — an empty allowlist reads as "no filter", and `excluded_tools=["get_schema"]` would make every *other* tool cacheable, replaying node queries and mutations.
 
 ## Consequences
 
 ### Positive
 
 - Repeat schema reads in passthrough modes incur zero upstream calls within the skip-window.
-- Schema changes propagate within `schema_cache_ttl + one /summary round-trip` bound — no manual cache flush required after upstream schema edits.
+- Schema changes are *detected* within a `schema_cache_ttl + one /summary round-trip` bound, and the new schema is served after the full refetch that a hash difference triggers (`/api/schema` + `/schema.graphql`) — no manual cache flush required after upstream schema edits.
 - A 10-coroutine burst against a cold cache results in exactly one upstream full fetch (verified by single-flight test).
 - Internal call paths that consume the SDK's `client.schema.*` API (write tools, node tools) benefit transparently because `set_cache(...)` primes the fresh client.
 - Sustained Infrahub outages eventually fail closed instead of indefinitely serving silently-stale schema; routine restarts ride through.
-- Six new aggregate metrics counters give operators direct visibility into hit ratio, hash-flip rate, revalidation failures, and circuit-break activations.
+- Six new aggregate metrics counters give operators direct visibility into hit ratio, hash-flip rate, revalidation failures, and circuit-break activations. `circuit_break` counts breaker *transitions*, not reads rejected while broken, so the number reads as "how often did this trip".
 
 ### Negative
 

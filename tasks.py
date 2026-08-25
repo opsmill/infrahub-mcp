@@ -2,7 +2,7 @@ import json
 import sys
 from pathlib import Path
 
-from invoke import Context, task
+from invoke import Context, Exit, task
 
 CURRENT_DIRECTORY = Path(__file__).resolve()
 DOCUMENTATION_DIRECTORY = CURRENT_DIRECTORY.parent / "docs"
@@ -13,6 +13,20 @@ MAIN_DIRECTORY_PATH = Path(__file__).parent
 # gitignored (see docs/.gitignore), so they never exist in CI's fresh
 # checkout — Vale must skip them locally to match CI's file set.
 VALE_PRUNED_DIRECTORIES = ("node_modules", "build", ".docusaurus", ".cache-loader")
+
+
+def _print_skipped_gate(gate: str, remedy: str) -> None:
+    """Print an unmissable banner when a CI gate is skipped locally.
+
+    A skipped gate means the run no longer predicts CI, so it must never
+    scroll past as an ordinary progress line.
+    """
+    print()
+    print("=" * 78)
+    print(f"!! SKIPPED CI GATE: {gate}")
+    print(f"!! This run does NOT predict CI. {remedy}")
+    print("=" * 78)
+    print()
 
 
 @task(name="format")
@@ -68,12 +82,15 @@ def lint_pylint(context: Context) -> None:
 def lint_vale(context: Context) -> None:
     """Run Vale documentation style check across docs/.
 
-    Mirrors CI's ``vale`` step in .github/workflows/ci.yml.
-    Requires the ``vale`` binary on PATH (``brew install vale``)
-    OR a ``./vale`` binary at the repo root (CI installs it there).
-    Skips with a clear warning if neither is available so a missing
-    local install doesn't break the lint pipeline for backend-only
-    changes.
+    Mirrors CI's ``validate-documentation-style`` job in
+    .github/workflows/ci.yml. Requires the ``vale`` binary on PATH
+    (``brew install vale``) OR a ``./vale`` binary at the repo root
+    (CI installs it there).
+
+    Fails when neither is available. That job is the one CI gate with no
+    ``files-changed`` guard — it runs on every pull request, even a
+    backend-only one — so silently skipping it locally would turn a green
+    ``invoke lint`` into a red CI run.
 
     CI runs a bare ``find ./docs`` on a freshly checked-out tree, which
     never contains npm dependencies or Docusaurus build output. Locally
@@ -90,12 +107,13 @@ def lint_vale(context: Context) -> None:
         from shutil import which  # noqa: PLC0415
 
         if which("vale") is None:
-            print(
-                "   vale binary not found (PATH or ./vale). "
-                "Install with 'brew install vale' or rely on CI to run this gate.",
-                file=sys.stderr,
+            msg = (
+                "vale binary not found (neither ./vale nor on PATH). CI's "
+                "validate-documentation-style job is not path-gated, so it runs on "
+                "every pull request and this gate cannot be skipped locally. "
+                "Install it with 'brew install vale'."
             )
-            return
+            raise Exit(msg, code=1)
         vale_bin = "vale"
 
     prune = " -o ".join(f'-name "{d}"' for d in VALE_PRUNED_DIRECTORIES)
@@ -142,14 +160,30 @@ def lint_ruff(context: Context) -> None:
             context.run(cmd)
 
 
+@task
+def lint_markdown(context: Context) -> None:
+    """Run rumdl against the documentation tree.
+
+    Mirrors CI's ``markdown-lint`` job (``uv run rumdl check docs/``).
+    Note the scope: CI lints all of ``docs/``, which is wider than the
+    ``docs/docs/`` shorthand used for day-to-day authoring, so a finding
+    in e.g. ``docs/README.md`` fails CI but not ``rumdl check docs/docs/``.
+    """
+    print(" - Check markdown with rumdl")
+    exec_cmd = "uv run rumdl check docs/"
+    with context.cd(MAIN_DIRECTORY_PATH):
+        context.run(exec_cmd)
+
+
 @task(name="lint")
 def lint_all(context: Context) -> None:
-    """Run all linters that mirror CI's python-lint, yaml-lint, and validate-documentation-style jobs."""
+    """Run all linters that mirror CI's python-lint, yaml-lint, markdown-lint, and validate-documentation-style jobs."""
     lint_yaml(context)
     lint_ruff(context)
     lint_mypy(context)
     lint_ty(context)
     lint_pylint(context)
+    lint_markdown(context)
     lint_vale(context)
 
 
@@ -170,25 +204,63 @@ def validate_all(context: Context) -> None:
 
 
 @task(name="ci")
-def ci_all(context: Context) -> None:
-    """Run the full CI gate locally — predicts CI pass/fail.
+def ci_all(context: Context, docs: bool = True) -> None:
+    """Run every CI gate locally — a clean run predicts CI pass/fail.
 
     Calls in order:
 
-    1. ``invoke lint`` (yaml, ruff, mypy, ty, pylint, vale)
-    2. ``invoke validate`` (docker-compose env, server.json)
-    3. ``uv run pytest`` (test suite)
+    1. ``invoke lint`` — mirrors CI's ``python-lint`` (ruff check, ruff
+       format --check, ty), ``yaml-lint`` (yamllint -s), ``markdown-lint``
+       (rumdl check docs/) and ``validate-documentation-style`` (vale)
+       jobs, plus mypy, which CI does not run.
+    2. ``invoke validate`` — mirrors ``validate-docker-compose-env-vars``
+       (docker-compose env vars, server.json env vars).
+    3. ``invoke docs`` — mirrors the ``documentation`` job (Docusaurus
+       build). Needs ``docs/node_modules``; pass ``--no-docs`` to skip it.
+    4. ``uv run pytest`` — mirrors ``python-unit-tests``.
+
+    Known divergences from ``.github/workflows/ci.yml``:
+
+    - CI path-gates most jobs off ``files-changed``, so it may skip the
+      docs, python or yaml jobs entirely on a given pull request. This
+      task runs them unconditionally (except ``--no-docs``), so it is
+      stricter than CI, never looser. The one exception in CI is
+      ``validate-documentation-style``, which is not path-gated and runs
+      on every pull request.
+    - CI evaluates the pull request merged with its base branch; this
+      task only sees the working tree.
+    - ``--no-docs`` drops the ``documentation`` job. The run then prints a
+      skipped-gate banner and no longer predicts CI.
 
     Use ``invoke format`` first to apply autofixes, then ``invoke ci``
-    to verify. A clean ``invoke ci`` predicts CI green; if CI then
-    flags something this task missed, the gap belongs in this task —
-    update it and AGENTS.md.
+    to verify. If CI flags something this task missed, the gap belongs in
+    this task — update it and AGENTS.md.
     """
+    skipped: list[str] = []
+
     lint_all(context)
     validate_all(context)
+
+    if docs:
+        docs_build(context)
+    else:
+        skipped.append("documentation (invoke docs)")
+        _print_skipped_gate(
+            "documentation — the Docusaurus website build",
+            "Re-run without --no-docs before pushing anything under docs/.",
+        )
+
     print(" - Run pytest")
     with context.cd(MAIN_DIRECTORY_PATH):
         context.run("uv run pytest")
+
+    if skipped:
+        _print_skipped_gate(
+            ", ".join(skipped),
+            "Green here does NOT mean green in CI.",
+        )
+    else:
+        print(" - All CI gates passed locally")
 
 
 @task(name="ui")
@@ -201,7 +273,24 @@ def ui_dev(context: Context) -> None:
 
 @task(name="docs")
 def docs_build(context: Context) -> None:
-    """Build documentation website."""
+    """Build documentation website.
+
+    Mirrors CI's ``documentation`` job, which runs this same task inside
+    ``docs/``. CI installs the npm dependencies first
+    (``pnpm install --frozen-lockfile``); locally they must already be
+    present, so a missing ``docs/node_modules`` fails loudly rather than
+    letting the gate pass unchecked.
+    """
+    print(" - Build the documentation website")
+    node_modules = DOCUMENTATION_DIRECTORY / "node_modules"
+    if not node_modules.is_dir():
+        msg = (
+            f"{node_modules} is missing, so the docs website build cannot run. "
+            "Install the dependencies with 'cd docs && pnpm install --frozen-lockfile', "
+            "or run 'invoke ci --no-docs' to skip this gate deliberately."
+        )
+        raise Exit(msg, code=1)
+
     exec_cmd = "pnpm run build"
 
     with context.cd(DOCUMENTATION_DIRECTORY):

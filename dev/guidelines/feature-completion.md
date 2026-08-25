@@ -8,19 +8,21 @@ The companion local command is:
 uv run invoke format ci
 ```
 
-`invoke ci` runs every CI gate locally (lint, repo-state validation, documentation style, tests). A clean local run predicts a clean CI run.
+`invoke ci` runs every CI gate locally: lint (ruff, ty, mypy, pylint, yamllint), markdown lint, documentation style, repo-state validation, the docs website build, and the tests. CI path-gates most of those jobs off `files-changed`, so a local run is stricter than CI rather than looser, and a clean local run predicts a clean CI run.
+
+Two caveats. `invoke ci --no-docs` skips the docs website build — useful for backend-only work when `docs/node_modules` isn't installed, but the run prints a skipped-gate banner and stops predicting CI. And CI lints the pull request *merged with its base*, while `invoke ci` only sees your working tree, so a conflict-free-but-broken merge can still fail CI.
 
 ---
 
 ## New `ServerConfig` field
 
-Adding a new `INFRAHUB_MCP_*` environment variable touches four files plus the user-facing docs. Forgetting any one of them produces a CI failure with a different signature, so the order below matches the dependency order:
+Adding a new `INFRAHUB_MCP_*` environment variable touches four files plus the user-facing docs. Only locations 2 and 3 are enforced by CI (each with a different failure signature); 4 and 5 are convention, so nothing but review will catch them. The order below matches the dependency order:
 
 1. **`src/infrahub_mcp/config.py`** — add the field on the `ServerConfig` pydantic model with a sensible default and a docstring entry. Pydantic-settings derives the env-var name from the field name (`INFRAHUB_MCP_<UPPERCASE>`). Constraints (`Field(..., ge=0, le=...)`) belong here.
 2. **`server.json`** — add an entry in `packages[0].environmentVariables` so MCP registries surface the variable. The `invoke validate-serverjson` task (run by CI) flags missing or stale entries; `--update` regenerates them automatically.
 3. **`docker-compose.yml`** — add the variable to the `x-infrahub-mcp-config` anchor. The list **must be sorted alphabetically** because `invoke validate-dockercomposeenv` regenerates and diffs against the committed file. Run `invoke gen-config-env --update` to apply the canonical sort, or hand-edit and re-sort.
 4. **`development/docker-compose.yml`** — same shape as `docker-compose.yml`. Not validated by CI but kept in sync by convention so dev-mode operators get the same defaults.
-5. **`docs/docs/references/configuration.mdx`** — describe the variable with its default and behavioural impact. Place it in the section that matches the feature area; do not bury it under an unrelated heading.
+5. **`docs/docs/references/configuration.mdx`** — describe the variable with its default and behavioural impact. Place it in the section that matches the feature area; do not bury it under an unrelated heading. CI style-checks this page with Vale but never checks that your variable is present.
 
 Local verification:
 
@@ -33,7 +35,7 @@ uv run invoke lint-vale   # documentation style
 
 ### Why this is fragile
 
-The four locations exist for legitimate reasons (typed runtime config, MCP registry metadata, deployment defaults, user documentation), but the validators only catch *omissions* — they cannot tell you the docs paragraph is misleading or that the docker-compose default is wrong for a passthrough deployment. Treat the docs entry as load-bearing, not as a checkbox.
+These locations exist for legitimate reasons (typed runtime config, MCP registry metadata, deployment defaults, user documentation), but the validators only catch *omissions* — they cannot tell you the docs paragraph is misleading or that the docker-compose default is wrong for a passthrough deployment. Treat the docs entry as load-bearing, not as a checkbox.
 
 ---
 
@@ -41,7 +43,7 @@ The four locations exist for legitimate reasons (typed runtime config, MCP regis
 
 Features scaffolded under `specs/` (via `/speckit-specify`) follow this lifecycle:
 
-```
+```text
 specs/<timestamp>-<name>/    →    dev/adr/<NNNN>-<name>.md  +  specs/archive/<timestamp>-<name>/
    (work-in-progress)             (durable architectural        (frozen historical record)
                                    decisions)
@@ -49,12 +51,12 @@ specs/<timestamp>-<name>/    →    dev/adr/<NNNN>-<name>.md  +  specs/archive/<
 
 After the implementation lands and tests are green, do the following before merging the PR:
 
-1. **Extract an ADR** under `dev/adr/<NNNN>-<short-name>.md` using the existing template (see ADRs 0001–0007). The ADR captures *why* — the load-bearing decisions, the alternatives considered, the constraints. It does **not** repeat the spec's user-story narrative or implementation details.
+1. **Extract an ADR** under `dev/adr/<NNNN>-<short-name>.md` using the existing template (see ADRs 0001–0009). The ADR captures *why* — the load-bearing decisions, the alternatives considered, the constraints. It does **not** repeat the spec's user-story narrative or implementation details.
 2. **Move the spec to `specs/archive/`**. Use `git mv specs/<timestamp>-<name>/ specs/archive/<timestamp>-<name>/`. Update any cross-references (the new ADR, AGENTS.md SPECKIT pointer if it referenced the spec) to the new path.
 3. **Drop `.specify/feature.json`** so the next `/speckit-specify` session starts clean.
 4. **Reset the AGENTS.md SPECKIT pointer** to its generic placeholder (the bare instruction sentence between `<!-- SPECKIT START -->` and `<!-- SPECKIT END -->`).
 
-Precedent: ADR 0007 (`hash-validated schema cache`) was extracted from `specs/archive/20260504-203256-schema-cache/`; ADR-extraction-then-archival pattern was established by INFP-411 (`specs/archive/20260421-144953-production-ready-mcp-server/`).
+Precedent: ADR 0009 (`hash-validated schema cache`) was extracted from `specs/archive/20260504-203256-schema-cache/`; ADR-extraction-then-archival pattern was established by INFP-411 (`specs/archive/20260421-144953-production-ready-mcp-server/`).
 
 ### What goes in the ADR vs the spec
 

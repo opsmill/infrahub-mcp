@@ -397,7 +397,12 @@ def _build_response_caching_middleware(config: ServerConfig) -> ResponseCachingM
     read_resource = ReadResourceSettings(ttl=config.cache_read_ttl)
 
     if config.schema_cache_enabled:
-        call_tool = CallToolSettings(ttl=config.cache_read_ttl, excluded_tools=["get_schema"])
+        # No ``included_tools``/``excluded_tools`` here: FastMCP's filter reads
+        # both with a truthiness check, so an empty allowlist means "no filter"
+        # and a lone ``excluded_tools=["get_schema"]`` would make every *other*
+        # tool cacheable — replaying node queries and mutations. The subclass
+        # bypasses tool caching outright instead.
+        call_tool = CallToolSettings(ttl=config.cache_read_ttl)
         return _SchemaAwareResponseCachingMiddleware(
             list_tools_settings=list_tools,
             list_resources_settings=list_resources,
@@ -418,7 +423,7 @@ def _build_response_caching_middleware(config: ServerConfig) -> ResponseCachingM
 
 class _SchemaAwareResponseCachingMiddleware(ResponseCachingMiddleware):
     """Subclass of FastMCP ``ResponseCachingMiddleware`` that bypasses caching
-    for schema-related resource URIs.
+    for schema-related resource URIs and for tool calls.
 
     The hash-validated schema cache in ``schema_cache.py`` owns correctness for
     ``infrahub://schema``, ``infrahub://schema/{kind}`` and
@@ -437,6 +442,25 @@ class _SchemaAwareResponseCachingMiddleware(ResponseCachingMiddleware):
         if any(uri.startswith(prefix) for prefix in _SCHEMA_RESOURCE_URI_PREFIXES):
             return await call_next(context)
         return await super().on_read_resource(context, call_next)
+
+    @override
+    async def on_call_tool(  # type: ignore[override]
+        self,
+        context: MiddlewareContext[Any],
+        call_next: CallNext[Any, Any],
+    ) -> Any:
+        """Never cache a tool result at the TTL layer.
+
+        ``get_schema`` is the only tool this server has ever TTL-cached, and
+        when the schema cache is enabled ``schema_cache.py`` owns its
+        freshness. Every other tool is unsafe to replay: ``get_nodes`` /
+        ``query_graphql`` return live data, and ``node_upsert`` /
+        ``node_delete`` / ``mutate_graphql`` change state. Bypassing here
+        keeps the allowlist genuinely empty — passing an empty
+        ``included_tools`` list to FastMCP would not, because its filter
+        treats a falsy list as "no filter set" and would cache everything.
+        """
+        return await call_next(context)
 
 
 # ---------------------------------------------------------------------------

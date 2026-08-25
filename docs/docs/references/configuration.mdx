@@ -75,9 +75,9 @@ Within a configurable skip-window, repeat schema reads serve from cache without 
 | `INFRAHUB_MCP_SCHEMA_CACHE_MAX_CONSECUTIVE_FAILURES` | Number of consecutive revalidation failures before reads fail closed for that branch (`0` disables this threshold) | `10` |
 | `INFRAHUB_MCP_SCHEMA_CACHE_MAX_STALENESS_SECONDS` | Maximum seconds since the last successful revalidation before reads fail closed for that branch (`0` disables this threshold) | `900` |
 
-When either threshold is crossed, reads return a `Schema temporarily unavailable` error to the agent until the next successful revalidation, which resets both counters.
+When either threshold is crossed, reads return a `Schema temporarily unavailable` error to the agent. The cache still tries to heal itself: a read against a tripped entry attempts one revalidation and only fails closed if that attempt also fails, and a success resets both counters. Recovery attempts are throttled to one per skip-window, so an Infrahub outage costs one upstream timeout per window rather than one per request.
 
-Schema changes made upstream are observed within `schema_cache_ttl + one /summary round-trip` of the change. Setting `INFRAHUB_MCP_SCHEMA_CACHE_ENABLED=false` reverts to the pre-feature baseline (full schema re-fetch on every request in passthrough modes).
+Schema changes made upstream are *detected* within `schema_cache_ttl + one /summary round-trip` of the change; the new schema is served once the full re-fetch that a hash difference triggers completes. Setting `INFRAHUB_MCP_SCHEMA_CACHE_ENABLED=false` reverts to the pre-feature baseline: a full schema re-fetch on every request in passthrough modes, and in the shared-client modes (`none`, `oidc`) a per-client SDK cache that is populated once and never revalidated.
 
 Cache effectiveness is observable through the [Prometheus metrics](#prometheus-metrics) endpoint via the `infrahub_mcp_schema_cache_*_total` counters.
 
@@ -168,7 +168,7 @@ Metrics exposed:
 - `infrahub_mcp_schema_cache_hash_match_total` — `/api/schema/summary` confirmed cache currency past the skip-window (no full re-fetch needed)
 - `infrahub_mcp_schema_cache_hash_diff_total` — upstream schema hash differed; full re-fetch performed
 - `infrahub_mcp_schema_cache_revalidate_failure_total` — transient revalidation/re-fetch failure (cache served stale)
-- `infrahub_mcp_schema_cache_circuit_break_total` — schema cache entry marked unsafe (consecutive-failure or absolute-staleness threshold crossed)
+- `infrahub_mcp_schema_cache_circuit_break_total` — schema cache entry newly marked unsafe (consecutive-failure or absolute-staleness threshold crossed). Counts breaker trips, not reads rejected while tripped
 
 Schema cache counters are aggregate (no per-branch labels) to avoid Prometheus cardinality blow-up from session-branch auto-creation. Per-branch detail appears in `WARN`/`ERROR` log lines for revalidation failures and circuit-break activations so operators can correlate metric movements with specific branches via log search.
 

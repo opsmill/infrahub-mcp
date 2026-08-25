@@ -61,10 +61,12 @@ class ServerConfig(BaseSettings):
         token_passthrough_header: HTTP header carrying the per-request credential
             (Bearer token or Basic user:pass) when ``auth_mode`` is ``token-passthrough``
             or ``basic-passthrough``.
-        schema_cache_enabled: Enable the process-wide hash-validated schema cache for
-            passthrough auth modes. When False, the server falls back to the SDK's
-            per-client cache only (which is discarded between passthrough requests,
-            i.e. the pre-feature baseline).
+        schema_cache_enabled: Enable the process-wide hash-validated schema cache.
+            Applies in every auth mode; passthrough modes benefit most, because their
+            per-request client discards the SDK cache entirely. When False, the server
+            falls back to the SDK's per-client cache only (the pre-feature baseline:
+            refetched every request in passthrough modes, cached without revalidation
+            for the process lifetime in the shared-client modes).
         schema_cache_ttl: Skip-window in seconds; while a cache entry's age is below
             this value, reads serve from cache without contacting Infrahub. Past this
             window, ``GET /api/schema/summary`` is consulted to validate the hash.
