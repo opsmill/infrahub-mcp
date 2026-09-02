@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import string
+from pathlib import Path
 from typing import Literal
 
 from pydantic import AliasChoices, Field, field_validator
@@ -12,6 +15,26 @@ from infrahub_mcp.constants import (
     _ALLOWED_PLACEHOLDERS,
     AUTH_MODE_OIDC,
 )
+
+logger = logging.getLogger(__name__)
+
+# A .env file supplies only these four Infrahub SDK connection variables. The
+# allowlist is explicit rather than an INFRAHUB_ prefix match because the SDK also
+# reads INFRAHUB_PROXY, INFRAHUB_TLS_INSECURE and friends from the environment: a
+# foreign project's .env must not be able to reroute credential-bearing traffic
+# through a proxy or disable certificate verification. INFRAHUB_MCP_* server
+# settings are excluded for a different reason — ServerConfig is read once at
+# import, before priming runs, so they would never take effect; they must come
+# from the real environment or the .mcp.json "env" block.
+_DOTENV_ALLOWED_KEYS = frozenset(
+    {
+        "INFRAHUB_ADDRESS",
+        "INFRAHUB_API_TOKEN",
+        "INFRAHUB_USERNAME",
+        "INFRAHUB_PASSWORD",
+    }
+)
+_DOTENV_IGNORED_PREFIX = "INFRAHUB_MCP_"
 
 AuthMode = Literal["none", "oidc", "token-passthrough", "basic-passthrough"]
 
@@ -175,6 +198,78 @@ def _validate_auth_requirements(config: ServerConfig) -> None:
                 "See https://docs.opsmill.com for configuration details."
             )
             raise ValueError(msg)
+
+
+def env_get(name: str) -> str | None:
+    """Read an environment variable the way the Infrahub SDK does — case-insensitively.
+
+    The SDK's settings model resolves ``infrahub_api_token`` and ``INFRAHUB_API_TOKEN``
+    alike, so a lowercase spelling reaches ``InfrahubClient()`` even though nothing here
+    reads it. Every guard and client factory in this package must see the same
+    credentials the SDK will, so they all go through this helper.
+    """
+    value = os.environ.get(name)
+    if value is not None:
+        return value
+    lowered = name.lower()
+    return next((item for key, item in os.environ.items() if key.lower() == lowered), None)
+
+
+def _prime_env_from_dotenv() -> None:
+    """Copy the four ``_DOTENV_ALLOWED_KEYS`` connection variables from a ``.env`` file.
+
+    Called once at server startup (from the lifespan), never at import time, so
+    importing the package neither reads the filesystem nor mutates the process
+    environment. Real environment variables always win over the file; keys are
+    matched case-insensitively (mirroring ``case_sensitive=False`` on the settings
+    models) and always written back uppercase, the canonical spelling the readers
+    in ``server.py`` and ``utils.py`` try first via :func:`env_get`.
+
+    Path resolution via ``INFRAHUB_MCP_ENV_FILE`` (``~`` is expanded):
+
+    - unset: default to ``./.env``; a missing file is a silent no-op.
+    - empty string: loading is disabled.
+    - set to a path: that file is loaded, with a warning when it does not exist.
+    """
+    from dotenv import dotenv_values  # noqa: PLC0415
+
+    configured = os.environ.get("INFRAHUB_MCP_ENV_FILE")
+    if configured is not None and not configured:
+        return  # explicitly disabled via an empty value
+    path = Path(configured or ".env").expanduser()
+    if configured is not None and not path.is_file():
+        logger.warning("INFRAHUB_MCP_ENV_FILE=%r is not a readable file; no .env values loaded.", str(path))
+        return
+
+    try:
+        # interpolate=False: credentials are opaque strings, so a "${" inside a
+        # password must be taken literally rather than expanded to nothing.
+        values = dotenv_values(path, interpolate=False)
+    except (OSError, UnicodeDecodeError) as exc:
+        logger.warning("Could not read .env file %r: %s", str(path), exc)
+        return
+
+    existing = {key.lower() for key in os.environ}
+    ignored_mcp_keys: list[str] = []
+    for key, value in values.items():
+        key_upper = key.upper()
+        if key_upper.startswith(_DOTENV_IGNORED_PREFIX):
+            ignored_mcp_keys.append(key_upper)
+            continue
+        if value is None or key_upper not in _DOTENV_ALLOWED_KEYS:
+            continue
+        if key.lower() in existing:
+            continue
+        os.environ[key_upper] = value
+        existing.add(key.lower())
+
+    if ignored_mcp_keys:
+        logger.warning(
+            "Ignoring %s in %r: INFRAHUB_MCP_* server settings are not loaded from .env. "
+            'Set them in the real environment or the .mcp.json "env" block.',
+            ", ".join(sorted(set(ignored_mcp_keys))),
+            str(path),
+        )
 
 
 def load_config() -> ServerConfig:

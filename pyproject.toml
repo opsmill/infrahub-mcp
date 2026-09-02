@@ -9,6 +9,7 @@ dependencies = [
     "infrahub-sdk>=1.22.0",
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.6,<3",
+    "python-dotenv>=1.0,<2",
     "toonify>=0.1.2",
 ]
 

@@ -10,6 +10,7 @@ The Infrahub MCP server is configured entirely through environment variables. Al
 | --- | --- | --- |
 | `INFRAHUB_ADDRESS` | URL of your Infrahub instance | **required** |
 | `INFRAHUB_API_TOKEN` | API token used by the MCP server to call Infrahub (not needed in `token-passthrough` auth mode) | — |
+| `INFRAHUB_MCP_ENV_FILE` | Path to a `.env` file (`~` is expanded) whose Infrahub connection keys are loaded at startup: `INFRAHUB_ADDRESS`, `INFRAHUB_API_TOKEN`, `INFRAHUB_USERNAME`, `INFRAHUB_PASSWORD`, and nothing else (real env vars win). A missing default file is ignored; set to empty to disable loading | `./.env` |
 | `MCP_HOST` | Bind address for the HTTP server | `0.0.0.0` |
 | `MCP_PORT` | Port for the HTTP server | `8001` |
 
