@@ -20,8 +20,15 @@ schema hash returned from ``GET /api/schema/summary``:
 - Transient revalidation/refetch failures serve stale + emit a WARN log;
   configurable circuit-break thresholds bound how long stale data may be
   served before reads fail closed. A broken entry is not terminal: reads
-  retry revalidation (at most one probe per ``min(schema_cache_ttl, 30 s)``)
-  so the cache recovers on its own once Infrahub is healthy again.
+  retry revalidation so the cache recovers on its own once Infrahub is
+  healthy again.
+- Upstream probes are throttled to one per ``min(schema_cache_ttl, 30 s)``
+  per branch from the first failure onward, whatever the breaker state:
+  reads that land inside that window serve the stale entry (or, once the
+  breaker has tripped, fail fast) instead of queueing on the cache lock
+  behind their own upstream timeout. A failed *cold* fetch is remembered
+  the same way, so an empty cache during an outage costs one upstream
+  timeout per window rather than one per request.
 
 See ``specs/archive/20260504-203256-schema-cache/`` for the full design.
 """
@@ -29,6 +36,7 @@ See ``specs/archive/20260504-203256-schema-cache/`` for the full design.
 from __future__ import annotations
 
 import logging
+import math
 import time
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
@@ -68,13 +76,15 @@ class CachedSchemaEntry:
     fetched_at_monotonic: float
     consecutive_failures: int = 0
     last_attempt_monotonic: float = 0.0
-    """Monotonic time of the last revalidation *attempt*, successful or not.
+    """Monotonic time of the last upstream *attempt*, successful or not.
 
     Distinct from ``fetched_at_monotonic`` (last *success*, which drives the
-    skip-window and the staleness threshold). This field throttles retries
-    while an entry is circuit-broken: without it, every read during an
-    Infrahub outage would queue on the cache lock behind its own upstream
-    timeout.
+    skip-window and the staleness threshold). Together with
+    ``consecutive_failures`` this field throttles probes after a failure,
+    whether or not the breaker has tripped: while the last attempt failed
+    less than ``min(schema_cache_ttl, 30 s)`` ago, reads serve the stale
+    entry (breaker not tripped) or fail fast (breaker tripped) instead of
+    each queueing on the cache lock behind its own upstream timeout.
     """
     circuit_break_recorded: bool = False
     """Whether the current broken streak has already been counted.
@@ -126,36 +136,39 @@ def _is_within_skip_window(entry: CachedSchemaEntry, *, skip_window_seconds: int
     return (now - entry.fetched_at_monotonic) < skip_window_seconds
 
 
-def _is_retry_throttled(entry: CachedSchemaEntry, *, throttle_seconds: int, now: float) -> bool:
-    """Return True when a broken *entry* has probed upstream too recently.
+def _is_retry_throttled(last_attempt_monotonic: float, *, throttle_seconds: int, now: float) -> bool:
+    """Return True when an upstream attempt happened less than *throttle_seconds* ago.
 
-    Bounds recovery attempts to one per ``throttle_seconds`` while an entry
-    is circuit-broken, so a *tripped* branch costs one upstream timeout per
-    window rather than one per request. Reads before the breaker trips are
-    not throttled — each one past the skip-window still revalidates.
+    Callers consult this after a *failed* attempt, whatever the breaker
+    state, so a failing branch costs one upstream timeout per window rather
+    than one per request: before the breaker trips the read serves the
+    stale entry, after it trips the read fails fast, and on a cold cache the
+    read fails fast too. A ``throttle_seconds`` of 0 disables the throttle.
     """
     if throttle_seconds <= 0:
         return False
-    return (now - entry.last_attempt_monotonic) < throttle_seconds
+    return (now - last_attempt_monotonic) < throttle_seconds
 
 
 _MAX_RECOVERY_PROBE_SECONDS = 30
-"""Upper bound, in seconds, on the circuit-break recovery-probe interval.
+"""Upper bound, in seconds, on the per-branch probe-throttle window.
 
-The interval is ``min(schema_cache_ttl, _MAX_RECOVERY_PROBE_SECONDS)``.
-Throttling recovery by the skip-window alone would tie recovery latency to a
-freshness knob: an operator raising ``schema_cache_ttl`` to an hour to cut
-upstream load would also leave a tripped entry rejecting reads for an hour
-after Infrahub came back, which defeats the self-healing breaker. Clamping
-bounds worst-case recovery at half a minute whatever the TTL, and one probe
-per 30 s is negligible load even through a sustained outage — probes are
-single-flight under the cache lock. ``schema_cache_ttl = 0`` still disables
-the throttle entirely.
+The window is ``min(schema_cache_ttl, _MAX_RECOVERY_PROBE_SECONDS)`` and
+applies after any failed upstream attempt — a failed revalidation probe or a
+failed cold fetch — whether or not the breaker has tripped. Throttling by the
+skip-window alone would tie recovery latency to a freshness knob: an operator
+raising ``schema_cache_ttl`` to an hour to cut upstream load would also leave
+a failing branch serving stale (or, once tripped, rejecting reads) for an
+hour after Infrahub came back, which defeats the self-healing breaker.
+Clamping bounds worst-case recovery at half a minute whatever the TTL, and
+one probe per 30 s is negligible load even through a sustained outage —
+probes are single-flight under the cache lock. ``schema_cache_ttl = 0`` still
+disables the throttle entirely.
 """
 
 
 def _recovery_probe_seconds(config: ServerConfig) -> int:
-    """Return the probe-throttle window for a circuit-broken entry."""
+    """Return the probe-throttle window applied after a failed upstream attempt."""
     return min(config.schema_cache_ttl, _MAX_RECOVERY_PROBE_SECONDS)
 
 
@@ -303,8 +316,30 @@ async def _cold_fetch_under_lock(
     client: InfrahubClient,
     branch: str,
 ) -> CachedSchemaEntry:
-    """Cold-fetch path: no entry exists for *branch*. Caller holds the lock."""
-    branch_schema, graphql_sdl = await _full_fetch(client, branch)
+    """Cold-fetch path: no entry exists for *branch*. Caller holds the lock.
+
+    A failed fetch is remembered in ``AppContext.schema_cache_cold_failures``
+    so reads landing inside the probe-throttle window fail fast instead of
+    each paying an upstream timeout under the lock (see
+    :func:`_raise_if_cold_fetch_throttled`); the failure itself still
+    propagates unchanged to the caller. ``BranchNotFoundError`` is not
+    remembered: an unknown branch is a fast, caller-specific answer rather
+    than an upstream-health signal, and it must keep surfacing as
+    ``BranchNotFoundError``. Every other failure — network, timeout, 4xx,
+    5xx — is treated uniformly, matching the revalidation path (ADR 0009).
+    """
+    try:
+        branch_schema, graphql_sdl = await _full_fetch(client, branch)
+    except BranchNotFoundError:
+        raise
+    except Exception as exc:
+        app_ctx.schema_cache_cold_failures[branch] = _now()
+        logger.warning(
+            "schema_cache_cold_fetch_failure branch=%s exception=%r",
+            branch,
+            exc,
+        )
+        raise
     now = _now()
     entry = CachedSchemaEntry(
         branch=branch,
@@ -316,6 +351,7 @@ async def _cold_fetch_under_lock(
         last_attempt_monotonic=now,
     )
     app_ctx.schema_cache[branch] = entry
+    app_ctx.schema_cache_cold_failures.pop(branch, None)
     return entry
 
 
@@ -411,14 +447,37 @@ def _install_into_client(client: InfrahubClient, entry: CachedSchemaEntry) -> No
     client.schema.set_cache(schema=entry.schema, branch=entry.branch)
 
 
-_CIRCUIT_BREAK_MSG = (
-    "circuit-break threshold reached. The Infrahub server may be unreachable; check server health and try again."
-)
+_UNREACHABLE_HINT = "The Infrahub server may be unreachable; check server health and try again."
+_CIRCUIT_BREAK_MSG = f"circuit-break threshold reached. {_UNREACHABLE_HINT}"
 
 
-def _raise_circuit_broken(branch: str, msg_suffix: str) -> NoReturn:
+def _raise_schema_unavailable(branch: str, msg_suffix: str) -> NoReturn:
     msg = f"Schema temporarily unavailable for branch {branch!r}: {msg_suffix}"
     raise ToolError(msg)
+
+
+def _raise_if_cold_fetch_throttled(app_ctx: AppContext, *, branch: str, now: float) -> None:
+    """Fail fast when the last cold fetch for *branch* failed inside the probe-throttle window.
+
+    With no entry to serve stale from, the only alternative to failing fast
+    is taking the lock and probing again — exactly the one-timeout-per-
+    request serialization the throttle exists to prevent. The marker is set
+    by :func:`_cold_fetch_under_lock` and cleared by its next success; a read
+    landing past the window falls through and probes again.
+    """
+    failed_at = app_ctx.schema_cache_cold_failures.get(branch)
+    if failed_at is None:
+        return
+    window = _recovery_probe_seconds(app_ctx.config)
+    if not _is_retry_throttled(failed_at, throttle_seconds=window, now=now):
+        return
+    elapsed = now - failed_at
+    retry_in = math.ceil(window - elapsed)
+    _raise_schema_unavailable(
+        branch,
+        f"the last schema fetch failed {elapsed:.0f} s ago; the next upstream attempt is in {retry_in} s. "
+        f"{_UNREACHABLE_HINT}",
+    )
 
 
 def _check_circuit_break(
@@ -444,7 +503,7 @@ def _check_circuit_break(
         now=now,
     ):
         return
-    _raise_circuit_broken(branch, msg_suffix)
+    _raise_schema_unavailable(branch, msg_suffix)
 
 
 def _try_serve_from_cache(
@@ -455,37 +514,61 @@ def _try_serve_from_cache(
     force_revalidate: bool,
     metrics: Any,
 ) -> CachedSchemaEntry | None:
-    """Hot-path attempt: return a current entry without acquiring the cache lock.
+    """Hot-path attempt: return a servable entry without acquiring the cache lock.
 
-    Returns the entry if it is within the skip-window, or ``None`` if the
-    caller must take the lock (cold cache, past skip-window, or a broken
-    entry due for a recovery probe).
+    Returns the entry if it is within the skip-window (``hit``), or if it is
+    past the skip-window but its last probe failed inside the probe-throttle
+    window (served stale, ``stale_hit``). Returns ``None`` if the caller
+    must take the lock: cold cache, ``force_revalidate``, past the
+    skip-window with no recent failed probe, or a broken entry due for a
+    recovery probe.
 
-    A circuit-broken entry is *not* served and *not* rejected outright:
-    it falls through to the lock path so revalidation can heal it once
-    Infrahub recovers. Only while a probe is still throttled does the read
-    fail fast, which keeps a tripped branch from costing one upstream
-    timeout per request.
+    Raises ``ToolError`` when a probe would be pointless: a cold cache whose
+    last fetch failed inside the window, or a circuit-broken entry whose
+    last probe did. That keeps a failing branch — cold or warm, tripped or
+    not — at one upstream timeout per window rather than one per request.
+    A circuit-broken entry is otherwise neither served nor rejected
+    outright: it falls through to the lock path so revalidation can heal it
+    once Infrahub recovers.
+
+    :func:`_ensure_entry` calls this again after acquiring the lock, so
+    waiters queued behind a failing probe observe its failure and serve
+    stale (or fail fast) instead of repeating it.
     """
+    config = app_ctx.config
+    now = _now()
     entry = app_ctx.schema_cache.get(resolved_branch)
+    if entry is None:
+        _raise_if_cold_fetch_throttled(app_ctx, branch=resolved_branch, now=now)
     if entry is None or force_revalidate:
         return None
 
-    config = app_ctx.config
-    now = _now()
+    throttle_seconds = _recovery_probe_seconds(config)
     if _is_circuit_broken(
         entry,
         max_consecutive_failures=config.schema_cache_max_consecutive_failures,
         max_staleness_seconds=config.schema_cache_max_staleness_seconds,
         now=now,
     ):
-        if _is_retry_throttled(entry, throttle_seconds=_recovery_probe_seconds(config), now=now):
-            _raise_circuit_broken(resolved_branch, _CIRCUIT_BREAK_MSG)
+        if _is_retry_throttled(entry.last_attempt_monotonic, throttle_seconds=throttle_seconds, now=now):
+            _raise_schema_unavailable(resolved_branch, _CIRCUIT_BREAK_MSG)
         return None
 
     if _is_within_skip_window(entry, skip_window_seconds=config.schema_cache_ttl, now=now):
         if metrics is not None:
             metrics.record_schema_cache_event("hit")
+        _install_into_client(client, entry)
+        return entry
+
+    if entry.consecutive_failures and _is_retry_throttled(
+        entry.last_attempt_monotonic, throttle_seconds=throttle_seconds, now=now
+    ):
+        # Past the skip-window, but the last probe failed moments ago: probing
+        # again would only serialize this read behind another upstream timeout.
+        # Serve stale — the documented transient-failure semantics — and let the
+        # first read to land after the window do the next probe.
+        if metrics is not None:
+            metrics.record_schema_cache_event("stale_hit")
         _install_into_client(client, entry)
         return entry
     return None
@@ -500,7 +583,8 @@ async def _ensure_entry(
     """Core cache flow: returns a current entry for *branch*, or raises.
 
     Honors skip-window TTL, hash-validated revalidation, single-flight
-    via the cache lock, circuit-break thresholds, and branch-gone evicts.
+    via the cache lock, per-branch probe throttling after a failure (warm
+    or cold), circuit-break thresholds, and branch-gone evicts.
     """
     app_ctx = _get_app_ctx(ctx)
     resolved_branch = await _resolve_branch(ctx, branch)

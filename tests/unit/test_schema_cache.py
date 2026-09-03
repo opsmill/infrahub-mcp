@@ -11,7 +11,7 @@ The file-level ``ruff: noqa: SLF001`` is therefore intentional.
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any, NoReturn
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -42,6 +42,9 @@ from infrahub_mcp.schema_cache import (
     get_cached_kind,
 )
 from infrahub_mcp.utils import AppContext
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -550,6 +553,257 @@ class TestUS3Resilience:
         assert app_ctx.schema_cache["main"].consecutive_failures == 1
 
 
+# ---------------------------------------------------------------------------
+# Probe throttling from the first failure — before the breaker trips, and cold
+# ---------------------------------------------------------------------------
+
+
+def _past_window_entry(
+    schema: MagicMock,
+    *,
+    now: float,
+    consecutive_failures: int = 0,
+    last_attempt_monotonic: float = 0.0,
+) -> CachedSchemaEntry:
+    """A warm ``main`` entry past the 30 s skip-window but well under the staleness ceiling."""
+    return CachedSchemaEntry(
+        branch="main",
+        schema=schema,
+        schema_hash="H1",
+        graphql_sdl="sdl",
+        fetched_at_monotonic=now - 100,
+        consecutive_failures=consecutive_failures,
+        last_attempt_monotonic=last_attempt_monotonic,
+    )
+
+
+def _slow_failure(release: asyncio.Event) -> Callable[..., Awaitable[NoReturn]]:
+    """Upstream stub that hangs until *release* is set, then fails — one simulated timeout."""
+
+    async def upstream(*_args: object, **_kwargs: object) -> NoReturn:
+        await release.wait()
+        msg = "down"
+        raise httpx.NetworkError(msg)
+
+    return upstream
+
+
+class TestFailureThrottle:
+    """A failing branch costs one upstream timeout per window, not one per request.
+
+    The throttle arms on the first failed probe, whatever the breaker state;
+    before this, every read past the skip-window serialized on the cache lock
+    behind its own upstream timeout until the failure count reached the
+    threshold, and a cold cache never self-limited at all.
+    """
+
+    @pytest.mark.anyio
+    async def test_failed_probe_serves_stale_without_reprobing_within_window(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        mock_metrics: MagicMock,
+    ) -> None:
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = _past_window_entry(schema, now=schema_cache._now())
+        mock_client._get.side_effect = httpx.NetworkError("down")
+
+        first = await get_cached_branch_schema(mock_ctx)
+        second = await get_cached_branch_schema(mock_ctx)
+
+        assert first is schema
+        assert second is schema
+        mock_client._get.assert_awaited_once()  # the second read did not go upstream
+        assert app_ctx.schema_cache["main"].consecutive_failures == 1
+        events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
+        assert events.count("revalidate_failure") == 1
+        assert events.count("stale_hit") == 1
+
+    @pytest.mark.anyio
+    async def test_probe_resumes_once_the_window_has_elapsed(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        schema = _make_branch_schema(schema_hash="H1")
+        now = schema_cache._now()
+        app_ctx.schema_cache["main"] = _past_window_entry(
+            schema,
+            now=now,
+            consecutive_failures=1,
+            last_attempt_monotonic=now - 31,  # window is min(ttl=30, 30)
+        )
+        mock_client._get.return_value = _make_response(json_body={"main": "H1"})
+
+        result = await get_cached_branch_schema(mock_ctx)
+
+        assert result is schema
+        mock_client._get.assert_awaited_once()
+        assert app_ctx.schema_cache["main"].consecutive_failures == 0
+
+    @pytest.mark.anyio
+    async def test_only_a_failed_attempt_arms_the_throttle(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        """A recent *successful* attempt is governed by the skip-window alone."""
+        schema = _make_branch_schema(schema_hash="H1")
+        now = schema_cache._now()
+        app_ctx.schema_cache["main"] = _past_window_entry(
+            schema,
+            now=now,
+            consecutive_failures=0,
+            last_attempt_monotonic=now,  # recent, but not a failure
+        )
+        mock_client._get.return_value = _make_response(json_body={"main": "H1"})
+
+        await get_cached_branch_schema(mock_ctx)
+
+        mock_client._get.assert_awaited_once()
+
+    @pytest.mark.anyio
+    async def test_ttl_zero_disables_the_throttle(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        app_ctx.config = _make_config(schema_cache_ttl=0)
+        schema = _make_branch_schema(schema_hash="H1")
+        now = schema_cache._now()
+        app_ctx.schema_cache["main"] = _past_window_entry(
+            schema,
+            now=now,
+            consecutive_failures=1,
+            last_attempt_monotonic=now,  # probe just failed
+        )
+        mock_client._get.return_value = _make_response(json_body={"main": "H1"})
+
+        await get_cached_branch_schema(mock_ctx)
+
+        mock_client._get.assert_awaited_once()
+
+    @pytest.mark.anyio
+    async def test_burst_behind_a_failing_probe_costs_one_upstream_timeout(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        """Twenty concurrent reads during an outage, breaker not yet tripped: one probe, all served stale."""
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = _past_window_entry(schema, now=schema_cache._now())
+        release = asyncio.Event()
+        mock_client._get.side_effect = _slow_failure(release)
+
+        tasks = [asyncio.create_task(get_cached_branch_schema(mock_ctx)) for _ in range(20)]
+        await asyncio.sleep(0)  # park every waiter on the lock behind the first probe
+        release.set()
+        results = await asyncio.gather(*tasks)
+
+        assert all(r is schema for r in results)
+        assert mock_client._get.await_count == 1, (
+            f"expected one probe for the burst, got {mock_client._get.await_count}"
+        )
+        assert app_ctx.schema_cache["main"].consecutive_failures == 1
+
+    @pytest.mark.anyio
+    async def test_cold_fetch_failure_fails_fast_within_the_window(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        mock_client.schema._fetch.side_effect = httpx.NetworkError("down")
+
+        with caplog.at_level("WARNING", logger="infrahub_mcp.schema_cache"), pytest.raises(httpx.NetworkError):
+            await get_cached_branch_schema(mock_ctx)
+        with pytest.raises(ToolError, match=r"temporarily unavailable.*next upstream attempt"):
+            await get_cached_branch_schema(mock_ctx)
+
+        mock_client.schema._fetch.assert_awaited_once()  # the second read never went upstream
+        assert "main" in app_ctx.schema_cache_cold_failures
+        assert "main" not in app_ctx.schema_cache
+        assert any("schema_cache_cold_fetch_failure" in r.message for r in caplog.records)
+
+    @pytest.mark.anyio
+    async def test_cold_fetch_retries_after_the_window_and_a_success_clears_the_marker(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        app_ctx.schema_cache_cold_failures["main"] = schema_cache._now() - 31  # window is min(ttl=30, 30)
+        mock_client.schema._fetch.side_effect = httpx.NetworkError("still down")
+
+        # Past the window: the read probes again; a repeat failure re-arms the throttle.
+        with pytest.raises(httpx.NetworkError):
+            await get_cached_branch_schema(mock_ctx)
+        with pytest.raises(ToolError, match="temporarily unavailable"):
+            await get_cached_branch_schema(mock_ctx)
+        assert mock_client.schema._fetch.await_count == 1
+
+        # Upstream heals: the next probe past the window succeeds and clears the marker.
+        app_ctx.schema_cache_cold_failures["main"] = schema_cache._now() - 31
+        schema = _make_branch_schema(schema_hash="H1")
+        mock_client.schema._fetch.side_effect = None
+        mock_client.schema._fetch.return_value = schema
+
+        result = await get_cached_branch_schema(mock_ctx)
+
+        assert result is schema
+        assert mock_client.schema._fetch.await_count == 2
+        assert "main" not in app_ctx.schema_cache_cold_failures
+        assert app_ctx.schema_cache["main"].schema is schema
+
+    @pytest.mark.anyio
+    async def test_cold_burst_behind_a_failing_fetch_costs_one_upstream_timeout(
+        self,
+        mock_ctx: MagicMock,
+        mock_client: MagicMock,
+    ) -> None:
+        """Twenty concurrent cold reads during an outage: one fetch, the rest fail fast."""
+        release = asyncio.Event()
+        mock_client.schema._fetch.side_effect = _slow_failure(release)
+
+        tasks = [asyncio.create_task(get_cached_branch_schema(mock_ctx)) for _ in range(20)]
+        await asyncio.sleep(0)  # park every waiter on the lock behind the first fetch
+        release.set()
+        outcomes = await asyncio.gather(*tasks, return_exceptions=True)
+
+        assert mock_client.schema._fetch.await_count == 1, (
+            f"expected one cold fetch for the burst, got {mock_client.schema._fetch.await_count}"
+        )
+        assert sum(isinstance(o, httpx.NetworkError) for o in outcomes) == 1  # the read that probed
+        assert sum(isinstance(o, ToolError) for o in outcomes) == 19  # the reads that failed fast
+
+    @pytest.mark.anyio
+    async def test_cold_unknown_branch_is_not_remembered_and_keeps_its_error_type(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        mock_client.schema._fetch.side_effect = BranchNotFoundError(identifier="ghost")
+
+        for _ in range(2):
+            with pytest.raises(BranchNotFoundError):
+                await get_cached_branch_schema(mock_ctx, branch="ghost")
+
+        assert mock_client.schema._fetch.await_count == 2  # each read asked upstream; nothing was remembered
+        assert "ghost" not in app_ctx.schema_cache_cold_failures
+
+
+# ---------------------------------------------------------------------------
+# Circuit break
+# ---------------------------------------------------------------------------
+
+
 class TestCircuitBreak:
     @pytest.mark.anyio
     async def test_broken_entry_fails_closed_when_recovery_probe_fails(
@@ -933,6 +1187,14 @@ class TestMetricsMiddlewareSchemaCacheCounters:
         assert snap["schema_cache"]["miss"] == 1
         # Unknown events are silently ignored.
         assert "unknown" not in snap["schema_cache"]
+
+    def test_stale_hit_is_a_declared_counter(self) -> None:
+        """Stale serves during an outage must be visible, not folded into ``hit`` or dropped as unknown."""
+        mw = MetricsMiddleware()
+        mw.record_schema_cache_event("stale_hit")
+
+        assert mw.snapshot()["schema_cache"]["stale_hit"] == 1
+        assert "infrahub_mcp_schema_cache_stale_hit_total 1" in mw.prometheus_text()
 
     def test_prometheus_text_includes_schema_cache_counters(self) -> None:
         mw = MetricsMiddleware()

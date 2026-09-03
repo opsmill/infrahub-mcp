@@ -55,6 +55,14 @@ class AppContext:  # pylint: disable=too-many-instance-attributes  # context agg
     _session_locks: WeakKeyDictionary[object, asyncio.Lock] = field(default_factory=WeakKeyDictionary)
     _session_locks_guard: asyncio.Lock = field(default_factory=asyncio.Lock)
     schema_cache: dict[str, "CachedSchemaEntry"] = field(default_factory=dict)
+    schema_cache_cold_failures: dict[str, float] = field(default_factory=dict)
+    """Branch name → monotonic time of the last failed *cold* schema fetch.
+
+    A branch listed here fails fast for ``min(schema_cache_ttl, 30 s)`` after
+    the failure instead of taking the cache lock and probing again; the next
+    successful cold fetch removes it. Kept apart from ``schema_cache`` so
+    ``CachedSchemaEntry.schema`` stays non-optional for every reader.
+    """
     _schema_cache_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 

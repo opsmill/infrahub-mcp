@@ -481,6 +481,7 @@ class MetricsMiddleware(Middleware):
         self._latency_ms: dict[str, float] = {}
         self._schema_cache: dict[str, int] = {
             "hit": 0,
+            "stale_hit": 0,
             "miss": 0,
             "hash_match": 0,
             "hash_diff": 0,
@@ -519,8 +520,9 @@ class MetricsMiddleware(Middleware):
     def record_schema_cache_event(self, event: str) -> None:
         """Increment a schema-cache counter.
 
-        ``event`` must be one of ``hit``, ``miss``, ``hash_match``,
-        ``hash_diff``, ``revalidate_failure``, ``circuit_break``.
+        ``event`` must be one of ``hit``, ``stale_hit``, ``miss``,
+        ``hash_match``, ``hash_diff``, ``revalidate_failure``,
+        ``circuit_break``.
         Unknown events are ignored to avoid coupling the cache module
         to the exact metric set.
         """
