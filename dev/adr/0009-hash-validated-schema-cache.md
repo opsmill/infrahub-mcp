@@ -66,9 +66,9 @@ Cache the resource outputs rather than the raw `BranchSchema`. Rejected because 
 
 Refresh after N seconds, accept staleness within the window. Rejected because it fails the bounded-staleness guarantee — a 5-minute TTL means schema renames take up to 5 minutes to propagate, which breaks tools that validate user input against a now-renamed attribute. Hash check via `/summary` adds one cheap round-trip past the skip-window for tight correctness without a full schema fetch.
 
-### Differentiate auth errors from transient errors during revalidation
+### Bubble every 4xx from `/summary` instead of serving stale
 
-Bubble 4xx errors from `/summary` instead of serving stale. Rejected because schema content is global per branch — serving cached schema after an auth blip does not leak per-token-protected data, and bubbling auth errors would block legitimate cached reads during transient auth issues for marginal benefit.
+Treat any 4xx from `/summary` as the caller's problem and raise it instead of serving stale. Rejected as a broad rule: schema content is global per branch, so serving cached schema after an upstream blip leaks no per-token-protected data, and failing reads that a stale entry could safely serve buys little. One narrow distinction *is* made, on the cold and the warm path alike: HTTP 401/403 — and the SDK's `AuthenticationError` — are a property of the caller's credential, not of upstream health. In passthrough modes every request carries its own token, so counting one caller's rejected token as a failure would arm the cold-failure marker against every caller, or push a breaker that fails everyone closed. Such a read raises `AuthenticationError` to that caller (the exception the GraphQL tools already surface, which `InfrahubConnectionMiddleware` turns into the "check your credentials" error) and leaves the entry, its counters, the breaker and the cold marker untouched, so other callers keep being served and the next one probes with its own credential. The rejected caller is deliberately not handed the stale schema either: it asked upstream with a credential upstream refused. `/schema.graphql` cannot be classified — the SDK raises a bare `ValueError` for any non-200 — so an SDL-only auth failure is still handled as transient. Any wider classification of 4xx remains rejected.
 
 ### Indefinite stale-serving on sustained failure
 

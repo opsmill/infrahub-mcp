@@ -29,6 +29,13 @@ schema hash returned from ``GET /api/schema/summary``:
   behind their own upstream timeout. A failed *cold* fetch is remembered
   the same way, so an empty cache during an outage costs one upstream
   timeout per window rather than one per request.
+- A rejected credential (HTTP 401/403, or the SDK's ``AuthenticationError``)
+  is not a transient failure. In passthrough modes the credential belongs
+  to the caller, so it says nothing about upstream health: the read raises
+  ``AuthenticationError`` to that caller — it is not served the stale
+  entry — and leaves the entry, its failure counter, the breaker and the
+  cold-failure marker untouched, so other callers keep being served and
+  the next one probes with its own credential.
 - A kind absent from the cached ``BranchSchema`` forces one revalidation
   regardless of the skip-window, so a kind added upstream is found before
   the window elapses. Forced probes are debounced to one per
@@ -56,7 +63,7 @@ from urllib.parse import urlencode
 
 import httpx
 from fastmcp.exceptions import ToolError
-from infrahub_sdk.exceptions import BranchNotFoundError, SchemaNotFoundError
+from infrahub_sdk.exceptions import AuthenticationError, BranchNotFoundError, SchemaNotFoundError
 
 from infrahub_mcp.utils import AppContext, get_client, get_default_branch
 
@@ -135,6 +142,73 @@ class _BranchGoneError(Exception):
     "Gone" means the response status is one of
     :data:`_BRANCH_GONE_STATUS_CODES` (400 or 404).
     """
+
+
+# Status codes that mean Infrahub rejected the *caller's* credential rather
+# than failing the request: 401 (missing or invalid token) and 403 (token
+# lacks the permission). The same pair ``InfrahubClient.execute_graphql``
+# maps to ``AuthenticationError``.
+_AUTH_STATUS_CODES: frozenset[int] = frozenset({httpx.codes.UNAUTHORIZED, httpx.codes.FORBIDDEN})
+
+
+def _is_auth_error(exc: BaseException) -> bool:
+    """Return True when *exc* means Infrahub rejected the caller's credential.
+
+    In passthrough auth modes the credential belongs to the caller, so a
+    401/403 is a property of that caller's request, not of upstream health,
+    and must not be counted like a transient failure. Two shapes reach this
+    module from the SDK (``infrahub_sdk`` 1.22.2):
+
+    - ``httpx.HTTPStatusError`` whose ``response.status_code`` is 401 or
+      403. ``InfrahubClient._get`` never raises on status:
+      ``_default_request_method`` (``client.py``) maps only
+      ``httpx.NetworkError`` and ``httpx.ReadTimeout`` to
+      ``ServerNotReachableError`` / ``ServerNotResponsiveError`` and returns
+      the response, and the ``@handle_relogin`` wrapper on ``_get`` only
+      retries a 401 whose body says ``Expired Signature``. The status
+      therefore surfaces from ``response.raise_for_status()`` — ours in
+      :func:`_fetch_summary_hash` for ``/api/schema/summary``, the SDK's in
+      ``InfrahubSchemaBase._parse_schema_response`` (``schema/__init__.py``)
+      for ``/api/schema`` behind ``client.schema._fetch``. With
+      username/password credentials (``basic-passthrough``) ``_get`` first
+      awaits ``login()``, which raises the same type when
+      ``POST /api/auth/login`` rejects the password.
+    - ``infrahub_sdk.exceptions.AuthenticationError``, which
+      ``login(refresh=True)`` raises when ``POST /api/auth/refresh`` answers
+      anything but 401, and which ``execute_graphql`` maps 401/403 to — not
+      on this module's path, but the type the rest of the server already
+      surfaces for a rejected credential (``InfrahubConnectionMiddleware``).
+
+    ``client.schema.get_graphql_schema`` raises a bare ``ValueError`` for any
+    non-200, so an SDL-only auth failure cannot be told from an outage and
+    :func:`_fill_graphql_sdl` handles it as transient.
+    """
+    if isinstance(exc, AuthenticationError):
+        return True
+    return isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in _AUTH_STATUS_CODES
+
+
+def _raise_auth_error(exc: Exception, *, branch: str) -> NoReturn:
+    """Surface a rejected credential to the caller as ``AuthenticationError``.
+
+    Normalises the ``httpx.HTTPStatusError`` shape to the SDK's public
+    exception so a bad token fails a schema read the same way it fails a
+    GraphQL query — ``InfrahubConnectionMiddleware`` turns it into the
+    "check your credentials" MCP error — instead of leaking a raw
+    ``HTTPStatusError``; :func:`_revalidate_under_lock` normalises a gone
+    branch to ``BranchNotFoundError`` for the same reason. Nothing about the
+    entry, its counters, the breaker or the cold-failure marker is touched:
+    this caller's credential was rejected, other callers are unaffected.
+    The log line carries the status and the exception's repr, which names
+    the URL and status only — the credential travels in request headers and
+    is part of neither.
+    """
+    status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+    logger.warning("schema_cache_auth_error branch=%s status=%s exception=%r", branch, status, exc)
+    if isinstance(exc, AuthenticationError):
+        raise exc
+    msg = f"Infrahub answered HTTP {status} for the schema of branch {branch!r}"
+    raise AuthenticationError(msg) from exc
 
 
 def _now() -> float:
@@ -357,6 +431,9 @@ def _note_failure(
     Returns the stored entry. Emits the ``circuit_break`` metric/log at most
     once per broken streak — the first failed probe that leaves the entry
     broken — so the counter measures trips rather than rejected reads.
+    A rejected credential never reaches here: both callers route it through
+    :func:`_raise_auth_error` first, so one caller's bad token cannot move
+    the counter or trip the breaker for everyone.
     """
     config = app_ctx.config
     max_failures = config.schema_cache_max_consecutive_failures
@@ -403,17 +480,22 @@ async def _cold_fetch_under_lock(
     failure itself still propagates unchanged to the caller.
     ``BranchNotFoundError`` is not remembered: an unknown branch is a fast,
     caller-specific answer rather than an upstream-health signal, and it
-    must keep surfacing as ``BranchNotFoundError``. Every other failure —
-    network, timeout, 4xx, 5xx — is treated uniformly, matching the
-    revalidation path (ADR 0009). An SDL-only failure never reaches this
-    handler: :func:`_full_fetch` absorbs it and the entry is stored with
-    ``graphql_sdl=None``, so the marker is not armed for it.
+    must keep surfacing as ``BranchNotFoundError``. Nor is a rejected
+    credential (:func:`_is_auth_error`): it is this caller's problem, so it
+    surfaces as ``AuthenticationError`` and the next caller probes with its
+    own credential instead of being failed fast by the marker. Every other
+    failure — network, timeout, other 4xx, 5xx — is treated uniformly,
+    matching the revalidation path (ADR 0009). An SDL-only failure never
+    reaches this handler: :func:`_full_fetch` absorbs it and the entry is
+    stored with ``graphql_sdl=None``, so the marker is not armed for it.
     """
     try:
         branch_schema, graphql_sdl = await _full_fetch(client, branch)
     except BranchNotFoundError:
         raise
     except Exception as exc:
+        if _is_auth_error(exc):
+            _raise_auth_error(exc, branch=branch)
         app_ctx.schema_cache_cold_failures[branch] = _now()
         logger.warning(
             "schema_cache_cold_fetch_failure branch=%s exception=%r",
@@ -459,6 +541,13 @@ async def _revalidate_under_lock(
     branch fails the same way here as it does on a cold cache miss — where
     the SDK itself raises ``BranchNotFoundError`` from ``/api/schema``.
 
+    On a rejected credential (:func:`_is_auth_error`) from either call:
+    raise ``AuthenticationError`` to this caller and leave the entry exactly
+    as it was — no failure counted, no attempt stamped, breaker unchanged.
+    The caller asked upstream with a credential upstream rejected, so it is
+    not handed the stale schema either; the entry stays servable for other
+    callers, and the next one probes with its own credential.
+
     On any other failure (transient): preserve the existing entry's
     schema/hash/SDL but increment ``consecutive_failures`` and update
     nothing else. Emit WARN log. Return the (failure-incremented) entry.
@@ -471,6 +560,8 @@ async def _revalidate_under_lock(
         logger.warning("schema_cache_branch_gone branch=%s", branch)
         raise BranchNotFoundError(identifier=branch) from exc
     except Exception as exc:  # noqa: BLE001
+        if _is_auth_error(exc):
+            _raise_auth_error(exc, branch=branch)
         new_entry = _note_failure(app_ctx=app_ctx, entry=entry, metrics=metrics, now=_now())
         logger.warning(
             "schema_cache_revalidate_failure branch=%s exception=%r",
@@ -497,6 +588,8 @@ async def _revalidate_under_lock(
     try:
         branch_schema, graphql_sdl = await _full_fetch(client, branch)
     except Exception as exc:  # noqa: BLE001
+        if _is_auth_error(exc):
+            _raise_auth_error(exc, branch=branch)
         new_entry = _note_failure(app_ctx=app_ctx, entry=entry, metrics=metrics, now=_now())
         logger.warning(
             "schema_cache_refetch_failure branch=%s exception=%r",

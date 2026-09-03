@@ -24,7 +24,7 @@ from fastmcp.server.middleware.caching import (
     ListToolsSettings,
     ReadResourceSettings,
 )
-from infrahub_sdk.exceptions import BranchNotFoundError, SchemaNotFoundError
+from infrahub_sdk.exceptions import AuthenticationError, BranchNotFoundError, SchemaNotFoundError
 
 from infrahub_mcp import schema_cache
 from infrahub_mcp.config import ServerConfig
@@ -835,31 +835,6 @@ class TestUS3Resilience:
 
         assert "main" not in app_ctx.schema_cache
 
-    @pytest.mark.anyio
-    async def test_auth_error_during_revalidation_serves_stale(
-        self,
-        mock_ctx: MagicMock,
-        app_ctx: AppContext,
-        mock_client: MagicMock,
-    ) -> None:
-        schema = _make_branch_schema(schema_hash="H1")
-        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
-        app_ctx.schema_cache["main"] = CachedSchemaEntry(
-            branch="main",
-            schema=schema,
-            schema_hash="H1",
-            graphql_sdl="sdl",
-            fetched_at_monotonic=old_time,
-            consecutive_failures=0,
-        )
-        # 401 → handled uniformly with other transient failures.
-        mock_client._get.return_value = _make_response(status_code=401)
-
-        result = await get_cached_branch_schema(mock_ctx)
-
-        assert result is schema
-        assert app_ctx.schema_cache["main"].consecutive_failures == 1
-
 
 # ---------------------------------------------------------------------------
 # Probe throttling from the first failure — before the breaker trips, and cold
@@ -1105,6 +1080,181 @@ class TestFailureThrottle:
 
         assert mock_client.schema._fetch.await_count == 2  # each read asked upstream; nothing was remembered
         assert "ghost" not in app_ctx.schema_cache_cold_failures
+
+
+# ---------------------------------------------------------------------------
+# A rejected credential is the caller's problem, not an upstream-health signal
+# ---------------------------------------------------------------------------
+
+
+def _http_status_error(status_code: int) -> httpx.HTTPStatusError:
+    """The exception ``raise_for_status()`` raises for *status_code* — how a 4xx/5xx from ``_get`` surfaces."""
+    error: httpx.HTTPStatusError = _make_response(status_code=status_code).raise_for_status.side_effect
+    return error
+
+
+# The two shapes a rejected credential takes on this module's path: the SDK's
+# ``_parse_schema_response`` and our ``_fetch_summary_hash`` both call
+# ``raise_for_status()`` on a 401/403, and ``login()`` (username/password
+# credentials) raises ``AuthenticationError`` when the token refresh is refused.
+_AUTH_ERROR_FACTORIES = [
+    pytest.param(lambda: _http_status_error(httpx.codes.UNAUTHORIZED), id="httpx-401"),
+    pytest.param(lambda: _http_status_error(httpx.codes.FORBIDDEN), id="httpx-403"),
+    pytest.param(lambda: AuthenticationError("token rejected"), id="sdk-AuthenticationError"),
+]
+
+
+class TestAuthErrorsAreCallerScoped:
+    """A 401/403 says the *caller's* credential was rejected, not that Infrahub is unhealthy.
+
+    In passthrough modes every request carries its own token. Before this,
+    one caller's bad token armed the cold-failure marker against everyone
+    (cold) or counted toward a breaker that fails everyone closed (warm), and
+    that caller was handed the stale schema instead of the rejection.
+    """
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("make_error", _AUTH_ERROR_FACTORIES)
+    async def test_cold_fetch_auth_error_reaches_the_caller_without_arming_the_cold_marker(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+        make_error: Callable[[], Exception],
+    ) -> None:
+        mock_client.schema._fetch.side_effect = make_error()
+
+        with caplog.at_level("WARNING", logger="infrahub_mcp.schema_cache"), pytest.raises(AuthenticationError):
+            await get_cached_branch_schema(mock_ctx)
+
+        assert "main" not in app_ctx.schema_cache
+        assert "main" not in app_ctx.schema_cache_cold_failures
+        assert any("schema_cache_auth_error" in r.message for r in caplog.records)
+        assert not any("schema_cache_cold_fetch_failure" in r.message for r in caplog.records)
+
+        # The next caller is not failed fast by the marker: it probes with its own credential.
+        with pytest.raises(AuthenticationError):
+            await get_cached_branch_schema(mock_ctx)
+        assert mock_client.schema._fetch.await_count == 2
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("make_error", _AUTH_ERROR_FACTORIES)
+    async def test_probe_auth_error_reaches_the_caller_and_leaves_the_entry_untouched(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        mock_metrics: MagicMock,
+        make_error: Callable[[], Exception],
+    ) -> None:
+        schema = _make_branch_schema(schema_hash="H1")
+        entry = _past_window_entry(schema, now=schema_cache._now())
+        app_ctx.schema_cache["main"] = entry
+        mock_client._get.side_effect = make_error()
+
+        with pytest.raises(AuthenticationError):
+            await get_cached_branch_schema(mock_ctx)
+
+        assert app_ctx.schema_cache["main"] is entry  # same object: counter, timestamps and SDL all untouched
+        events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
+        assert "revalidate_failure" not in events
+        assert "stale_hit" not in events
+        mock_client.schema.set_cache.assert_not_called()  # the rejected caller is not handed the stale schema
+
+        # No throttle armed: the next caller probes again with its own credential.
+        with pytest.raises(AuthenticationError):
+            await get_cached_branch_schema(mock_ctx)
+        assert mock_client._get.await_count == 2
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("status_code", [httpx.codes.UNAUTHORIZED, httpx.codes.FORBIDDEN])
+    async def test_summary_response_with_an_auth_status_is_an_auth_error(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+        status_code: int,
+    ) -> None:
+        """``_get`` returns the 401/403 response as-is; the error comes from our own ``raise_for_status()``."""
+        schema = _make_branch_schema(schema_hash="H1")
+        entry = _past_window_entry(schema, now=clock.now)
+        app_ctx.schema_cache["main"] = entry
+        mock_client._get.return_value = _make_response(status_code=status_code)
+
+        with pytest.raises(AuthenticationError, match=f"HTTP {int(status_code)}"):
+            await get_cached_branch_schema(mock_ctx)
+
+        assert app_ctx.schema_cache["main"] is entry
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("make_error", _AUTH_ERROR_FACTORIES)
+    async def test_refetch_auth_error_after_a_hash_diff_leaves_the_entry_untouched(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        mock_metrics: MagicMock,
+        make_error: Callable[[], Exception],
+    ) -> None:
+        schema = _make_branch_schema(schema_hash="H1")
+        entry = _past_window_entry(schema, now=schema_cache._now())
+        app_ctx.schema_cache["main"] = entry
+        mock_client._get.return_value = _make_response(json_body={"main": "H2"})
+        mock_client.schema._fetch.side_effect = make_error()
+
+        with pytest.raises(AuthenticationError):
+            await get_cached_branch_schema(mock_ctx)
+
+        assert app_ctx.schema_cache["main"] is entry
+        events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
+        assert "revalidate_failure" not in events
+        assert "hash_diff" not in events
+        mock_client.schema.set_cache.assert_not_called()
+
+        # No throttle armed: the next caller probes again with its own credential.
+        with pytest.raises(AuthenticationError):
+            await get_cached_branch_schema(mock_ctx)
+        assert mock_client.schema._fetch.await_count == 2
+
+    @pytest.mark.anyio
+    async def test_other_http_status_errors_remain_transient_on_the_warm_path(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        mock_metrics: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = _past_window_entry(schema, now=clock.now)
+        mock_client._get.return_value = _make_response(status_code=httpx.codes.INTERNAL_SERVER_ERROR)
+
+        result = await get_cached_branch_schema(mock_ctx)
+
+        assert result is schema  # served stale
+        assert app_ctx.schema_cache["main"].consecutive_failures == 1
+        assert app_ctx.schema_cache["main"].last_attempt_monotonic == clock.now
+        mock_metrics.record_schema_cache_event.assert_any_call("revalidate_failure")
+
+    @pytest.mark.anyio
+    async def test_other_http_status_errors_still_arm_the_cold_marker(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        mock_client.schema._fetch.side_effect = _http_status_error(httpx.codes.INTERNAL_SERVER_ERROR)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await get_cached_branch_schema(mock_ctx)
+
+        assert app_ctx.schema_cache_cold_failures["main"] == clock.now
+        with pytest.raises(ToolError, match="Schema temporarily unavailable"):
+            await get_cached_branch_schema(mock_ctx)  # inside the window: fail fast
+        mock_client.schema._fetch.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
