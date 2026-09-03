@@ -48,6 +48,8 @@ schema hash returned from ``GET /api/schema/summary``:
   failure is not fatal: the entry is stored with ``graphql_sdl=None`` and
   the structured-schema tools proceed, while ``infrahub://graphql-schema``
   fills the SDL lazily on its next read and fails alone if that fails too.
+  A failed fill is throttled like any other probe: further SDL reads inside
+  ``min(schema_cache_ttl, 30 s)`` fail fast without contacting upstream.
 
 See ``specs/archive/20260504-203256-schema-cache/`` for the full design.
 """
@@ -123,6 +125,20 @@ class CachedSchemaEntry:
     one per blocked read. Any successful fetch or revalidation builds a
     fresh entry with this back to ``False``, so a later trip is counted
     again.
+    """
+    graphql_sdl_last_failure_monotonic: float | None = None
+    """Monotonic time of the last failed lazy SDL fill, or ``None`` if none failed.
+
+    Set only by :func:`_fill_graphql_sdl` and consulted only there: while it
+    is less than ``min(schema_cache_ttl, 30 s)`` old, further
+    ``infrahub://graphql-schema`` reads fail fast instead of each paying an
+    upstream timeout under the cache lock. It lives on the entry rather than
+    in a side table because it describes *this* entry's missing SDL: a
+    successful fill sets ``graphql_sdl`` and makes it moot, and a hash-diff
+    refetch or an eviction builds a fresh entry that drops it, so nothing has
+    to clear it. ``None`` rather than ``0.0`` so a monotonic clock that is
+    still near zero at boot cannot read as a failure moments ago. Structured-
+    schema readers never look at it.
     """
 
 
@@ -899,6 +915,30 @@ async def get_cached_branch_schema(ctx: Context, branch: str | None = None) -> B
     return entry.schema
 
 
+def _raise_if_sdl_fill_throttled(entry: CachedSchemaEntry, *, config: ServerConfig, now: float) -> None:
+    """Fail fast when *entry*'s last lazy SDL fill failed inside the probe-throttle window.
+
+    The SDL counterpart of :func:`_raise_if_cold_fetch_throttled`: with no
+    SDL to serve, the only alternative to failing fast is taking the lock
+    and fetching again — the one-timeout-per-request serialization the
+    throttle exists to prevent. ``schema_cache_ttl = 0`` disables it, as it
+    does every other throttle in this module.
+    """
+    failed_at = entry.graphql_sdl_last_failure_monotonic
+    if failed_at is None:
+        return
+    window = _recovery_probe_seconds(config)
+    if not _is_retry_throttled(failed_at, throttle_seconds=window, now=now):
+        return
+    elapsed = now - failed_at
+    retry_in = math.ceil(window - elapsed)
+    _raise_schema_unavailable(
+        entry.branch,
+        f"the GraphQL SDL fetch failed {elapsed:.0f} s ago; the next upstream attempt is in {retry_in} s. "
+        f"{_UNREACHABLE_HINT}",
+    )
+
+
 async def _fill_graphql_sdl(*, app_ctx: AppContext, client: InfrahubClient, branch: str) -> str:
     """Fetch and store the SDL for an entry whose ``graphql_sdl`` is ``None``.
 
@@ -913,13 +953,33 @@ async def _fill_graphql_sdl(*, app_ctx: AppContext, client: InfrahubClient, bran
     A failure propagates to the caller — the SDL resource fails on its own —
     and is deliberately not counted toward ``consecutive_failures`` or the
     breaker: the structured schema was just served successfully, so this
-    says nothing about its freshness.
+    says nothing about its freshness. It is stamped on the entry
+    (``graphql_sdl_last_failure_monotonic``) instead, so that for the next
+    ``min(schema_cache_ttl, 30 s)`` further SDL reads fail fast without
+    contacting upstream. The stamp is checked before taking the lock and
+    again under it, mirroring :func:`_ensure_entry`, so readers queued behind
+    a failing fill observe its outcome instead of repeating it. The SDK's
+    ``get_graphql_schema`` raises a bare ``ValueError`` for any non-200, so a
+    rejected credential cannot be told apart here and is throttled like an
+    outage.
     """
+    config = app_ctx.config
+    entry = app_ctx.schema_cache.get(branch)
+    if entry is not None:
+        _raise_if_sdl_fill_throttled(entry, config=config, now=_now())
     async with app_ctx._schema_cache_lock:  # noqa: SLF001
         entry = app_ctx.schema_cache.get(branch)
-        if entry is not None and entry.graphql_sdl is not None:
-            return entry.graphql_sdl
-        sdl = await _fetch_graphql_sdl(client, branch)
+        if entry is not None:
+            if entry.graphql_sdl is not None:
+                return entry.graphql_sdl
+            _raise_if_sdl_fill_throttled(entry, config=config, now=_now())
+        try:
+            sdl = await _fetch_graphql_sdl(client, branch)
+        except Exception as exc:
+            if entry is not None and app_ctx.schema_cache.get(branch) is entry:
+                app_ctx.schema_cache[branch] = replace(entry, graphql_sdl_last_failure_monotonic=_now())
+            logger.warning("schema_cache_sdl_fill_failure branch=%s exception=%r", branch, exc)
+            raise
         if entry is not None and app_ctx.schema_cache.get(branch) is entry:
             app_ctx.schema_cache[branch] = replace(entry, graphql_sdl=sdl)
         return sdl
@@ -931,8 +991,10 @@ async def get_cached_graphql_sdl(ctx: Context, branch: str | None = None) -> str
     Shares the same hash gate as :func:`get_cached_branch_schema`; the
     SDL is invalidated together with the structured schema. When the
     entry's SDL is absent — its fetch failed while the structured schema
-    succeeded — it is filled here under the cache lock, and a failure of
-    that fill raises for this resource only. When ``schema_cache_enabled``
+    succeeded — it is filled here under the cache lock; a failure of that
+    fill raises for this resource only and throttles further fills for
+    ``min(schema_cache_ttl, 30 s)``, during which reads of this resource
+    fail fast without contacting upstream. When ``schema_cache_enabled``
     is False, fetches fresh every call.
     """
     app_ctx = _get_app_ctx(ctx)

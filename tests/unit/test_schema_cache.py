@@ -1837,7 +1837,11 @@ class TestGraphQLSDL:
         with pytest.raises(ValueError, match="still down"):
             await get_cached_graphql_sdl(mock_ctx)
 
-        assert app_ctx.schema_cache["main"] is entry  # untouched: no failure counted, nothing evicted
+        stamped = app_ctx.schema_cache["main"]
+        assert stamped.schema is schema  # amended in place, nothing evicted
+        assert stamped.consecutive_failures == 0  # no failure counted toward the breaker
+        assert stamped.graphql_sdl is None
+        assert stamped.graphql_sdl_last_failure_monotonic is not None  # only the SDL fill throttle is armed
         assert await get_cached_branch_schema(mock_ctx) is schema
         mock_client.schema._fetch.assert_not_awaited()
 
@@ -1897,6 +1901,125 @@ class TestGraphQLSDL:
 
         assert results == ["sdl-main"] * 10
         assert mock_client.schema.get_graphql_schema.await_count == 1
+
+    @pytest.mark.anyio
+    async def test_failed_lazy_fill_throttles_further_sdl_reads(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        """During an SDL outage the resource costs one upstream timeout per window, not one per read."""
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=schema,
+            schema_hash="H1",
+            graphql_sdl=None,
+            fetched_at_monotonic=clock.now,
+        )
+        mock_client.schema.get_graphql_schema.side_effect = ValueError("still down")
+
+        with pytest.raises(ValueError, match="still down"):
+            await get_cached_graphql_sdl(mock_ctx)
+        assert app_ctx.schema_cache["main"].graphql_sdl_last_failure_monotonic == clock.now
+
+        clock.advance(5)
+        with pytest.raises(ToolError, match=r"GraphQL SDL fetch failed 5 s ago.*next upstream attempt is in 25 s"):
+            await get_cached_graphql_sdl(mock_ctx)
+
+        mock_client.schema.get_graphql_schema.assert_awaited_once()  # the second read never went upstream
+
+    @pytest.mark.anyio
+    async def test_sdl_fill_is_retried_once_the_window_has_elapsed(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        """The window is ``min(ttl, 30)``: with a 60 s skip-window the fill retries after 30 s, and a success sticks."""
+        app_ctx.config = _make_config(schema_cache_ttl=60)
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=schema,
+            schema_hash="H1",
+            graphql_sdl=None,
+            fetched_at_monotonic=clock.now,
+        )
+        mock_client.schema.get_graphql_schema.side_effect = ValueError("down")
+        with pytest.raises(ValueError, match="down"):
+            await get_cached_graphql_sdl(mock_ctx)
+
+        clock.advance(31)  # past the 30 s throttle, still inside the 60 s skip-window
+        mock_client.schema.get_graphql_schema.side_effect = None
+        mock_client.schema.get_graphql_schema.return_value = "schema { Query }"
+
+        first = await get_cached_graphql_sdl(mock_ctx)
+        second = await get_cached_graphql_sdl(mock_ctx)
+
+        assert first == second == "schema { Query }"
+        assert app_ctx.schema_cache["main"].graphql_sdl == "schema { Query }"
+        assert mock_client.schema.get_graphql_schema.await_count == 2  # one failed fill + one successful fill
+        mock_client._get.assert_not_awaited()  # the structured schema never left the skip-window
+
+    @pytest.mark.anyio
+    async def test_ttl_zero_disables_the_sdl_fill_throttle(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        app_ctx.config = _make_config(schema_cache_ttl=0)
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=schema,
+            schema_hash="H1",
+            graphql_sdl=None,
+            fetched_at_monotonic=clock.now,
+        )
+        mock_client._get.return_value = _make_response(json_body={"main": "H1"})  # ttl=0: every read probes
+        mock_client.schema.get_graphql_schema.side_effect = ValueError("down")
+
+        for _ in range(3):
+            with pytest.raises(ValueError, match="down"):
+                await get_cached_graphql_sdl(mock_ctx)
+
+        assert mock_client.schema.get_graphql_schema.await_count == 3
+
+    @pytest.mark.anyio
+    async def test_sdl_fill_throttle_leaves_structured_reads_alone(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=schema,
+            schema_hash="H1",
+            graphql_sdl=None,
+            fetched_at_monotonic=clock.now,
+        )
+        mock_client.schema.get_graphql_schema.side_effect = ValueError("down")
+        with pytest.raises(ValueError, match="down"):
+            await get_cached_graphql_sdl(mock_ctx)
+
+        clock.advance(5)
+        result = await get_cached_branch_schema(mock_ctx)
+
+        assert result is schema
+        entry = app_ctx.schema_cache["main"]
+        assert entry.consecutive_failures == 0
+        assert entry.graphql_sdl_last_failure_monotonic == clock.now - 5
+        mock_client._get.assert_not_awaited()  # inside the skip-window: the SDL stamp forces no probe
+        mock_client.schema._fetch.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
