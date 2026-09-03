@@ -86,8 +86,22 @@ class CachedSchemaEntry:
     """
 
 
+# Status codes ``/api/schema/summary`` answers for a branch that no longer
+# exists. Infrahub raises ``BranchNotFoundError`` (``HTTP_CODE = 400``) from
+# the endpoint's branch dependency before the handler runs, so 400 is the
+# code a deleted branch actually produces; the SDK's own
+# ``_parse_schema_response`` maps 400 from ``/api/schema`` to
+# ``BranchNotFoundError`` for the same reason. 404 stays accepted for a
+# server that routes an unknown branch to a not-found response.
+_BRANCH_GONE_STATUS_CODES: frozenset[int] = frozenset({httpx.codes.BAD_REQUEST, httpx.codes.NOT_FOUND})
+
+
 class _BranchGoneError(Exception):
-    """Raised by ``_fetch_summary_hash`` when ``/summary`` returns 404 for a branch."""
+    """Raised by ``_fetch_summary_hash`` when ``/summary`` reports the branch as gone.
+
+    "Gone" means the response status is one of
+    :data:`_BRANCH_GONE_STATUS_CODES` (400 or 404).
+    """
 
 
 def _now() -> float:
@@ -162,8 +176,9 @@ async def _resolve_branch(ctx: Context, branch: str | None) -> str:
 async def _fetch_summary_hash(client: InfrahubClient, branch: str) -> str:
     """Return the current ``main`` schema hash from ``GET /api/schema/summary``.
 
-    Raises :class:`_BranchGoneError` on HTTP 404 so the caller can evict
-    the cache entry. Other HTTP errors propagate.
+    Raises :class:`_BranchGoneError` on HTTP 400 or 404 (see
+    :data:`_BRANCH_GONE_STATUS_CODES`) so the caller can evict the cache
+    entry. Other HTTP errors propagate.
 
     The Infrahub SDK does not yet expose a public wrapper for this
     endpoint; the call uses ``client._get`` mirroring the existing
@@ -173,7 +188,7 @@ async def _fetch_summary_hash(client: InfrahubClient, branch: str) -> str:
     """
     url = f"{client.address}/api/schema/summary?branch={branch}"
     response = await client._get(url=url)  # noqa: SLF001  # pylint: disable=protected-access
-    if response.status_code == httpx.codes.NOT_FOUND:
+    if response.status_code in _BRANCH_GONE_STATUS_CODES:
         raise _BranchGoneError(branch)
     response.raise_for_status()
     payload: dict[str, Any] = response.json()
@@ -318,11 +333,11 @@ async def _revalidate_under_lock(
 
     On hash differ: full refetch and replace the entry.
 
-    On 404 from ``/summary``: evict the entry and raise the public
-    :class:`~infrahub_sdk.exceptions.BranchNotFoundError`. The private
-    ``_BranchGoneError`` never escapes this module, so a deleted branch
-    fails the same way here as it does on a cold cache miss — where the
-    SDK itself raises ``BranchNotFoundError`` from ``/api/schema``.
+    On 400 or 404 from ``/summary`` (branch gone): evict the entry and
+    raise the public :class:`~infrahub_sdk.exceptions.BranchNotFoundError`.
+    The private ``_BranchGoneError`` never escapes this module, so a deleted
+    branch fails the same way here as it does on a cold cache miss — where
+    the SDK itself raises ``BranchNotFoundError`` from ``/api/schema``.
 
     On any other failure (transient): preserve the existing entry's
     schema/hash/SDL but increment ``consecutive_failures`` and update
@@ -485,7 +500,7 @@ async def _ensure_entry(
     """Core cache flow: returns a current entry for *branch*, or raises.
 
     Honors skip-window TTL, hash-validated revalidation, single-flight
-    via the cache lock, circuit-break thresholds, and 404-evicts.
+    via the cache lock, circuit-break thresholds, and branch-gone evicts.
     """
     app_ctx = _get_app_ctx(ctx)
     resolved_branch = await _resolve_branch(ctx, branch)

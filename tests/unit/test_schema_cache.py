@@ -75,6 +75,15 @@ def _make_response(*, status_code: int = 200, json_body: dict[str, Any] | None =
     return response
 
 
+# Statuses ``/api/schema/summary`` answers for a deleted branch. Infrahub raises
+# ``BranchNotFoundError`` with ``HTTP_CODE = 400`` from the branch dependency,
+# so 400 is the real-world code; 404 is kept as the generic not-found signal.
+_BRANCH_GONE_PARAMS = [
+    pytest.param(httpx.codes.BAD_REQUEST, id="400-infrahub-BranchNotFoundError"),
+    pytest.param(httpx.codes.NOT_FOUND, id="404-not-found"),
+]
+
+
 def _make_config(**overrides: Any) -> ServerConfig:
     """Build a ServerConfig with defaults safe for tests (caching enabled, generous thresholds)."""
     defaults: dict[str, Any] = {
@@ -302,11 +311,13 @@ class TestUS2Revalidation:
         mock_metrics.record_schema_cache_event.assert_any_call("hash_diff")
 
     @pytest.mark.anyio
+    @pytest.mark.parametrize("status_code", _BRANCH_GONE_PARAMS)
     async def test_branch_gone_evicts_entry(
         self,
         mock_ctx: MagicMock,
         app_ctx: AppContext,
         mock_client: MagicMock,
+        status_code: int,
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1")
         old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
@@ -318,22 +329,26 @@ class TestUS2Revalidation:
             fetched_at_monotonic=old_time,
             consecutive_failures=0,
         )
-        mock_client._get.return_value = _make_response(status_code=httpx.codes.NOT_FOUND)
+        mock_client._get.return_value = _make_response(status_code=status_code)
 
         # The private _BranchGoneError is translated at the eviction site, so
         # callers see the same public error a cold cache miss produces (the SDK
         # raises BranchNotFoundError from /api/schema on an unknown branch).
+        # Infrahub answers a deleted branch with 400, not 404, so both must
+        # evict; a 400 must never be recorded as a transient failure.
         with pytest.raises(BranchNotFoundError):
             await get_cached_branch_schema(mock_ctx)
 
         assert "main" not in app_ctx.schema_cache
 
     @pytest.mark.anyio
+    @pytest.mark.parametrize("status_code", _BRANCH_GONE_PARAMS)
     async def test_branch_gone_does_not_leak_private_error(
         self,
         mock_ctx: MagicMock,
         app_ctx: AppContext,
         mock_client: MagicMock,
+        status_code: int,
     ) -> None:
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
@@ -343,7 +358,7 @@ class TestUS2Revalidation:
             fetched_at_monotonic=schema_cache._now() - 100,
             consecutive_failures=0,
         )
-        mock_client._get.return_value = _make_response(status_code=httpx.codes.NOT_FOUND)
+        mock_client._get.return_value = _make_response(status_code=status_code)
 
         with pytest.raises(BranchNotFoundError) as excinfo:
             await get_cached_graphql_sdl(mock_ctx)
