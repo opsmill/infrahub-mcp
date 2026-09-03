@@ -100,16 +100,29 @@ def _make_config(**overrides: Any) -> ServerConfig:
     return ServerConfig(**defaults)
 
 
-@pytest.fixture
-def mock_client() -> MagicMock:
+def _make_client() -> MagicMock:
+    """Build an ``InfrahubClient`` mock whose SDK schema cache behaves like the real one.
+
+    ``schema.cache`` is a real dict and ``schema.set_cache`` writes into it, so
+    the ``schema_cache_enabled=False`` path — which reads that cache before
+    fetching — sees the same hit/miss behaviour the SDK provides.
+    """
     client = MagicMock()
     client.address = "http://infrahub.test"
     client.schema = MagicMock()
+    client.schema.cache = {}
     client.schema._fetch = AsyncMock()
     client.schema.get_graphql_schema = AsyncMock(return_value="sdl")
-    client.schema.set_cache = MagicMock()
+    client.schema.set_cache = MagicMock(
+        side_effect=lambda schema, branch: client.schema.cache.__setitem__(branch, schema)
+    )
     client._get = AsyncMock()
     return client
+
+
+@pytest.fixture
+def mock_client() -> MagicMock:
+    return _make_client()
 
 
 @pytest.fixture
@@ -211,8 +224,82 @@ class TestUS1ColdAndWarm:
         result = await get_cached_branch_schema(mock_ctx)
 
         assert result is schema
-        assert "main" not in app_ctx.schema_cache  # nothing cached
+        assert "main" not in app_ctx.schema_cache  # process-wide cache untouched
+        assert mock_client.schema.cache["main"] is schema  # SDK per-client cache primed
         mock_client.schema._fetch.assert_awaited_once_with(branch="main")
+
+
+class TestDisabledFlagUsesSdkCache:
+    """``schema_cache_enabled=False`` must reproduce the pre-feature baseline.
+
+    Pre-feature, tools called ``client.schema.all()`` / ``get()``, which cache
+    per client for the process lifetime. The disabled path must not regress
+    that into a fetch per call on the shared lifespan client.
+    """
+
+    @pytest.mark.anyio
+    async def test_shared_client_fetches_once_then_serves_from_sdk_cache(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        app_ctx.config = _make_config(schema_cache_enabled=False)
+        schema = _make_branch_schema(schema_hash="H1")
+        mock_client.schema._fetch.return_value = schema
+
+        first = await get_cached_branch_schema(mock_ctx)
+        second = await get_cached_branch_schema(mock_ctx)
+
+        assert first is schema
+        assert second is schema
+        mock_client.schema._fetch.assert_awaited_once_with(branch="main")
+        mock_client.schema.set_cache.assert_called_once_with(schema=schema, branch="main")
+
+    @pytest.mark.anyio
+    async def test_fresh_client_per_request_fetches_once_per_call(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Passthrough shape: a new client per request has an empty SDK cache each time."""
+        app_ctx.config = _make_config(schema_cache_enabled=False)
+        schema = _make_branch_schema(schema_hash="H1")
+        clients = [_make_client(), _make_client()]
+        for client in clients:
+            client.schema._fetch.return_value = schema
+        remaining = iter(clients)
+        monkeypatch.setattr(schema_cache, "get_client", lambda _ctx: next(remaining))
+
+        first = await get_cached_branch_schema(mock_ctx)
+        second = await get_cached_branch_schema(mock_ctx)
+
+        assert first is schema
+        assert second is schema
+        for client in clients:
+            client.schema._fetch.assert_awaited_once_with(branch="main")
+            assert client.schema.cache["main"] is schema
+
+    @pytest.mark.anyio
+    async def test_present_kind_costs_one_fetch_and_no_sdk_get(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        app_ctx.config = _make_config(schema_cache_enabled=False)
+        schema = _make_branch_schema(schema_hash="H1", kinds=["InfraDevice"])
+        mock_client.schema._fetch.return_value = schema
+        mock_client.schema.get = AsyncMock()
+
+        first = await get_cached_kind(mock_ctx, kind="InfraDevice")
+        second = await get_cached_kind(mock_ctx, kind="InfraDevice")
+
+        assert first is schema.nodes["InfraDevice"]
+        assert second is schema.nodes["InfraDevice"]
+        mock_client.schema._fetch.assert_awaited_once_with(branch="main")
+        mock_client.schema.get.assert_not_awaited()
 
 
 class TestSingleFlight:

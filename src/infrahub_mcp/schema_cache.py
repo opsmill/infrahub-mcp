@@ -695,6 +695,26 @@ def _get_metrics() -> Any:
     return get_metrics()
 
 
+async def _sdk_cached_branch_schema(client: InfrahubClient, branch: str) -> BranchSchema:
+    """Serve *branch* from the SDK's per-client cache, fetching and priming it on a miss.
+
+    This is the ``schema_cache_enabled=False`` path, and it must reproduce
+    the pre-feature baseline exactly: the SDK's ``client.schema.all()`` /
+    ``get()`` populate ``client.schema.cache[branch]`` once and serve every
+    later call from it. ``client.schema._fetch`` alone neither reads nor
+    writes that cache, so calling it bare would refetch ``/api/schema`` on
+    every request even on the shared lifespan client. ``set_cache`` always
+    stores a ``BranchSchema`` (it normalises the other accepted shapes on
+    write), so a hit can be returned as-is.
+    """
+    cached = client.schema.cache.get(branch)
+    if cached is not None:
+        return cached
+    branch_schema = await client.schema._fetch(branch=branch)  # noqa: SLF001  # pylint: disable=protected-access
+    client.schema.set_cache(schema=branch_schema, branch=branch)
+    return branch_schema
+
+
 async def get_cached_branch_schema(ctx: Context, branch: str | None = None) -> BranchSchema:
     """Return the cached ``BranchSchema`` for *branch* (default branch when None).
 
@@ -705,14 +725,19 @@ async def get_cached_branch_schema(ctx: Context, branch: str | None = None) -> B
     ``client.schema.get(kind=..., branch=...)`` calls within this
     request are served from the SDK's in-memory cache.
 
-    When ``schema_cache_enabled`` is False, performs a fresh fetch on
-    every call (pre-feature baseline).
+    When ``schema_cache_enabled`` is False, the process-wide cache is
+    bypassed and only the SDK's per-client cache is used (the pre-feature
+    baseline): a client that already holds *branch* is served from
+    ``client.schema.cache`` without an upstream call, otherwise the schema
+    is fetched once and stored there. Shared-client auth modes therefore
+    fetch once per process and never revalidate; passthrough modes, whose
+    client is rebuilt per request, fetch once per request.
     """
     app_ctx = _get_app_ctx(ctx)
     if not app_ctx.config.schema_cache_enabled:
         client = get_client(ctx)
         resolved_branch = await _resolve_branch(ctx, branch)
-        return await client.schema._fetch(branch=resolved_branch)  # noqa: SLF001  # pylint: disable=protected-access
+        return await _sdk_cached_branch_schema(client, resolved_branch)
 
     entry = await _ensure_entry(ctx=ctx, branch=branch, force_revalidate=False)
     return entry.schema
