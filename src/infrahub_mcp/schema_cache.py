@@ -52,6 +52,7 @@ import math
 import time
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
+from urllib.parse import urlencode
 
 import httpx
 from fastmcp.exceptions import ToolError
@@ -250,7 +251,12 @@ async def _fetch_summary_hash(client: InfrahubClient, branch: str) -> str:
     TODO: swap for ``client.schema.summary()`` once the upstream SDK PR
     lands.
     """
-    url = f"{client.address}/api/schema/summary?branch={branch}"
+    # ``urlencode`` mirrors the SDK's ``client.schema._fetch``. Infrahub allows
+    # ``#``, ``&``, ``+``, ``%`` and ``/`` in branch names; interpolated raw,
+    # ``#`` drops the query as a fragment and ``&`` splits it, so ``/summary``
+    # would answer for the default branch and its hash be compared against
+    # this branch's cache entry.
+    url = f"{client.address}/api/schema/summary?{urlencode([('branch', branch)])}"
     response = await client._get(url=url)  # noqa: SLF001  # pylint: disable=protected-access
     if response.status_code in _BRANCH_GONE_STATUS_CODES:
         raise _BranchGoneError(branch)

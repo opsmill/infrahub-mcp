@@ -456,6 +456,21 @@ class TestUS2Revalidation:
         assert not isinstance(excinfo.value, _BranchGoneError)
         assert excinfo.value.identifier == "main"
 
+    @pytest.mark.anyio
+    async def test_summary_url_encodes_branch_name(self, mock_client: MagicMock) -> None:
+        # Infrahub's branch-name validator allows ``#``, ``&``, ``=`` and ``/``.
+        # Interpolated raw, ``#`` would drop the query as a fragment and ``&``
+        # would split it, so ``/summary`` would answer for the default branch
+        # and its hash be compared against this branch's cache entry.
+        mock_client._get.return_value = _make_response(json_body={"main": "H1"})
+
+        result = await schema_cache._fetch_summary_hash(mock_client, "fix#123&x=y/sub")
+
+        assert result == "H1"
+        mock_client._get.assert_awaited_once_with(
+            url="http://infrahub.test/api/schema/summary?branch=fix%23123%26x%3Dy%2Fsub"
+        )
+
 
 class TestUS2LazyOnMissingKind:
     @pytest.mark.anyio
