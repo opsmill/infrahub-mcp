@@ -29,6 +29,11 @@ schema hash returned from ``GET /api/schema/summary``:
   behind their own upstream timeout. A failed *cold* fetch is remembered
   the same way, so an empty cache during an outage costs one upstream
   timeout per window rather than one per request.
+- The GraphQL SDL (``GET /schema.graphql``) is fetched together with the
+  structured schema so the two describe the same upstream state, but its
+  failure is not fatal: the entry is stored with ``graphql_sdl=None`` and
+  the structured-schema tools proceed, while ``infrahub://graphql-schema``
+  fills the SDL lazily on its next read and fails alone if that fails too.
 
 See ``specs/archive/20260504-203256-schema-cache/`` for the full design.
 """
@@ -72,7 +77,15 @@ class CachedSchemaEntry:
     branch: str
     schema: BranchSchema
     schema_hash: str
-    graphql_sdl: str
+    graphql_sdl: str | None
+    """Raw GraphQL SDL for the branch, or ``None`` when only its fetch failed.
+
+    The SDL is fetched together with ``schema`` so both come from the same
+    upstream state, but it is the one field allowed to be absent: it has a
+    single reader, :func:`get_cached_graphql_sdl`, which fills it lazily
+    under the cache lock. ``schema`` itself is never optional — every
+    structured-schema tool depends on it.
+    """
     fetched_at_monotonic: float
     consecutive_failures: int = 0
     last_attempt_monotonic: float = 0.0
@@ -226,12 +239,24 @@ async def _fetch_graphql_sdl(client: InfrahubClient, branch: str) -> str:
 async def _full_fetch(
     client: InfrahubClient,
     branch: str,
-) -> tuple[BranchSchema, str]:
-    """Fetch the full BranchSchema and the GraphQL SDL for a branch.
+) -> tuple[BranchSchema, str | None]:
+    """Fetch the full BranchSchema and, best-effort, the GraphQL SDL for a branch.
 
     Returns a ``(branch_schema, graphql_sdl)`` tuple. The two fetches
     happen sequentially — they are different endpoints and a small
     sequence keeps error attribution clear.
+
+    A structured-schema failure propagates: nothing useful can be served
+    without it. An SDL failure does not. ``/schema.graphql`` is a heavier
+    endpoint with exactly one consumer (``infrahub://graphql-schema``), and
+    letting it fail the whole fetch would take down every node and schema
+    tool — and, on a cold cache, arm the cold-failure throttle — for an
+    outage those tools never depend on. The SDL comes back as ``None`` with
+    a WARN log instead, and :func:`get_cached_graphql_sdl` fills it lazily
+    on its next read. The SDL is still fetched *here* on the healthy path
+    rather than only lazily so it stays paired with the structured schema
+    from the same upstream state; a lazy-only SDL could trail a hash flip
+    by up to a skip-window.
 
     The SDK's public ``client.schema.fetch()`` returns only the kinds
     dict (``dict[str, MainSchemaTypes]``), not the ``BranchSchema``
@@ -242,7 +267,16 @@ async def _full_fetch(
     TODO: swap for a public SDK accessor when one lands.
     """
     branch_schema: BranchSchema = await client.schema._fetch(branch=branch)  # noqa: SLF001  # pylint: disable=protected-access
-    graphql_sdl = await _fetch_graphql_sdl(client, branch)
+    graphql_sdl: str | None
+    try:
+        graphql_sdl = await _fetch_graphql_sdl(client, branch)
+    except Exception as exc:  # noqa: BLE001
+        graphql_sdl = None
+        logger.warning(
+            "schema_cache_sdl_fetch_failure branch=%s exception=%r",
+            branch,
+            exc,
+        )
     return branch_schema, graphql_sdl
 
 
@@ -318,15 +352,18 @@ async def _cold_fetch_under_lock(
 ) -> CachedSchemaEntry:
     """Cold-fetch path: no entry exists for *branch*. Caller holds the lock.
 
-    A failed fetch is remembered in ``AppContext.schema_cache_cold_failures``
-    so reads landing inside the probe-throttle window fail fast instead of
-    each paying an upstream timeout under the lock (see
-    :func:`_raise_if_cold_fetch_throttled`); the failure itself still
-    propagates unchanged to the caller. ``BranchNotFoundError`` is not
-    remembered: an unknown branch is a fast, caller-specific answer rather
-    than an upstream-health signal, and it must keep surfacing as
-    ``BranchNotFoundError``. Every other failure — network, timeout, 4xx,
-    5xx — is treated uniformly, matching the revalidation path (ADR 0009).
+    A failed structured-schema fetch is remembered in
+    ``AppContext.schema_cache_cold_failures`` so reads landing inside the
+    probe-throttle window fail fast instead of each paying an upstream
+    timeout under the lock (see :func:`_raise_if_cold_fetch_throttled`); the
+    failure itself still propagates unchanged to the caller.
+    ``BranchNotFoundError`` is not remembered: an unknown branch is a fast,
+    caller-specific answer rather than an upstream-health signal, and it
+    must keep surfacing as ``BranchNotFoundError``. Every other failure —
+    network, timeout, 4xx, 5xx — is treated uniformly, matching the
+    revalidation path (ADR 0009). An SDL-only failure never reaches this
+    handler: :func:`_full_fetch` absorbs it and the entry is stored with
+    ``graphql_sdl=None``, so the marker is not armed for it.
     """
     try:
         branch_schema, graphql_sdl = await _full_fetch(client, branch)
@@ -367,7 +404,10 @@ async def _revalidate_under_lock(
     On hash match: refresh the entry's ``fetched_at_monotonic`` and zero
     its ``consecutive_failures`` (cache is current).
 
-    On hash differ: full refetch and replace the entry.
+    On hash differ: full refetch and replace the entry. Only a
+    structured-schema failure counts as a failed refetch below; an SDL-only
+    failure keeps the fresh structured schema and stores the entry with
+    ``graphql_sdl=None`` for :func:`get_cached_graphql_sdl` to fill later.
 
     On 400 or 404 from ``/summary`` (branch gone): evict the entry and
     raise the public :class:`~infrahub_sdk.exceptions.BranchNotFoundError`.
@@ -678,12 +718,41 @@ async def get_cached_branch_schema(ctx: Context, branch: str | None = None) -> B
     return entry.schema
 
 
+async def _fill_graphql_sdl(*, app_ctx: AppContext, client: InfrahubClient, branch: str) -> str:
+    """Fetch and store the SDL for an entry whose ``graphql_sdl`` is ``None``.
+
+    Runs under the cache lock so a burst of ``infrahub://graphql-schema``
+    reads behind a missing SDL costs one upstream fetch, and re-reads the
+    entry first because a waiter ahead in the queue may have filled it.
+    Every writer of ``schema_cache`` holds the same lock, so the entry read
+    here is the one still stored when the fetch returns; the identity check
+    before storing makes that invariant explicit rather than assumed and
+    keeps a replaced or evicted entry from being resurrected.
+
+    A failure propagates to the caller — the SDL resource fails on its own —
+    and is deliberately not counted toward ``consecutive_failures`` or the
+    breaker: the structured schema was just served successfully, so this
+    says nothing about its freshness.
+    """
+    async with app_ctx._schema_cache_lock:  # noqa: SLF001
+        entry = app_ctx.schema_cache.get(branch)
+        if entry is not None and entry.graphql_sdl is not None:
+            return entry.graphql_sdl
+        sdl = await _fetch_graphql_sdl(client, branch)
+        if entry is not None and app_ctx.schema_cache.get(branch) is entry:
+            app_ctx.schema_cache[branch] = replace(entry, graphql_sdl=sdl)
+        return sdl
+
+
 async def get_cached_graphql_sdl(ctx: Context, branch: str | None = None) -> str:
     """Return the cached GraphQL SDL for *branch* (default branch when None).
 
     Shares the same hash gate as :func:`get_cached_branch_schema`; the
-    SDL is invalidated together with the structured schema. When
-    ``schema_cache_enabled`` is False, fetches fresh every call.
+    SDL is invalidated together with the structured schema. When the
+    entry's SDL is absent — its fetch failed while the structured schema
+    succeeded — it is filled here under the cache lock, and a failure of
+    that fill raises for this resource only. When ``schema_cache_enabled``
+    is False, fetches fresh every call.
     """
     app_ctx = _get_app_ctx(ctx)
     if not app_ctx.config.schema_cache_enabled:
@@ -692,7 +761,9 @@ async def get_cached_graphql_sdl(ctx: Context, branch: str | None = None) -> str
         return await _fetch_graphql_sdl(client, resolved_branch)
 
     entry = await _ensure_entry(ctx=ctx, branch=branch, force_revalidate=False)
-    return entry.graphql_sdl
+    if entry.graphql_sdl is not None:
+        return entry.graphql_sdl
+    return await _fill_graphql_sdl(app_ctx=app_ctx, client=get_client(ctx), branch=entry.branch)
 
 
 async def get_cached_kind(ctx: Context, kind: str, branch: str | None = None) -> Any:
