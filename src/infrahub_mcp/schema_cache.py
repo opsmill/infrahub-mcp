@@ -29,6 +29,13 @@ schema hash returned from ``GET /api/schema/summary``:
   behind their own upstream timeout. A failed *cold* fetch is remembered
   the same way, so an empty cache during an outage costs one upstream
   timeout per window rather than one per request.
+- A kind absent from the cached ``BranchSchema`` forces one revalidation
+  regardless of the skip-window, so a kind added upstream is found before
+  the window elapses. Forced probes are debounced to one per
+  ``_FORCED_REVALIDATE_DEBOUNCE_SECONDS`` per branch — any attempt counts,
+  successful or failed — and honour the failure throttle above, so a tool
+  call resolving several unknown kinds, or a burst of misses queued behind
+  one probe, costs one ``/summary`` round-trip rather than one per kind.
 - The GraphQL SDL (``GET /schema.graphql``) is fetched together with the
   structured schema so the two describe the same upstream state, but its
   failure is not fatal: the entry is stored with ``graphql_sdl=None`` and
@@ -97,7 +104,9 @@ class CachedSchemaEntry:
     whether or not the breaker has tripped: while the last attempt failed
     less than ``min(schema_cache_ttl, 30 s)`` ago, reads serve the stale
     entry (breaker not tripped) or fail fast (breaker tripped) instead of
-    each queueing on the cache lock behind its own upstream timeout.
+    each queueing on the cache lock behind its own upstream timeout. On its
+    own it also debounces the revalidations a kind miss forces (see
+    :data:`_FORCED_REVALIDATE_DEBOUNCE_SECONDS`).
     """
     circuit_break_recorded: bool = False
     """Whether the current broken streak has already been counted.
@@ -183,6 +192,35 @@ disables the throttle entirely.
 def _recovery_probe_seconds(config: ServerConfig) -> int:
     """Return the probe-throttle window applied after a failed upstream attempt."""
     return min(config.schema_cache_ttl, _MAX_RECOVERY_PROBE_SECONDS)
+
+
+_FORCED_REVALIDATE_DEBOUNCE_SECONDS = 2
+"""Debounce, in seconds, on the revalidations a kind miss forces.
+
+:func:`get_cached_kind` bypasses the skip-window when a kind is absent from
+the cached ``BranchSchema``, so a kind added upstream is found before the
+window elapses. Undebounced, every miss paid a ``/summary`` round-trip under
+the cache lock even when the previous miss had just proved the cache
+current. Misses are rare — ``BranchSchema.nodes`` already folds nodes,
+generics, profiles and templates together, so a cached kind's relationship
+peers are present — but they cluster: an agent retrying a mistyped kind,
+``schema.py`` gathering ``get_cached_kind`` over peers and ``tools/nodes.py``
+looping over them when a peer really is unknown, or concurrent misses queued
+behind one probe. Two seconds coalesces one call's fan-out and a short retry
+burst while staying far below the skip-window, so the case the forced probe
+exists for still works: a miss more than 2 s after the previous attempt
+probes, and a kind added upstream is found then. The value is deliberately
+independent of ``schema_cache_ttl`` — with the skip-window off, the
+``get_cached_branch_schema`` read that precedes every miss has itself just
+probed, which makes the forced probe redundant anyway. Any attempt arms the
+debounce; a failed one also arms the longer failure throttle, which forced
+reads honour as well.
+"""
+
+
+def _is_forced_probe_debounced(entry: CachedSchemaEntry, *, now: float) -> bool:
+    """Return True when any upstream attempt for *entry* landed inside the forced-revalidation debounce."""
+    return (now - entry.last_attempt_monotonic) < _FORCED_REVALIDATE_DEBOUNCE_SECONDS
 
 
 def _get_app_ctx(ctx: Context) -> AppContext:
@@ -559,9 +597,16 @@ def _try_serve_from_cache(
     Returns the entry if it is within the skip-window (``hit``), or if it is
     past the skip-window but its last probe failed inside the probe-throttle
     window (served stale, ``stale_hit``). Returns ``None`` if the caller
-    must take the lock: cold cache, ``force_revalidate``, past the
-    skip-window with no recent failed probe, or a broken entry due for a
-    recovery probe.
+    must take the lock: cold cache, past the skip-window with no recent
+    failed probe, or a broken entry due for a recovery probe.
+
+    ``force_revalidate`` — a kind miss in :func:`get_cached_kind` — swaps the
+    skip-window for the much shorter forced-revalidation debounce: the entry
+    is served (``hit``) when any upstream attempt landed less than
+    :data:`_FORCED_REVALIDATE_DEBOUNCE_SECONDS` ago, otherwise the caller
+    must probe. It bypasses the skip-window, not the probe budget: the
+    failure throttle and the breaker apply to a forced read exactly as to a
+    regular one, since a missing kind says nothing about upstream health.
 
     Raises ``ToolError`` when a probe would be pointless: a cold cache whose
     last fetch failed inside the window, or a circuit-broken entry whose
@@ -572,15 +617,15 @@ def _try_serve_from_cache(
     once Infrahub recovers.
 
     :func:`_ensure_entry` calls this again after acquiring the lock, so
-    waiters queued behind a failing probe observe its failure and serve
-    stale (or fail fast) instead of repeating it.
+    waiters queued behind a probe observe its outcome instead of repeating
+    it: a failure serves them stale (or fails fast), and a forced probe's
+    fresh attempt debounces the forced reads behind it.
     """
     config = app_ctx.config
     now = _now()
     entry = app_ctx.schema_cache.get(resolved_branch)
     if entry is None:
         _raise_if_cold_fetch_throttled(app_ctx, branch=resolved_branch, now=now)
-    if entry is None or force_revalidate:
         return None
 
     throttle_seconds = _recovery_probe_seconds(config)
@@ -594,7 +639,12 @@ def _try_serve_from_cache(
             _raise_schema_unavailable(resolved_branch, _CIRCUIT_BREAK_MSG)
         return None
 
-    if _is_within_skip_window(entry, skip_window_seconds=config.schema_cache_ttl, now=now):
+    current = (
+        _is_forced_probe_debounced(entry, now=now)
+        if force_revalidate
+        else _is_within_skip_window(entry, skip_window_seconds=config.schema_cache_ttl, now=now)
+    )
+    if current:
         if metrics is not None:
             metrics.record_schema_cache_event("hit")
         _install_into_client(client, entry)
@@ -603,10 +653,11 @@ def _try_serve_from_cache(
     if entry.consecutive_failures and _is_retry_throttled(
         entry.last_attempt_monotonic, throttle_seconds=throttle_seconds, now=now
     ):
-        # Past the skip-window, but the last probe failed moments ago: probing
-        # again would only serialize this read behind another upstream timeout.
-        # Serve stale — the documented transient-failure semantics — and let the
-        # first read to land after the window do the next probe.
+        # Past the skip-window (or the forced debounce), but the last probe
+        # failed moments ago: probing again would only serialize this read
+        # behind another upstream timeout. Serve stale — the documented
+        # transient-failure semantics — and let the first read to land after
+        # the window do the next probe.
         if metrics is not None:
             metrics.record_schema_cache_event("stale_hit")
         _install_into_client(client, entry)
@@ -625,6 +676,12 @@ async def _ensure_entry(
     Honors skip-window TTL, hash-validated revalidation, single-flight
     via the cache lock, per-branch probe throttling after a failure (warm
     or cold), circuit-break thresholds, and branch-gone evicts.
+
+    ``force_revalidate`` replaces the skip-window with the forced-revalidation
+    debounce (see :data:`_FORCED_REVALIDATE_DEBOUNCE_SECONDS`) and leaves
+    every other rule in place. The re-check under the lock makes forced reads
+    single-flight too: the first miss to take the lock probes, and the misses
+    queued behind it are served by that probe's attempt.
     """
     app_ctx = _get_app_ctx(ctx)
     resolved_branch = await _resolve_branch(ctx, branch)
@@ -799,13 +856,23 @@ async def get_cached_kind(ctx: Context, kind: str, branch: str | None = None) ->
     :class:`SchemaNotFoundError`. This catches the case where the kind
     was added upstream after the cache was populated but before the
     skip-window elapsed.
+
+    The forced revalidation is debounced: when any upstream attempt for the
+    branch landed less than :data:`_FORCED_REVALIDATE_DEBOUNCE_SECONDS` ago,
+    or its last attempt failed inside the probe-throttle window, the cached
+    entry is used as-is and the miss raises without going upstream. A tool
+    call that resolves several unknown kinds — ``schema.py`` gathers this
+    over a kind's relationship peers, ``tools/nodes.py`` loops over them —
+    therefore costs at most one ``/summary`` round-trip, as does a burst of
+    misses for a mistyped kind.
     """
     schema = await get_cached_branch_schema(ctx, branch=branch)
     nodes = schema.nodes
     if kind in nodes:
         return nodes[kind]
 
-    # Lazy revalidation: kind absent, the cache may be stale.
+    # Lazy revalidation: kind absent, the cache may be stale. Debounced per
+    # branch — see _FORCED_REVALIDATE_DEBOUNCE_SECONDS.
     app_ctx = _get_app_ctx(ctx)
     if not app_ctx.config.schema_cache_enabled:
         # Caching off — defer to the SDK's regular error path.

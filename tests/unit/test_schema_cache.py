@@ -535,6 +535,212 @@ class TestUS2LazyOnMissingKind:
         mock_client.schema._fetch.assert_awaited_once()
 
 
+class _FakeClock:
+    """Controllable stand-in for ``schema_cache._now``."""
+
+    def __init__(self) -> None:
+        self.now = 1_000.0
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+@pytest.fixture
+def clock(monkeypatch: pytest.MonkeyPatch) -> _FakeClock:
+    fake = _FakeClock()
+    monkeypatch.setattr(schema_cache, "_now", lambda: fake.now)
+    return fake
+
+
+def _entry(
+    schema: MagicMock,
+    *,
+    fetched_at_monotonic: float,
+    last_attempt_monotonic: float,
+    consecutive_failures: int = 0,
+) -> CachedSchemaEntry:
+    """A warm ``main`` entry with explicit success and attempt timestamps."""
+    return CachedSchemaEntry(
+        branch="main",
+        schema=schema,
+        schema_hash="H1",
+        graphql_sdl="sdl",
+        fetched_at_monotonic=fetched_at_monotonic,
+        consecutive_failures=consecutive_failures,
+        last_attempt_monotonic=last_attempt_monotonic,
+    )
+
+
+class TestForcedRevalidationDebounce:
+    """A kind miss bypasses the skip-window, not the probe budget.
+
+    Before the debounce every miss probed ``/summary`` under the cache lock,
+    so a tool call resolving several unknown kinds — or a burst of misses for
+    a mistyped kind — paid one round-trip per kind even though the first had
+    just proved the cache current.
+    """
+
+    @pytest.mark.anyio
+    async def test_misses_within_the_debounce_share_one_probe(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        schema = _make_branch_schema(schema_hash="H1", kinds=["InfraDevice"])
+        app_ctx.schema_cache["main"] = _entry(
+            schema, fetched_at_monotonic=clock.now - 10, last_attempt_monotonic=clock.now - 10
+        )
+        mock_client._get.return_value = _make_response(json_body={"main": "H1"})
+
+        with pytest.raises(SchemaNotFoundError):
+            await get_cached_kind(mock_ctx, kind="GhostKind")
+        clock.advance(1)
+        with pytest.raises(SchemaNotFoundError):
+            await get_cached_kind(mock_ctx, kind="OtherGhost")
+
+        mock_client._get.assert_awaited_once()  # the second miss reused the first probe
+        mock_client.schema._fetch.assert_not_awaited()
+
+    @pytest.mark.anyio
+    async def test_miss_past_the_debounce_probes_again(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        schema = _make_branch_schema(schema_hash="H1", kinds=["InfraDevice"])
+        app_ctx.schema_cache["main"] = _entry(
+            schema, fetched_at_monotonic=clock.now - 10, last_attempt_monotonic=clock.now - 10
+        )
+        mock_client._get.return_value = _make_response(json_body={"main": "H1"})
+
+        with pytest.raises(SchemaNotFoundError):
+            await get_cached_kind(mock_ctx, kind="GhostKind")
+        clock.advance(schema_cache._FORCED_REVALIDATE_DEBOUNCE_SECONDS)
+        with pytest.raises(SchemaNotFoundError):
+            await get_cached_kind(mock_ctx, kind="GhostKind")
+
+        assert mock_client._get.await_count == 2
+
+    @pytest.mark.anyio
+    async def test_kind_added_upstream_is_found_on_the_first_miss_past_the_debounce(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        """The case the forced probe exists for survives the debounce, well inside the skip-window."""
+        old_schema = _make_branch_schema(schema_hash="H1", kinds=["InfraDevice"])
+        new_schema = _make_branch_schema(schema_hash="H2", kinds=["InfraDevice", "NewKind"])
+        # Populated just now: the attempt that populated it is inside the debounce.
+        app_ctx.schema_cache["main"] = _entry(
+            old_schema, fetched_at_monotonic=clock.now, last_attempt_monotonic=clock.now
+        )
+        mock_client._get.return_value = _make_response(json_body={"main": "H2"})
+        mock_client.schema._fetch.return_value = new_schema
+
+        clock.advance(1)
+        with pytest.raises(SchemaNotFoundError):  # debounced: served as-is, no probe yet
+            await get_cached_kind(mock_ctx, kind="NewKind")
+        mock_client._get.assert_not_awaited()
+
+        clock.advance(schema_cache._FORCED_REVALIDATE_DEBOUNCE_SECONDS)  # still 27 s inside the skip-window
+        kind = await get_cached_kind(mock_ctx, kind="NewKind")
+
+        assert kind is new_schema.nodes["NewKind"]
+        mock_client._get.assert_awaited_once()
+        mock_client.schema._fetch.assert_awaited_once()
+
+    @pytest.mark.anyio
+    async def test_concurrent_misses_behind_one_probe_share_it(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        """``schema.py`` gathers ``get_cached_kind`` over a kind's peers: one probe for the whole fan-out."""
+        schema = _make_branch_schema(schema_hash="H1", kinds=["InfraDevice"])
+        app_ctx.schema_cache["main"] = _entry(
+            schema, fetched_at_monotonic=clock.now - 10, last_attempt_monotonic=clock.now - 10
+        )
+        release = asyncio.Event()
+
+        async def slow_summary(*_args: object, **_kwargs: object) -> MagicMock:
+            await release.wait()
+            return _make_response(json_body={"main": "H1"})
+
+        mock_client._get.side_effect = slow_summary
+
+        async def miss(kind: str) -> str | None:
+            try:
+                await get_cached_kind(mock_ctx, kind=kind)
+            except SchemaNotFoundError:
+                return kind
+            return None
+
+        tasks = [asyncio.create_task(miss(f"Ghost{i}")) for i in range(5)]
+        await asyncio.sleep(0)  # park every miss on the lock behind the first probe
+        release.set()
+        results = await asyncio.gather(*tasks)
+
+        assert results == [f"Ghost{i}" for i in range(5)]
+        assert mock_client._get.await_count == 1, (
+            f"expected one probe for the fan-out, got {mock_client._get.await_count}"
+        )
+
+    @pytest.mark.anyio
+    async def test_miss_honours_the_failure_throttle(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        """A missing kind says nothing about upstream health: no re-probe inside the throttle window."""
+        schema = _make_branch_schema(schema_hash="H1", kinds=["InfraDevice"])
+        app_ctx.schema_cache["main"] = _entry(
+            schema,
+            fetched_at_monotonic=clock.now - 100,  # past the skip-window
+            consecutive_failures=1,
+            last_attempt_monotonic=clock.now - 5,  # failed probe: past the debounce, inside the 30 s throttle
+        )
+        mock_client._get.side_effect = httpx.NetworkError("down")
+
+        with pytest.raises(SchemaNotFoundError):
+            await get_cached_kind(mock_ctx, kind="GhostKind")
+
+        mock_client._get.assert_not_awaited()
+        assert app_ctx.schema_cache["main"].consecutive_failures == 1
+
+    @pytest.mark.anyio
+    async def test_forced_read_on_a_tripped_entry_fails_fast_inside_the_throttle(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        """The breaker's fail-fast applies to forced reads too; before, they probed regardless."""
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = _entry(
+            schema,
+            fetched_at_monotonic=clock.now - 100,
+            consecutive_failures=10,  # tripped
+            last_attempt_monotonic=clock.now - 5,
+        )
+        mock_client._get.side_effect = httpx.NetworkError("down")
+
+        with pytest.raises(ToolError, match="circuit-break"):
+            await schema_cache._ensure_entry(ctx=mock_ctx, branch=None, force_revalidate=True)
+
+        mock_client._get.assert_not_awaited()
+
+
 # ---------------------------------------------------------------------------
 # US3 — Resilience
 # ---------------------------------------------------------------------------
