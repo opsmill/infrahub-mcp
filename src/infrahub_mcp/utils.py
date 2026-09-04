@@ -5,7 +5,7 @@ import string
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn
 from weakref import WeakKeyDictionary
 
 from fastmcp import Context
@@ -26,6 +26,9 @@ from infrahub_mcp.auth import (
 from infrahub_mcp.config import ServerConfig, env_get
 from infrahub_mcp.constants import AUTH_MODE_BASIC_PASSTHROUGH, AUTH_MODE_TOKEN_PASSTHROUGH
 
+if TYPE_CHECKING:
+    from infrahub_mcp.schema_cache import CachedSchemaEntry
+
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 
 
@@ -33,7 +36,7 @@ _UNWRITABLE_STATUSES = frozenset({BranchStatus.MERGED, BranchStatus.DELETING})
 
 
 @dataclass
-class AppContext:
+class AppContext:  # pylint: disable=too-many-instance-attributes  # context aggregate, not behaviour
     """Application context shared for the lifetime of the MCP server process.
 
     The active session branch is tracked **per MCP session/connection**, not
@@ -50,6 +53,16 @@ class AppContext:
     _session_branches: WeakKeyDictionary[object, str] = field(default_factory=WeakKeyDictionary)
     _session_locks: WeakKeyDictionary[object, asyncio.Lock] = field(default_factory=WeakKeyDictionary)
     _session_locks_guard: asyncio.Lock = field(default_factory=asyncio.Lock)
+    schema_cache: dict[str, "CachedSchemaEntry"] = field(default_factory=dict)
+    schema_cache_cold_failures: dict[str, float] = field(default_factory=dict)
+    """Branch name → monotonic time of the last failed *cold* schema fetch.
+
+    A branch listed here fails fast for ``min(schema_cache_ttl, 30 s)`` after
+    the failure instead of taking the cache lock and probing again; the next
+    successful cold fetch removes it. Kept apart from ``schema_cache`` so
+    ``CachedSchemaEntry.schema`` stays non-optional for every reader.
+    """
+    _schema_cache_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 def get_client(ctx: Context) -> InfrahubClient:

@@ -8,7 +8,8 @@ from fastmcp.exceptions import ResourceError
 from infrahub_sdk.exceptions import BranchNotFoundError, SchemaNotFoundError
 
 from infrahub_mcp.schema import get_schema_catalog, get_schema_detail
-from infrahub_mcp.utils import get_client, get_config
+from infrahub_mcp.schema_cache import get_cached_graphql_sdl
+from infrahub_mcp.utils import get_config
 
 mcp: FastMCP = FastMCP(name="Infrahub Schema Resources")
 
@@ -25,10 +26,8 @@ mcp: FastMCP = FastMCP(name="Infrahub Schema Resources")
 )
 async def schema_catalog(ctx: Context) -> str:
     """Return the complete non-internal schema kind catalog."""
-    client = get_client(ctx)
-
     try:
-        result = await get_schema_catalog(client)
+        result = await get_schema_catalog(ctx)
     except BranchNotFoundError as exc:
         msg = f"Branch not found: {exc}"
         raise ResourceError(msg) from exc
@@ -52,11 +51,10 @@ async def schema_catalog(ctx: Context) -> str:
 )
 async def schema_kind_detail(kind: str, ctx: Context) -> str:
     """Return full schema definition and available filters for *kind* encoded as TOON."""
-    client = get_client(ctx)
     config = get_config(ctx)
 
     try:
-        payload = await get_schema_detail(client, kind=kind, expand_peers=config.schema_expand_peers)
+        payload = await get_schema_detail(ctx, kind=kind, expand_peers=config.schema_expand_peers)
     except SchemaNotFoundError as exc:
         msg = f"Schema not found for kind '{kind}'. Read infrahub://schema to list valid kind names."
         raise ResourceError(msg) from exc
@@ -74,10 +72,5 @@ async def schema_kind_detail(kind: str, ctx: Context) -> str:
     mime_type="text/plain",
 )
 async def graphql_schema(ctx: Context) -> str:
-    """Return the raw GraphQL SDL from Infrahub."""
-    client = get_client(ctx)
-    # infrahub_sdk has no public API to fetch the raw GraphQL SDL;
-    # using private _get() as a workaround.
-    # TODO: open an issue with infrahub_sdk maintainers requesting a public schema-retrieval method.
-    resp = await client._get(url=f"{client.address}/schema.graphql")  # noqa: SLF001  # pylint: disable=protected-access
-    return resp.text
+    """Return the raw GraphQL SDL from Infrahub (cached)."""
+    return await get_cached_graphql_sdl(ctx)

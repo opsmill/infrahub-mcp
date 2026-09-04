@@ -10,23 +10,20 @@ from typing import TYPE_CHECKING, Any
 from infrahub_sdk.exceptions import SchemaNotFoundError
 
 from infrahub_mcp.constants import NAMESPACES_INTERNAL, schema_attribute_type_mapping
+from infrahub_mcp.schema_cache import get_cached_branch_schema, get_cached_kind
 
 if TYPE_CHECKING:
-    from infrahub_sdk.client import InfrahubClient
+    from fastmcp import Context
 
 
-async def get_schema_catalog(client: "InfrahubClient", branch: str | None = None) -> dict[str, str]:
-    """Return a kind-to-label mapping of all non-internal schema kinds.
-
-    Args:
-        client: Infrahub SDK client.
-        branch: Optional branch to query. Defaults to the default branch.
-
-    Returns:
-        Dict mapping kind names to human-readable labels.
-    """
-    all_schemas = await client.schema.all(branch=branch)
-    return {kind: node.label or kind for kind, node in all_schemas.items() if node.namespace not in NAMESPACES_INTERNAL}
+async def get_schema_catalog(ctx: "Context", branch: str | None = None) -> dict[str, str]:
+    """Return a kind-to-label mapping of all non-internal schema kinds."""
+    branch_schema = await get_cached_branch_schema(ctx, branch=branch)
+    return {
+        kind: node.label or kind
+        for kind, node in branch_schema.nodes.items()
+        if node.namespace not in NAMESPACES_INTERNAL
+    }
 
 
 def _shape_attribute(attr: Any) -> dict[str, Any]:
@@ -51,12 +48,13 @@ def _build_peer_schema(peer: Any) -> dict[str, Any]:
 
 
 async def get_schema_detail(
-    client: "InfrahubClient", kind: str, branch: str | None = None, expand_peers: bool = True
+    ctx: "Context", kind: str, branch: str | None = None, expand_peers: bool = True
 ) -> dict[str, Any]:
     """Return full schema detail for a specific kind.
 
     Includes attributes, relationships, and the complete filter map
-    (with filters derived from related peer schemas fetched in parallel).
+    (with filters derived from related peer schemas resolved from the
+    same cached BranchSchema).
 
     When ``expand_peers`` is ``True``, each relationship whose peer kind exists
     includes a ``peer_schema`` key holding that peer's attributes and
@@ -64,7 +62,7 @@ async def get_schema_detail(
     are not expanded further (their relationships stay as plain peer references).
 
     Args:
-        client: Infrahub SDK client.
+        ctx: FastMCP request context.
         kind: Schema kind to retrieve.
         branch: Optional branch to query.
         expand_peers: Inline one level of peer schemas on relationships.
@@ -75,7 +73,7 @@ async def get_schema_detail(
     Raises:
         SchemaNotFoundError: If the kind does not exist.
     """
-    schema = await client.schema.get(kind=kind, branch=branch)
+    schema = await get_cached_kind(ctx, kind=kind, branch=branch)
 
     filter_list: list[dict[str, str]] = [
         {
@@ -89,7 +87,7 @@ async def get_schema_detail(
 
     async def _fetch_peer(peer_kind: str) -> tuple[str, Any]:
         try:
-            return peer_kind, await client.schema.get(kind=peer_kind, branch=branch)
+            return peer_kind, await get_cached_kind(ctx, kind=peer_kind, branch=branch)
         except SchemaNotFoundError:
             return peer_kind, None
 
@@ -125,18 +123,11 @@ async def get_schema_detail(
     }
 
 
-async def get_valid_kinds_summary(client: "InfrahubClient", branch: str | None = None) -> str:
+async def get_valid_kinds_summary(ctx: "Context", branch: str | None = None) -> str:
     """Return a compact string listing all valid non-internal kinds.
 
     Intended for inclusion in error messages so agents can self-correct
     without a second tool call.
-
-    Args:
-        client: Infrahub SDK client.
-        branch: Optional branch to query.
-
-    Returns:
-        String like "Valid kinds: InfraDevice, InfraInterfaceL3, ..."
     """
-    catalog = await get_schema_catalog(client, branch=branch)
+    catalog = await get_schema_catalog(ctx, branch=branch)
     return "Valid kinds: " + ", ".join(sorted(catalog.keys()))
