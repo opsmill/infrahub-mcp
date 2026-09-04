@@ -1256,6 +1256,47 @@ class TestAuthErrorsAreCallerScoped:
             await get_cached_branch_schema(mock_ctx)  # inside the window: fail fast
         mock_client.schema._fetch.assert_awaited_once()
 
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("make_error", _AUTH_ERROR_FACTORIES)
+    async def test_lazy_sdl_fill_auth_error_reaches_the_caller_without_arming_the_sdl_throttle(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+        make_error: Callable[[], Exception],
+    ) -> None:
+        """``get_graphql_schema`` goes through ``client._get`` too: a refused ``login()`` must not stamp the shared entry."""
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=schema,
+            schema_hash="H1",
+            graphql_sdl=None,
+            fetched_at_monotonic=schema_cache._now(),
+            consecutive_failures=2,
+        )
+        mock_client.schema.get_graphql_schema.side_effect = make_error()
+
+        with caplog.at_level("WARNING", logger="infrahub_mcp.schema_cache"), pytest.raises(AuthenticationError):
+            await get_cached_graphql_sdl(mock_ctx)
+
+        entry = app_ctx.schema_cache["main"]
+        assert entry.graphql_sdl is None
+        assert entry.graphql_sdl_last_failure_monotonic is None  # the shared throttle was not armed
+        assert entry.consecutive_failures == 2
+        assert any("schema_cache_auth_error" in r.message for r in caplog.records)
+        assert not any("schema_cache_sdl_fill_failure" in r.message for r in caplog.records)
+
+        # The structured schema is unaffected and keeps being served from the cache.
+        assert await get_cached_branch_schema(mock_ctx) is schema
+        mock_client.schema._fetch.assert_not_awaited()
+
+        # The next SDL reader is not failed fast: it probes upstream with its own credential.
+        with pytest.raises(AuthenticationError):
+            await get_cached_graphql_sdl(mock_ctx)
+        assert mock_client.schema.get_graphql_schema.await_count == 2
+
 
 # ---------------------------------------------------------------------------
 # Circuit break

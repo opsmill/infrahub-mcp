@@ -49,7 +49,10 @@ schema hash returned from ``GET /api/schema/summary``:
   the structured-schema tools proceed, while ``infrahub://graphql-schema``
   fills the SDL lazily on its next read and fails alone if that fails too.
   A failed fill is throttled like any other probe: further SDL reads inside
-  ``min(schema_cache_ttl, 30 s)`` fail fast without contacting upstream.
+  ``min(schema_cache_ttl, 30 s)`` fail fast without contacting upstream. A
+  rejected credential on that fill is caller-scoped like everywhere else,
+  with one gap: a non-200 from ``/schema.graphql`` itself is the SDK's bare
+  ``ValueError`` and stays transient.
 
 See ``specs/archive/20260504-203256-schema-cache/`` for the full design.
 """
@@ -195,9 +198,13 @@ def _is_auth_error(exc: BaseException) -> bool:
       on this module's path, but the type the rest of the server already
       surfaces for a rejected credential (``InfrahubConnectionMiddleware``).
 
-    ``client.schema.get_graphql_schema`` raises a bare ``ValueError`` for any
-    non-200, so an SDL-only auth failure cannot be told from an outage and
-    :func:`_fill_graphql_sdl` handles it as transient.
+    Both shapes reach :func:`_fill_graphql_sdl` too: ``get_graphql_schema``
+    goes through the same ``client._get``, so a refused ``login()`` or
+    refresh on the way to ``/schema.graphql`` is classified here. A non-200
+    answered by ``/schema.graphql`` itself is different — the SDK raises a
+    bare ``ValueError`` for it, which cannot be typed — so an SDL-only
+    rejection (``token-passthrough``, where ``login()`` returns early) is
+    still handled as transient there.
     """
     if isinstance(exc, AuthenticationError):
         return True
@@ -958,10 +965,20 @@ async def _fill_graphql_sdl(*, app_ctx: AppContext, client: InfrahubClient, bran
     ``min(schema_cache_ttl, 30 s)`` further SDL reads fail fast without
     contacting upstream. The stamp is checked before taking the lock and
     again under it, mirroring :func:`_ensure_entry`, so readers queued behind
-    a failing fill observe its outcome instead of repeating it. The SDK's
-    ``get_graphql_schema`` raises a bare ``ValueError`` for any non-200, so a
-    rejected credential cannot be told apart here and is throttled like an
-    outage.
+    a failing fill observe its outcome instead of repeating it. A rejected
+    credential is kept off that stamp: ``get_graphql_schema`` goes through
+    ``client._get``, whose ``login()`` (``basic-passthrough``) raises
+    ``HTTPStatusError`` 401/403 or ``AuthenticationError`` when the password
+    or the refresh is refused, before ``/schema.graphql`` is even asked.
+    :func:`_is_auth_error` classifies those shapes and
+    :func:`_raise_auth_error` surfaces them to the caller with the entry
+    untouched, so one caller's bad credential does not fail everyone's SDL
+    reads fast. A non-200 answered by ``/schema.graphql`` itself is the SDK's
+    bare ``ValueError``, which cannot be typed, so a token refused by that
+    endpoint alone (``token-passthrough``, where ``login()`` returns early)
+    is still throttled like an outage — accepted, since only an entry whose
+    SDL already failed to fetch reaches this path and the cost is one extra
+    throttle window.
     """
     config = app_ctx.config
     entry = app_ctx.schema_cache.get(branch)
@@ -976,6 +993,8 @@ async def _fill_graphql_sdl(*, app_ctx: AppContext, client: InfrahubClient, bran
         try:
             sdl = await _fetch_graphql_sdl(client, branch)
         except Exception as exc:
+            if _is_auth_error(exc):
+                _raise_auth_error(exc, branch=branch)
             if entry is not None and app_ctx.schema_cache.get(branch) is entry:
                 app_ctx.schema_cache[branch] = replace(entry, graphql_sdl_last_failure_monotonic=_now())
             logger.warning("schema_cache_sdl_fill_failure branch=%s exception=%r", branch, exc)
@@ -994,8 +1013,10 @@ async def get_cached_graphql_sdl(ctx: Context, branch: str | None = None) -> str
     succeeded — it is filled here under the cache lock; a failure of that
     fill raises for this resource only and throttles further fills for
     ``min(schema_cache_ttl, 30 s)``, during which reads of this resource
-    fail fast without contacting upstream. When ``schema_cache_enabled``
-    is False, fetches fresh every call.
+    fail fast without contacting upstream — unless the fill failed on the
+    caller's credential, which raises ``AuthenticationError`` to that caller
+    and arms nothing. When ``schema_cache_enabled`` is False, fetches fresh
+    every call.
     """
     app_ctx = _get_app_ctx(ctx)
     if not app_ctx.config.schema_cache_enabled:
