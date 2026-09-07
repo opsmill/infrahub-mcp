@@ -191,7 +191,7 @@ async def node_upsert(  # pylint: disable=too-many-locals
 
     # Validate kind exists
     try:
-        schema = await get_cached_kind(ctx, kind=kind, branch=session_branch)
+        schema = await get_cached_kind(ctx, kind=kind, branch=session_branch, client=client)
     except SchemaNotFoundError:
         valid = await get_valid_kinds_summary(ctx, branch=session_branch)
         await _log_and_raise_error(
@@ -302,7 +302,7 @@ async def node_delete(
     session_branch = await get_or_create_session_branch(ctx)
 
     try:
-        schema = await get_cached_kind(ctx, kind=kind, branch=session_branch)
+        schema = await get_cached_kind(ctx, kind=kind, branch=session_branch, client=client)
     except SchemaNotFoundError:
         valid = await get_valid_kinds_summary(ctx, branch=session_branch)
         await _log_and_raise_error(

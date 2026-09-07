@@ -85,8 +85,9 @@ async def _get_total_count(
         return -1
 
 
-async def _validate_filters(
+async def _validate_filters(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # noqa: PLR0913, PLR0917
     ctx: Context,
+    client: "InfrahubClient",
     schema: MainSchemaTypesAPI,
     kind: str,
     branch: str | None,
@@ -96,6 +97,9 @@ async def _validate_filters(
 
     Args:
         ctx: MCP context for logging and error reporting.
+        client: The request's SDK client, handed to the schema-cache reads so
+            the peer-kind lookups go through — and prime — the same client
+            that runs the query afterwards.
         schema: Schema for the kind being queried.
         kind: Kind name (used in error messages).
         branch: Branch name.
@@ -116,7 +120,7 @@ async def _validate_filters(
     valid_filters: set[str] = {f"{attr.name}__value" for attr in schema.attributes}
     for rel in schema.relationships:
         try:
-            rel_schema = await get_cached_kind(ctx, kind=rel.peer, branch=branch)
+            rel_schema = await get_cached_kind(ctx, kind=rel.peer, branch=branch, client=client)
             valid_filters.update(f"{rel.name}__{attr.name}__value" for attr in rel_schema.attributes)
         except SchemaNotFoundError:
             continue
@@ -232,7 +236,7 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
     )
 
     try:
-        schema = await get_cached_kind(ctx, kind=kind, branch=branch)
+        schema = await get_cached_kind(ctx, kind=kind, branch=branch, client=client)
     except SchemaNotFoundError:
         valid = await get_valid_kinds_summary(ctx, branch=branch)
         await _log_and_raise_error(
@@ -242,7 +246,7 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
         )
 
     if filters:
-        await _validate_filters(ctx=ctx, schema=schema, kind=kind, branch=branch, filters=filters)
+        await _validate_filters(ctx=ctx, client=client, schema=schema, kind=kind, branch=branch, filters=filters)
 
     filter_kwargs = filters or {}
     total_count = await _get_total_count(client, schema.kind, branch, partial_match, **filter_kwargs)
@@ -358,7 +362,7 @@ async def search_nodes(
     await ctx.info(f"Searching {kind} nodes: request_id={req_id!r}, branch={branch!r}, query_len={len(query)}")
 
     try:
-        schema = await get_cached_kind(ctx, kind=kind, branch=branch)
+        schema = await get_cached_kind(ctx, kind=kind, branch=branch, client=client)
     except SchemaNotFoundError:
         valid = await get_valid_kinds_summary(ctx, branch=branch)
         await _log_and_raise_error(

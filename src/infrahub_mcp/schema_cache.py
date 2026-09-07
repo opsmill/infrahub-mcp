@@ -14,9 +14,15 @@ schema hash returned from ``GET /api/schema/summary``:
 - Past the skip-window, the helper fetches the cheap ``/summary`` payload
   and compares ``main`` against the cached ``BranchSchema.hash``. Match
   extends the cache; differ triggers a full refetch.
-- A successful fetch also primes the fresh client's per-client cache via
-  ``client.schema.set_cache(...)`` so subsequent ``client.schema.*``
-  calls inside the same request hit the SDK cache.
+- A read also primes the SDK's per-client cache of the ``InfrahubClient``
+  it was handed via ``client.schema.set_cache(...)``, so that client's
+  subsequent ``client.schema.*`` calls inside the same request hit the SDK
+  cache. The public helpers take the caller's client for that reason: a
+  tool that goes on to query data through the SDK passes its own, because
+  in passthrough modes a client the helper built for itself would be
+  primed and then dropped on return, while the tool's own client — built a
+  moment earlier by the same ``get_client(ctx)`` — still held an empty SDK
+  cache and refetched ``/api/schema`` on its first ``client.filters``.
 - Transient revalidation/refetch failures serve stale + emit a WARN log;
   configurable circuit-break thresholds bound how long stale data may be
   served before reads fail closed. A broken entry is not terminal: reads
@@ -790,6 +796,7 @@ def _try_serve_from_cache(
 async def _ensure_entry(
     *,
     ctx: Context,
+    client: InfrahubClient,
     branch: str | None,
     force_revalidate: bool,
 ) -> CachedSchemaEntry:
@@ -798,6 +805,12 @@ async def _ensure_entry(
     Honors skip-window TTL, hash-validated revalidation, single-flight
     via the cache lock, per-branch probe throttling after a failure (warm
     or cold), circuit-break thresholds, and branch-gone evicts.
+
+    *client* does every upstream call and is the client whose SDK cache is
+    primed with the entry served. It is a parameter rather than a
+    ``get_client(ctx)`` call here on purpose: the public helpers resolve one
+    client per request — the caller's when it passes one — and hand it down,
+    so the client that gets primed is the one the tool goes on to use.
 
     ``force_revalidate`` replaces the skip-window with the forced-revalidation
     debounce (see :data:`_FORCED_REVALIDATE_DEBOUNCE_SECONDS`) and leaves
@@ -809,7 +822,6 @@ async def _ensure_entry(
     resolved_branch = await _resolve_branch(ctx, branch)
     config = app_ctx.config
     metrics = _get_metrics()
-    client = get_client(ctx)
 
     hot_entry = _try_serve_from_cache(
         app_ctx=app_ctx,
@@ -894,15 +906,32 @@ async def _sdk_cached_branch_schema(client: InfrahubClient, branch: str) -> Bran
     return branch_schema
 
 
-async def get_cached_branch_schema(ctx: Context, branch: str | None = None) -> BranchSchema:
+async def get_cached_branch_schema(
+    ctx: Context,
+    branch: str | None = None,
+    *,
+    client: InfrahubClient | None = None,
+) -> BranchSchema:
     """Return the cached ``BranchSchema`` for *branch* (default branch when None).
 
-    Side effect: the per-request fresh ``InfrahubClient`` returned by
-    :func:`infrahub_mcp.utils.get_client` has its per-client SDK schema
-    cache populated for *branch* via ``client.schema.set_cache(...)``,
-    so subsequent ``client.schema.all(branch=...)`` and
-    ``client.schema.get(kind=..., branch=...)`` calls within this
-    request are served from the SDK's in-memory cache.
+    Side effect: *client* has its per-client SDK schema cache populated for
+    *branch* via ``client.schema.set_cache(...)``, so its subsequent
+    ``client.schema.all(branch=...)`` and ``client.schema.get(kind=...,
+    branch=...)`` calls — and the ``client.filters`` / ``all`` / ``get`` /
+    ``create`` calls that go through them — are served from the SDK's
+    in-memory cache within this request.
+
+    *client* must be the client the caller goes on to use, which is why it
+    is a parameter. In passthrough modes :func:`infrahub_mcp.utils.get_client`
+    builds a fresh ``InfrahubClient`` on every call, so a client resolved
+    here would be primed and dropped on return while the tool's own client,
+    built a moment earlier, kept its empty SDK cache and refetched
+    ``/api/schema`` on its first data call — the full fetch this cache
+    exists to avoid. A caller that never touches the SDK client afterwards
+    (``schema.py``, the resources) may omit it; the helper then resolves
+    one client itself, exactly once, and every upstream call in this read
+    goes through that one. In the shared-client auth modes both spellings
+    name the same lifespan client.
 
     When ``schema_cache_enabled`` is False, the process-wide cache is
     bypassed and only the SDK's per-client cache is used (the pre-feature
@@ -913,12 +942,12 @@ async def get_cached_branch_schema(ctx: Context, branch: str | None = None) -> B
     client is rebuilt per request, fetch once per request.
     """
     app_ctx = _get_app_ctx(ctx)
+    client = client if client is not None else get_client(ctx)
     if not app_ctx.config.schema_cache_enabled:
-        client = get_client(ctx)
         resolved_branch = await _resolve_branch(ctx, branch)
         return await _sdk_cached_branch_schema(client, resolved_branch)
 
-    entry = await _ensure_entry(ctx=ctx, branch=branch, force_revalidate=False)
+    entry = await _ensure_entry(ctx=ctx, client=client, branch=branch, force_revalidate=False)
     return entry.schema
 
 
@@ -1004,7 +1033,12 @@ async def _fill_graphql_sdl(*, app_ctx: AppContext, client: InfrahubClient, bran
         return sdl
 
 
-async def get_cached_graphql_sdl(ctx: Context, branch: str | None = None) -> str:
+async def get_cached_graphql_sdl(
+    ctx: Context,
+    branch: str | None = None,
+    *,
+    client: InfrahubClient | None = None,
+) -> str:
     """Return the cached GraphQL SDL for *branch* (default branch when None).
 
     Shares the same hash gate as :func:`get_cached_branch_schema`; the
@@ -1017,20 +1051,35 @@ async def get_cached_graphql_sdl(ctx: Context, branch: str | None = None) -> str
     caller's credential, which raises ``AuthenticationError`` to that caller
     and arms nothing. When ``schema_cache_enabled`` is False, fetches fresh
     every call.
+
+    *client* is the client every upstream call in this read goes through —
+    the hash probe or full fetch behind the entry and the lazy SDL fill
+    alike — and the one primed with the structured schema on the way; see
+    :func:`get_cached_branch_schema` for why it is the caller's to pass.
+    When omitted it is resolved once, here, and shared by both steps: the
+    fill used to resolve its own, which in ``basic-passthrough`` meant a
+    second ``InfrahubClient`` and a second ``POST /api/auth/login`` for a
+    single resource read.
     """
     app_ctx = _get_app_ctx(ctx)
+    client = client if client is not None else get_client(ctx)
     if not app_ctx.config.schema_cache_enabled:
-        client = get_client(ctx)
         resolved_branch = await _resolve_branch(ctx, branch)
         return await _fetch_graphql_sdl(client, resolved_branch)
 
-    entry = await _ensure_entry(ctx=ctx, branch=branch, force_revalidate=False)
+    entry = await _ensure_entry(ctx=ctx, client=client, branch=branch, force_revalidate=False)
     if entry.graphql_sdl is not None:
         return entry.graphql_sdl
-    return await _fill_graphql_sdl(app_ctx=app_ctx, client=get_client(ctx), branch=entry.branch)
+    return await _fill_graphql_sdl(app_ctx=app_ctx, client=client, branch=entry.branch)
 
 
-async def get_cached_kind(ctx: Context, kind: str, branch: str | None = None) -> Any:
+async def get_cached_kind(
+    ctx: Context,
+    kind: str,
+    branch: str | None = None,
+    *,
+    client: InfrahubClient | None = None,
+) -> Any:
     """Return the schema for *kind* on *branch* with lazy refresh on miss.
 
     If the kind is missing from the cached BranchSchema, force one
@@ -1047,8 +1096,16 @@ async def get_cached_kind(ctx: Context, kind: str, branch: str | None = None) ->
     over a kind's relationship peers, ``tools/nodes.py`` loops over them —
     therefore costs at most one ``/summary`` round-trip, as does a burst of
     misses for a mistyped kind.
+
+    *client* is threaded through the first read, the forced revalidation and
+    the disabled-cache fallback alike, so one client serves the whole call
+    and the one primed with the branch schema is the one the tool then
+    hands to ``client.filters`` / ``get`` / ``create``; see
+    :func:`get_cached_branch_schema` for why the node and write tools pass
+    their own. When omitted it is resolved once, here.
     """
-    schema = await get_cached_branch_schema(ctx, branch=branch)
+    client = client if client is not None else get_client(ctx)
+    schema = await get_cached_branch_schema(ctx, branch=branch, client=client)
     nodes = schema.nodes
     if kind in nodes:
         return nodes[kind]
@@ -1058,11 +1115,10 @@ async def get_cached_kind(ctx: Context, kind: str, branch: str | None = None) ->
     app_ctx = _get_app_ctx(ctx)
     if not app_ctx.config.schema_cache_enabled:
         # Caching off — defer to the SDK's regular error path.
-        client = get_client(ctx)
         resolved_branch = await _resolve_branch(ctx, branch)
         return await client.schema.get(kind=kind, branch=resolved_branch)
 
-    entry = await _ensure_entry(ctx=ctx, branch=branch, force_revalidate=True)
+    entry = await _ensure_entry(ctx=ctx, client=client, branch=branch, force_revalidate=True)
     if kind in entry.schema.nodes:
         return entry.schema.nodes[kind]
     raise SchemaNotFoundError(identifier=kind)

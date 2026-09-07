@@ -751,7 +751,7 @@ class TestForcedRevalidationDebounce:
         mock_client._get.side_effect = httpx.NetworkError("down")
 
         with pytest.raises(ToolError, match="circuit-break"):
-            await schema_cache._ensure_entry(ctx=mock_ctx, branch=None, force_revalidate=True)
+            await schema_cache._ensure_entry(ctx=mock_ctx, client=mock_client, branch=None, force_revalidate=True)
 
         mock_client._get.assert_not_awaited()
 
