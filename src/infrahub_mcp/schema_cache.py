@@ -1065,14 +1065,18 @@ async def _ensure_entry(
     In the passthrough modes a *client* not yet primed for the branch is a
     caller whose credential Infrahub has not seen this request
     (:func:`_caller_is_validated`). The hot path never serves it, so it
-    reaches the lock and probes with its own credential: a rejected one
-    raises ``AuthenticationError`` from :func:`_revalidate_under_lock` with
-    the entry untouched, an accepted one is served the entry and primed. A
-    transient failure of that probe fails closed here with ``ToolError``
-    rather than installing the stale entry — the caller was never validated,
-    and priming it would let its next read in this request pass as
-    validated — while :func:`_note_failure` has already counted the failure,
-    so a passthrough outage still trips and heals the breaker.
+    reaches the lock. With a warm entry it probes with its own credential:
+    a rejected one raises ``AuthenticationError`` from
+    :func:`_revalidate_under_lock` with the entry untouched, an accepted one
+    is served the entry and primed. A transient failure of that probe fails
+    closed here with ``ToolError`` rather than installing the stale entry —
+    the caller was never validated, and priming it would let its next read
+    in this request pass as validated — while :func:`_note_failure` has
+    already counted the failure, so a passthrough outage still trips and
+    heals the breaker. On a cold branch there is no entry to serve stale and
+    nothing to probe: :func:`_cold_fetch_under_lock` runs the full fetch
+    with the caller's client, and its failure propagates unchanged, as in
+    every mode.
     """
     app_ctx = _get_app_ctx(ctx)
     resolved_branch = await _resolve_branch(ctx, branch)

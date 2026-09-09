@@ -46,7 +46,7 @@ Introduce a process-wide, hash-validated schema cache anchored on `AppContext`, 
 ### Negative
 
 - Direct use of `client._get(/api/schema/summary)` bypasses the SDK's public surface. Mitigated by an upstream SDK PR adding `client.schema.summary()`; the call is co-located in one helper and trivially swappable.
-- Passthrough reads cost one `/summary` probe per request, serialized under the cache lock, and get no stale-serving during an Infrahub outage — an unvalidated passthrough caller fails closed where the shared-credential modes serve stale until a breaker threshold trips. The skip-window is therefore a within-request optimisation in passthrough modes rather than a cross-request one.
+- Passthrough reads cost one `/summary` probe per request, serialized under the cache lock, and stale-serving during an Infrahub outage is withheld from a caller whose credential has not been validated this request — that caller fails closed where the shared-credential modes serve stale until a breaker threshold trips. A client validated earlier in the same request is served stale like the shared-credential modes. The skip-window is therefore a within-request optimisation in passthrough modes rather than a cross-request one.
 - Configuration changes to `INFRAHUB_MCP_SCHEMA_CACHE_*` require server restart (consistent with all other `ServerConfig` fields).
 - Per-branch detail is intentionally absent from Prometheus counters to avoid cardinality blow-up from session-branch auto-creation; per-branch detail goes to WARN/ERROR logs only.
 
