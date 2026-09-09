@@ -12,7 +12,6 @@ types a non-200. The file-level ``ruff: noqa: SLF001`` is therefore intentional.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import replace
 from typing import TYPE_CHECKING, Any, NoReturn
 from unittest.mock import DEFAULT, AsyncMock, MagicMock, patch
 from urllib.parse import urlencode
@@ -246,19 +245,21 @@ class TestUS1ColdAndWarm:
         mock_metrics.record_schema_cache_event.assert_any_call("miss")
 
     @pytest.mark.anyio
-    async def test_cold_fetch_without_a_hash_falls_back_to_one_summary_probe(
+    async def test_cold_fetch_without_a_hash_stores_an_empty_hash_and_repairs_it_on_the_first_probe(
         self,
         mock_ctx: MagicMock,
         app_ctx: AppContext,
         mock_client: MagicMock,
         mock_metrics: MagicMock,
+        clock: _FakeClock,
     ) -> None:
-        """``/api/schema`` omitted ``main``: the cold path borrows the hash from ``/summary`` once.
+        """``/api/schema`` omitted ``main``: the cold entry stores ``""`` and makes no ``/summary`` call.
 
-        Without the fallback the entry is stored with ``schema_hash == ""``,
-        which no probe can match, so the first read past the skip-window
-        would pay a full refetch (the refetch path then stores the upstream
-        hash, so the cost is one refetch per cold entry, not one per read).
+        A hash probed *after* the fetch could pair a newer hash with older
+        content and hide that change from every later probe. Instead the
+        empty hash mismatches the first probe past the skip-window and the
+        refetch stores the probe's (pre-fetch) hash: one extra refetch, after
+        which the entry hash-matches like any other.
         """
         schema = _make_branch_schema(schema_hash="")  # the SDK's default when /api/schema omits ``main``
         mock_client.schema._fetch.return_value = schema
@@ -267,59 +268,36 @@ class TestUS1ColdAndWarm:
         result = await get_cached_branch_schema(mock_ctx)
 
         assert result is schema
-        assert _summary_probes(mock_client) == 1  # the fallback, during the cold fetch
-        assert app_ctx.schema_cache["main"].schema_hash == "H1"
+        assert not app_ctx.schema_cache["main"].schema_hash  # stored as "" on purpose
+        assert _summary_probes(mock_client) == 0  # no /summary probe during the cold fetch
+        mock_client.schema._fetch.assert_awaited_once_with(branch="main")
         mock_metrics.record_schema_cache_event.assert_any_call("miss")
 
-        # Past the skip-window the entry hash-matches instead of refetching.
-        entry = app_ctx.schema_cache["main"]
-        app_ctx.schema_cache["main"] = replace(entry, fetched_at_monotonic=schema_cache._now() - 100)
+        # Past the skip-window: the probe reports H1, "" mismatches, one full refetch stores H1.
+        clock.advance(31)
         mock_metrics.record_schema_cache_event.reset_mock()
 
         again = await get_cached_branch_schema(mock_ctx)
 
         assert again is schema
-        assert _summary_probes(mock_client) == 2
-        mock_client.schema._fetch.assert_awaited_once()  # the cold fetch only: no refetch
-        mock_metrics.record_schema_cache_event.assert_any_call("hash_match")
-        assert app_ctx.schema_cache["main"].schema_hash == "H1"
-
-    @pytest.mark.anyio
-    async def test_cold_fetch_hash_fallback_failure_still_serves_the_schema(
-        self,
-        mock_ctx: MagicMock,
-        app_ctx: AppContext,
-        mock_client: MagicMock,
-        mock_metrics: MagicMock,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        """A failed ``/summary`` fallback is not a failed read: the schema itself was fetched."""
-        schema = _make_branch_schema(schema_hash="")
-        mock_client.schema._fetch.return_value = schema
-
-        fallback_failure = httpx.ConnectError("down")
-
-        async def fail_summary(url: str, **_: Any) -> Any:
-            if _SUMMARY_PATH in url:
-                raise fallback_failure
-            return await mock_client.sdl_get(url=url)
-
-        mock_client._get.side_effect = fail_summary
-
-        with caplog.at_level("WARNING", logger="infrahub_mcp.schema_cache"):
-            result = await get_cached_branch_schema(mock_ctx)
-
-        assert result is schema
-        entry = app_ctx.schema_cache["main"]
-        assert not entry.schema_hash  # stored as "" like before the fallback existed
-        assert entry.graphql_sdl == "sdl"  # the SDL fetch was unaffected
-        assert entry.consecutive_failures == 0
-        assert entry.failing_since_monotonic is None
-        assert "main" not in app_ctx.schema_cache_cold_failures
         assert _summary_probes(mock_client) == 1
-        events = [call.args[0] for call in mock_metrics.record_schema_cache_event.call_args_list]
-        assert "revalidate_failure" not in events
-        assert any("schema_cache_cold_hash_fallback_failure" in r.message for r in caplog.records)
+        assert mock_client.schema._fetch.await_count == 2
+        assert app_ctx.schema_cache["main"].schema_hash == "H1"  # the probe hash, taken before the refetch
+        mock_metrics.record_schema_cache_event.assert_any_call("hash_diff")
+
+        # Past the skip-window again: the entry hash-matches and nothing is refetched.
+        clock.advance(31)
+        mock_metrics.record_schema_cache_event.reset_mock()
+
+        third = await get_cached_branch_schema(mock_ctx)
+
+        assert third is schema
+        assert _summary_probes(mock_client) == 2
+        assert mock_client.schema._fetch.await_count == 2
+        assert app_ctx.schema_cache["main"].schema_hash == "H1"
+        events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
+        assert "hash_match" in events
+        assert "hash_diff" not in events
 
     @pytest.mark.anyio
     async def test_warm_cache_within_skip_window_no_upstream_call(
