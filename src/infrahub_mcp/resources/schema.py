@@ -73,4 +73,10 @@ async def schema_kind_detail(kind: str, ctx: Context) -> str:
 )
 async def graphql_schema(ctx: Context) -> str:
     """Return the raw GraphQL SDL from Infrahub (cached)."""
-    return await get_cached_graphql_sdl(ctx)
+    try:
+        sdl = await get_cached_graphql_sdl(ctx)
+    except BranchNotFoundError as exc:
+        msg = f"Branch not found: {exc}"
+        raise ResourceError(msg) from exc
+
+    return sdl
