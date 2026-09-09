@@ -70,9 +70,10 @@ schema hash returned from ``GET /api/schema/summary``:
   fills the SDL lazily on its next read and fails alone if that fails too.
   A failed fill is throttled like any other probe: further SDL reads inside
   ``min(schema_cache_ttl, 30 s)`` fail fast without contacting upstream. A
-  rejected credential on that fill is caller-scoped like everywhere else,
-  with one gap: a non-200 from ``/schema.graphql`` itself is the SDK's bare
-  ``ValueError`` and stays transient.
+  rejected credential on that fill is caller-scoped like everywhere else:
+  the SDL is fetched through ``client._get`` with ``raise_for_status()``,
+  the same shape as the ``/summary`` probe, so a 401/403 answered by
+  ``/schema.graphql`` itself is classified and never arms the throttle.
 
 See ``specs/archive/20260504-203256-schema-cache/`` for the full design.
 """
@@ -207,7 +208,8 @@ def _is_auth_error(exc: BaseException) -> bool:
       the response, and the ``@handle_relogin`` wrapper on ``_get`` only
       retries a 401 whose body says ``Expired Signature``. The status
       therefore surfaces from ``response.raise_for_status()`` — ours in
-      :func:`_fetch_summary_hash` for ``/api/schema/summary``, the SDK's in
+      :func:`_fetch_summary_hash` for ``/api/schema/summary`` and in
+      :func:`_fetch_graphql_sdl` for ``/schema.graphql``, the SDK's in
       ``InfrahubSchemaBase._parse_schema_response`` (``schema/__init__.py``)
       for ``/api/schema`` behind ``client.schema._fetch``. With
       username/password credentials (``basic-passthrough``) ``_get`` first
@@ -219,13 +221,14 @@ def _is_auth_error(exc: BaseException) -> bool:
       on this module's path, but the type the rest of the server already
       surfaces for a rejected credential (``InfrahubConnectionMiddleware``).
 
-    Both shapes reach :func:`_fill_graphql_sdl` too: ``get_graphql_schema``
-    goes through the same ``client._get``, so a refused ``login()`` or
-    refresh on the way to ``/schema.graphql`` is classified here. A non-200
-    answered by ``/schema.graphql`` itself is different — the SDK raises a
-    bare ``ValueError`` for it, which cannot be typed — so an SDL-only
-    rejection (``token-passthrough``, where ``login()`` returns early) is
-    still handled as transient there.
+    Both shapes reach :func:`_fill_graphql_sdl` too: :func:`_fetch_graphql_sdl`
+    goes through the same ``client._get`` and calls ``raise_for_status()``
+    itself, so a refused ``login()`` or refresh on the way to
+    ``/schema.graphql`` and a 401/403 answered by ``/schema.graphql`` itself
+    (``token-passthrough``, where ``login()`` returns early) are both
+    classified here. The SDK's ``get_graphql_schema`` is deliberately not
+    used: it folds every non-200 into a bare ``ValueError`` that cannot be
+    typed, which is what used to leave an SDL-only rejection transient.
     """
     if isinstance(exc, AuthenticationError):
         return True
@@ -364,8 +367,8 @@ async def _fetch_summary_hash(client: InfrahubClient, branch: str) -> str:
     entry. Other HTTP errors propagate.
 
     The Infrahub SDK does not yet expose a public wrapper for this
-    endpoint; the call uses ``client._get`` mirroring the existing
-    pattern in ``resources/schema.py`` for the GraphQL SDL fetch.
+    endpoint; the call uses ``client._get``, the same shape as
+    :func:`_fetch_graphql_sdl` for ``/schema.graphql``.
     TODO: swap for ``client.schema.summary()`` once the upstream SDK PR
     lands.
     """
@@ -394,8 +397,27 @@ async def _fetch_graphql_sdl(client: InfrahubClient, branch: str) -> str:
     ``BranchSchema`` for the same branch, so the branch must be threaded
     through — otherwise a non-default branch's schema would be paired with
     the default branch's SDL.
+
+    The request is built here, through ``client._get``, rather than via the
+    SDK's ``client.schema.get_graphql_schema(branch=...)``, for two reasons
+    that both mirror :func:`_fetch_summary_hash`. The SDK interpolates the
+    branch into the query string raw (``?branch={branch}``); Infrahub allows
+    ``#``, ``&``, ``+``, ``%`` and ``/`` in branch names, and interpolated
+    raw, ``#`` drops the query as a fragment and ``&`` splits it, so
+    ``/schema.graphql`` would answer for the default branch and its SDL be
+    stored as this branch's — exactly the mispairing above. And the SDK
+    folds every non-200 into a bare ``ValueError``; ``raise_for_status()``
+    surfaces it as ``httpx.HTTPStatusError`` instead, so a 401/403 answered
+    by this endpoint is caller-scoped through :func:`_is_auth_error` like
+    every other probe in this module. A branch-gone 400/404 is not special
+    here: an SDL-only failure is absorbed by :func:`_full_fetch`, and the
+    lazy fill treats any non-auth error as transient. The body is returned
+    as the SDK would return it.
     """
-    return await client.schema.get_graphql_schema(branch=branch)
+    url = f"{client.address}/schema.graphql?{urlencode([('branch', branch)])}"
+    response = await client._get(url=url)  # noqa: SLF001  # pylint: disable=protected-access
+    response.raise_for_status()
+    return response.text
 
 
 async def _full_fetch(
@@ -1108,19 +1130,17 @@ async def _fill_graphql_sdl(*, app_ctx: AppContext, client: InfrahubClient, bran
     contacting upstream. The stamp is checked before taking the lock and
     again under it, mirroring :func:`_ensure_entry`, so readers queued behind
     a failing fill observe its outcome instead of repeating it. A rejected
-    credential is kept off that stamp: ``get_graphql_schema`` goes through
-    ``client._get``, whose ``login()`` (``basic-passthrough``) raises
+    credential is kept off that stamp: :func:`_fetch_graphql_sdl` goes
+    through ``client._get``, whose ``login()`` (``basic-passthrough``) raises
     ``HTTPStatusError`` 401/403 or ``AuthenticationError`` when the password
-    or the refresh is refused, before ``/schema.graphql`` is even asked.
-    :func:`_is_auth_error` classifies those shapes and
+    or the refresh is refused, and calls ``raise_for_status()`` on the
+    answer, so a 401/403 from ``/schema.graphql`` itself
+    (``token-passthrough``, where ``login()`` returns early) takes the same
+    shape. :func:`_is_auth_error` classifies both and
     :func:`_raise_auth_error` surfaces them to the caller with the entry
     untouched, so one caller's bad credential does not fail everyone's SDL
-    reads fast. A non-200 answered by ``/schema.graphql`` itself is the SDK's
-    bare ``ValueError``, which cannot be typed, so a token refused by that
-    endpoint alone (``token-passthrough``, where ``login()`` returns early)
-    is still throttled like an outage — accepted, since only an entry whose
-    SDL already failed to fetch reaches this path and the cost is one extra
-    throttle window.
+    reads fast. Every other failure — a network error, a 5xx, a branch-gone
+    400/404 — is stamped and throttled as an outage.
     """
     config = app_ctx.config
     entry = app_ctx.schema_cache.get(branch)

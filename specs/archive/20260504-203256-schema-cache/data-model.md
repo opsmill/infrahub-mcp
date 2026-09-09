@@ -129,7 +129,7 @@ Both never raise on transient revalidation failures when a cached entry exists; 
 **Internal helpers** (private to the module):
 
 - `_fetch_summary_hash(client, branch)` — calls `client._get(/api/schema/summary?branch=...)`, returns the `main` field. Raises if 404 (caller evicts).
-- `_full_fetch(client, branch)` — calls `client.schema._fetch(branch)` and `client.schema.get_graphql_schema(branch=branch)`, returning a `(BranchSchema, sdl)` tuple the caller wraps in a `CachedSchemaEntry`. The SDL fetch takes the same branch as the structured schema; the two are cached as one unit and must not disagree on branch.
+- `_full_fetch(client, branch)` — calls `client.schema._fetch(branch)` and `client.schema.get_graphql_schema(branch=branch)`, returning a `(BranchSchema, sdl)` tuple the caller wraps in a `CachedSchemaEntry`. The SDL fetch takes the same branch as the structured schema; the two are cached as one unit and must not disagree on branch. *Amended 2026-09-09*: the SDL is fetched by `_fetch_graphql_sdl(client, branch)`, which calls `client._get(/schema.graphql?branch=...)` with a URL-encoded branch and `raise_for_status()` instead of the SDK method; see ADR 0009.
 - `_install_cache_into_client(client, entry)` — calls `client.schema.set_cache(entry.schema, entry.branch)` so subsequent `client.schema.*` calls within this request hit the SDK cache.
 
 ---
