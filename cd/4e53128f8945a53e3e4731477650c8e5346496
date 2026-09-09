@@ -1,0 +1,66 @@
+src/infrahub_mcp/schema_cache.py
+  s_291b5af4103ac9::t_0b68721dda8937 26-39
+  s_291b5af4103ac9::t_889a8ce4950ceb 1036-1048
+  s_291b5af4103ac9::t_5d4383a948466c 962-971
+  s_291b5af4103ac9::t_c22548388a8b4e 792-804,828-845,852-855,861
+  s_291b5af4103ac9::t_7966ff0dba7bda 898-909
+  s_291b5af4103ac9::t_cdab62a6868b84 671-700
+  s_291b5af4103ac9::t_b99137de49855d 93
+src/infrahub_mcp/config.py
+  s_291b5af4103ac9::t_ae2473c0ca92a1 73-77
+src/infrahub_mcp/tools/schema.py
+  s_291b5af4103ac9::t_7267fef4ca808a 13
+  s_291b5af4103ac9::t_7dc43fb8e3fecd 62-65,67,73,75
+tests/unit/test_schema_cache.py
+  s_291b5af4103ac9::t_193a74a6629be5 144,146
+  s_291b5af4103ac9::t_ad45ef539f1667 328
+  s_291b5af4103ac9::t_fbe63447ab3972 1485-1803
+  s_291b5af4103ac9::t_cb174ed861c0b4 29
+src/infrahub_mcp/schema.py
+  s_291b5af4103ac9::t_b17f651c5e6b0b 14,18-37
+  s_291b5af4103ac9::t_03d1b178a8cbeb 67-72,85-88,94,102-103
+  s_291b5af4103ac9::t_fbc2dc1649bf0f 153-158,162-164,166
+  s_291b5af4103ac9::t_fa8d7bee79cb9a 117
+tests/unit/test_schema_expand.py
+  s_291b5af4103ac9::t_33cb50ec506733 6,13-14
+  s_291b5af4103ac9::t_2cefd82d1cbb75 5
+  s_291b5af4103ac9::t_54d17da0d46df7 46-48,50-54,57,62-67
+  s_291b5af4103ac9::t_d27fbeb5abd5d9 154-178
+  s_d19a60c0dfe84e::t_4a2a89a536ba9c 15
+dev/adr/0009-hash-validated-schema-cache.md
+  s_291b5af4103ac9::t_8c9aa0076979a5 30-32
+  s_291b5af4103ac9::t_887638ce591d4b 39
+  s_291b5af4103ac9::t_6472df4cf0927c 76-79
+  s_291b5af4103ac9::t_0fb26a19a9fb78 49
+src/infrahub_mcp/tools/write.py
+  s_291b5af4103ac9::t_52cc53eb6a410a 196,307
+docs/docs/references/configuration.mdx
+  s_291b5af4103ac9::t_ad7d742c044762 74
+  s_291b5af4103ac9::t_d0c949c8cc6b50 80-81
+src/infrahub_mcp/tools/nodes.py
+  s_291b5af4103ac9::t_52cc53eb6a410a 241,367
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "cd4e53128f8945a53e3e4731477650c8e5346496",
+  "prompts": {},
+  "sessions": {
+    "s_291b5af4103ac9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0abbfdb1-daab-4de7-8ff2-af1e19f5368e",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    },
+    "s_d19a60c0dfe84e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ab025d60-d399-46dc-9a2d-04400869afe0",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
