@@ -90,6 +90,7 @@ import asyncio
 import logging
 import math
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 from urllib.parse import urlencode
@@ -102,6 +103,7 @@ from infrahub_mcp.constants import AUTH_MODE_BASIC_PASSTHROUGH, AUTH_MODE_TOKEN_
 from infrahub_mcp.utils import AppContext, get_client, get_default_branch
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
     from typing import Any, NoReturn
 
     from fastmcp import Context
@@ -405,8 +407,9 @@ def _get_app_ctx(ctx: Context) -> AppContext:
     return ctx.request_context.lifespan_context
 
 
-def _branch_lock(app_ctx: AppContext, branch: str) -> asyncio.Lock:
-    """Return *branch*'s cache lock, creating it on first use.
+@asynccontextmanager
+async def _branch_lock(app_ctx: AppContext, branch: str) -> AsyncIterator[None]:
+    """Hold *branch*'s cache lock for the block, creating it on first use.
 
     The structured read (:func:`_ensure_entry`) and the lazy SDL fill
     (:func:`_fill_graphql_sdl`) for one branch take this same lock, so every
@@ -415,17 +418,43 @@ def _branch_lock(app_ctx: AppContext, branch: str) -> asyncio.Lock:
     a single cache-wide lock let one branch's cold fetch or probe queue every
     other branch's lock-path reads — healthy ones included — behind it.
 
+    A lock lives as long as it is of use. Every holder and waiter is counted
+    in ``AppContext._schema_cache_lock_holders`` from before it awaits the
+    lock until after it has released it; when the last one leaves and the
+    branch has no entry in ``schema_cache``, the lock goes too. So the lock
+    of a branch with an entry is kept for that entry's revalidations, a lock
+    somebody still waits on is kept for them, and the lock of a branch with
+    neither — an unknown branch, a branch-gone eviction, a failed cold fetch
+    — leaves nothing behind. The branch name is caller input, so without
+    that rule the map grew by one lock per distinct name ever asked for.
+    Single-flight is intact: a lock is only dropped once nobody holds or
+    waits on it, so two readers of one branch can never sit on two locks
+    and fetch it twice.
+
     No guard lock, unlike ``utils._get_session_lock``: there is no ``await``
-    between the lookup and the store, and asyncio runs one task at a time on
-    the loop, so two first readers of a branch cannot interleave here and end
-    up with two locks. Locks are never evicted (see
-    ``AppContext._schema_cache_locks``): a branch-gone evicts the entry only.
+    between the lookup and the count increment, nor between the release
+    (``asyncio.Lock.__aexit__`` does not suspend) and the decrement and drop,
+    and asyncio runs one task at a time on the loop, so neither step can
+    interleave with another reader of the same branch.
     """
-    lock = app_ctx._schema_cache_locks.get(branch)  # noqa: SLF001
+    locks = app_ctx._schema_cache_locks  # noqa: SLF001
+    holders = app_ctx._schema_cache_lock_holders  # noqa: SLF001
+    lock = locks.get(branch)
     if lock is None:
         lock = asyncio.Lock()
-        app_ctx._schema_cache_locks[branch] = lock  # noqa: SLF001
-    return lock
+        locks[branch] = lock
+    holders[branch] = holders.get(branch, 0) + 1
+    try:
+        async with lock:
+            yield
+    finally:
+        remaining = holders[branch] - 1
+        if remaining:
+            holders[branch] = remaining
+        else:
+            del holders[branch]
+            if branch not in app_ctx.schema_cache:
+                del locks[branch]
 
 
 async def _resolve_branch(ctx: Context, branch: str | None) -> str:

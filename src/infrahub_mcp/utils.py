@@ -49,7 +49,8 @@ class AppContext:  # pylint: disable=too-many-instance-attributes  # context agg
     The schema cache (``schema_cache``) is process-wide and keyed by branch
     name, and so are its locks: ``_schema_cache_locks`` holds one
     ``asyncio.Lock`` per branch, created on first use, so one branch's
-    upstream fetch never holds up another branch's reads.
+    upstream fetch never holds up another branch's reads, and dropped once
+    the branch has neither a cache entry nor a reader on the lock.
     """
 
     client: InfrahubClient | None
@@ -76,11 +77,22 @@ class AppContext:  # pylint: disable=too-many-instance-attributes  # context agg
     timeout. One lock per branch rather than one for the whole cache: with a
     single lock, a cold fetch or probe for one branch queued every other
     branch's lock-path reads, healthy ones included, behind that timeout.
-    Locks are created on first use (``schema_cache._branch_lock``) and never
-    evicted: a branch-gone drops the cache entry, not the lock. Each is one
-    small object per branch name ever read, bounded by the branch namespace,
-    and evicting one while a waiter still queues on it would let the next
-    reader create a second lock and fetch the same branch concurrently.
+    A lock is created on first use and dropped by ``schema_cache._branch_lock``
+    when its last holder or waiter (counted in ``_schema_cache_lock_holders``)
+    releases it while the branch has no entry in ``schema_cache`` — an unknown
+    branch, an evicted one, a failed cold fetch. It is kept while anyone holds
+    or waits on it, so two readers of a branch never end up on two locks and
+    fetch it twice, and while the branch has an entry, for that entry's
+    revalidations. The map is therefore bounded by the branches in the cache
+    plus those with a read in flight, not by every branch name — caller
+    input — ever asked for.
+    """
+    _schema_cache_lock_holders: dict[str, int] = field(default_factory=dict)
+    """Branch name → how many tasks currently hold or wait on that branch's lock.
+
+    Maintained only by ``schema_cache._branch_lock``: incremented before a
+    task awaits the lock, decremented once it has released it, and removed at
+    zero. A branch is listed here only while it is in ``_schema_cache_locks``.
     """
 
 

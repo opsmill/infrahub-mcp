@@ -662,6 +662,11 @@ class TestPerBranchLock:
     upstream timeouts. Single-flight *within* a branch is unchanged
     (:class:`TestSingleFlight`), and the lazy SDL fill for a branch takes
     the same lock as its structured read.
+
+    A lock lives only as long as it is of use: kept while anyone holds or
+    waits on it, or the branch has a cache entry, and dropped once the last
+    reader leaves a branch with no entry — branch names are caller input, so
+    a lock per name ever asked for grew without bound.
     """
 
     @pytest.mark.anyio
@@ -842,6 +847,161 @@ class TestPerBranchLock:
         assert await read_a is schema_a
         assert app_ctx.schema_cache["a"].graphql_sdl == "sdl-a"
         assert _summary_probes(mock_client) == 2  # one for ``b``, one for ``a`` once its lock was free
+
+    @pytest.mark.anyio
+    async def test_an_unknown_branch_leaves_no_lock_behind(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        """A read for a branch that does not exist stores no entry — and keeps no lock either."""
+        mock_client.schema._fetch.side_effect = BranchNotFoundError(identifier="ghost")
+
+        for name in ("ghost-1", "ghost-2", "ghost-3"):
+            with pytest.raises(BranchNotFoundError):
+                await get_cached_branch_schema(mock_ctx, name)
+
+        assert mock_client.schema._fetch.await_count == 3
+        assert app_ctx.schema_cache == {}
+        assert app_ctx._schema_cache_locks == {}
+        assert app_ctx._schema_cache_lock_holders == {}
+
+    @pytest.mark.anyio
+    async def test_a_branch_with_an_entry_keeps_its_lock_between_reads(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        """Once a read has stored an entry, its lock stays — the same object — for the entry's revalidations."""
+        schema = _make_branch_schema(schema_hash="H1")
+        mock_client.schema._fetch.return_value = schema
+        mock_client._get.return_value = _make_response(json_body={"main": "H1"})
+
+        assert await get_cached_branch_schema(mock_ctx, "a") is schema
+        lock = app_ctx._schema_cache_locks["a"]
+        assert app_ctx._schema_cache_lock_holders == {}  # nobody on it, yet kept: ``a`` has an entry
+
+        clock.advance(31)  # past the skip-window: the next read takes the lock and probes
+        assert await get_cached_branch_schema(mock_ctx, "a") is schema
+
+        assert _summary_probes(mock_client) == 1
+        assert app_ctx._schema_cache_locks["a"] is lock
+        assert app_ctx._schema_cache_lock_holders == {}
+
+    @pytest.mark.anyio
+    async def test_a_reader_queued_behind_a_cold_fetch_shares_its_one_lock(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        """Two cold readers of one branch: one lock, counted twice, and one upstream fetch serves both."""
+        schema = _make_branch_schema(schema_hash="H1")
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def fetch(branch: str) -> Any:
+            del branch
+            entered.set()
+            await release.wait()
+            return schema
+
+        mock_client.schema._fetch.side_effect = fetch
+
+        first = asyncio.create_task(get_cached_branch_schema(mock_ctx, "a"))
+        await entered.wait()  # the first reader holds ``a``'s lock inside its upstream fetch
+        second = asyncio.create_task(get_cached_branch_schema(mock_ctx, "a"))
+        for _ in range(3):
+            await asyncio.sleep(0)  # the second parks on that lock
+        lock = app_ctx._schema_cache_locks["a"]
+
+        assert list(app_ctx._schema_cache_locks) == ["a"]
+        assert app_ctx._schema_cache_lock_holders == {"a": 2}
+        assert not second.done()
+
+        release.set()
+        assert await first is schema
+        assert await second is schema
+        assert mock_client.schema._fetch.await_count == 1  # single-flight: the second was served by the first's fetch
+        assert app_ctx._schema_cache_locks["a"] is lock  # kept: ``a`` has an entry now
+        assert app_ctx._schema_cache_lock_holders == {}
+
+    @pytest.mark.anyio
+    async def test_a_failed_cold_fetch_keeps_the_lock_for_its_waiter_and_the_last_reader_drops_it(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        """Unknown branch, two readers: the lock outlives the first's failure while the second waits, then goes."""
+        entered = [asyncio.Event(), asyncio.Event()]
+        release = [asyncio.Event(), asyncio.Event()]
+        calls = 0
+
+        async def fetch(branch: str) -> NoReturn:
+            nonlocal calls
+            index = calls
+            calls += 1
+            entered[index].set()
+            await release[index].wait()
+            raise BranchNotFoundError(identifier=branch)
+
+        mock_client.schema._fetch.side_effect = fetch
+
+        first = asyncio.create_task(get_cached_branch_schema(mock_ctx, "ghost"))
+        await entered[0].wait()
+        second = asyncio.create_task(get_cached_branch_schema(mock_ctx, "ghost"))
+        for _ in range(3):
+            await asyncio.sleep(0)  # the second parks on ``ghost``'s lock
+        lock = app_ctx._schema_cache_locks["ghost"]
+        assert app_ctx._schema_cache_lock_holders == {"ghost": 2}
+        assert not entered[1].is_set()  # the second never fetches alongside the first
+
+        release[0].set()
+        with pytest.raises(BranchNotFoundError):
+            await first
+        await entered[1].wait()  # the second now holds the lock, inside its own fetch
+        # The first released on a branch with no entry, but the second was still queued: dropping
+        # the lock there would let a third reader create a second one and fetch ``ghost`` concurrently.
+        assert app_ctx._schema_cache_locks["ghost"] is lock
+        assert app_ctx._schema_cache_lock_holders == {"ghost": 1}
+
+        release[1].set()
+        with pytest.raises(BranchNotFoundError):
+            await second
+
+        assert mock_client.schema._fetch.await_count == 2  # the second asked upstream itself, after the first
+        assert app_ctx._schema_cache_locks == {}
+        assert app_ctx._schema_cache_lock_holders == {}
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("status_code", _BRANCH_GONE_PARAMS)
+    async def test_a_branch_gone_eviction_drops_the_lock_with_the_entry(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        status_code: int,
+    ) -> None:
+        """A branch deleted upstream leaves neither its entry nor its lock behind."""
+        schema = _make_branch_schema(schema_hash="H1")
+        mock_client.schema._fetch.return_value = schema
+        mock_client._get.return_value = _make_response(json_body={"main": "H1"})
+        assert await get_cached_branch_schema(mock_ctx, "a") is schema
+        assert "a" in app_ctx._schema_cache_locks  # the entry keeps it
+
+        app_ctx.schema_cache["a"] = _past_window_entry(schema, now=schema_cache._now(), branch="a")
+        mock_client._get.return_value = _make_response(status_code=status_code)
+
+        with pytest.raises(BranchNotFoundError):
+            await get_cached_branch_schema(mock_ctx, "a")
+
+        assert "a" not in app_ctx.schema_cache
+        assert "a" not in app_ctx._schema_cache_locks
+        assert app_ctx._schema_cache_lock_holders == {}
 
 
 # ---------------------------------------------------------------------------
