@@ -485,7 +485,7 @@ class TestPrimedClientIsTheCallers:
 
         built = _patch_fresh_client_per_call(monkeypatch, configure=configure)
         schema = _make_branch_schema(schema_hash="H1")
-        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
+        old_time = schema_cache._now() - 100  # past skip-window
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=schema,
@@ -589,7 +589,7 @@ class TestUS2Revalidation:
         mock_metrics: MagicMock,
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1")
-        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
+        old_time = schema_cache._now() - 100  # past skip-window
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=schema,
@@ -617,7 +617,7 @@ class TestUS2Revalidation:
     ) -> None:
         old_schema = _make_branch_schema(schema_hash="H1")
         new_schema = _make_branch_schema(schema_hash="H2", kinds=["NewKind"])
-        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
+        old_time = schema_cache._now() - 100  # past skip-window
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=old_schema,
@@ -650,7 +650,7 @@ class TestUS2Revalidation:
         status_code: int,
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1")
-        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
+        old_time = schema_cache._now() - 100  # past skip-window
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=schema,
@@ -1012,7 +1012,7 @@ class TestUS3Resilience:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1")
-        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
+        old_time = schema_cache._now() - 100  # past skip-window
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=schema,
@@ -1042,7 +1042,7 @@ class TestUS3Resilience:
         mock_metrics: MagicMock,
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1")
-        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
+        old_time = schema_cache._now() - 100  # past skip-window
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=schema,
@@ -1088,7 +1088,7 @@ def _past_window_entry(
     consecutive_failures: int = 0,
     last_attempt_monotonic: float = 0.0,
 ) -> CachedSchemaEntry:
-    """A warm ``main`` entry past the 30 s skip-window but well under the staleness ceiling."""
+    """A warm ``main`` entry past the 30 s skip-window."""
     return CachedSchemaEntry(
         branch="main",
         schema=schema,
@@ -2095,26 +2095,33 @@ class TestCircuitBreak:
         mock_ctx: MagicMock,
         app_ctx: AppContext,
         mock_client: MagicMock,
+        mock_metrics: MagicMock,
     ) -> None:
         app_ctx.config = _make_config(
             schema_cache_max_consecutive_failures=0,
             schema_cache_max_staleness_seconds=0,
         )
         schema = _make_branch_schema(schema_hash="H1")
+        now = schema_cache._now()
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=schema,
             schema_hash="H1",
             graphql_sdl="sdl",
-            fetched_at_monotonic=schema_cache._now() - 100_000,
+            fetched_at_monotonic=now - 100_000,
             consecutive_failures=999,
+            last_attempt_monotonic=now - 60,  # past the probe throttle, so this read probes
+            failing_since_monotonic=now - 100_000,  # a streak far past any staleness ceiling
         )
-        mock_client._get.return_value = _make_response(json_body={"main": "H1"})
+        mock_client._get.side_effect = httpx.NetworkError("still down")
 
         result = await get_cached_branch_schema(mock_ctx)
 
-        # Both thresholds disabled — serve stale even after extreme failure count and age.
+        # Both thresholds disabled — serve stale even after an extreme failure
+        # count and a streak of extreme length, and never count a trip.
         assert result is schema
+        assert app_ctx.schema_cache["main"].consecutive_failures == 1000
+        assert not any(c.args[0] == "circuit_break" for c in mock_metrics.record_schema_cache_event.call_args_list)
 
     @pytest.mark.anyio
     async def test_successful_revalidation_resets_failure_counter(
@@ -2124,7 +2131,7 @@ class TestCircuitBreak:
         mock_client: MagicMock,
     ) -> None:
         schema = _make_branch_schema(schema_hash="H1")
-        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
+        old_time = schema_cache._now() - 100  # past skip-window
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=schema,
@@ -2168,35 +2175,166 @@ class TestCircuitBreak:
         assert len(breaks) == 1, f"expected one transition, got {len(breaks)} (counting blocked reads)"
 
     @pytest.mark.anyio
-    async def test_staleness_trip_is_recorded_on_the_first_failed_probe(
+    async def test_idle_entry_is_served_stale_on_its_first_transient_failure(
         self,
         mock_ctx: MagicMock,
         app_ctx: AppContext,
         mock_client: MagicMock,
         mock_metrics: MagicMock,
+        clock: _FakeClock,
     ) -> None:
-        """A staleness trip has no read to observe the threshold elapsing.
+        """Idle time does not count toward ``max_staleness``.
 
-        The entry is already past ``max_staleness`` before anyone reads it, so
-        comparing broken-before to broken-after would see no transition and
-        never count the trip.
+        Default config, no schema traffic for well over 900 s. The next read's
+        single probe hits one transient blip. Measured from the last success
+        the entry would already be "past" the ceiling and this one failure
+        would fail it closed; measured from the first failure of the streak it
+        is served stale, exactly like a blip on a busy branch.
         """
+        clock.advance(20_000)
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=schema,
+            schema_hash="H1",
+            graphql_sdl="sdl",
+            fetched_at_monotonic=clock.now - 10_000,  # idle far past max_staleness
+            last_attempt_monotonic=clock.now - 10_000,
+            consecutive_failures=0,
+        )
+        mock_client._get.side_effect = httpx.NetworkError("blip")
+
+        result = await get_cached_branch_schema(mock_ctx)
+
+        assert result is schema
+        mock_client._get.assert_awaited_once()
+        entry = app_ctx.schema_cache["main"]
+        assert entry.consecutive_failures == 1
+        assert entry.failing_since_monotonic == clock.now
+        assert entry.circuit_break_recorded is False
+        assert not any(c.args[0] == "circuit_break" for c in mock_metrics.record_schema_cache_event.call_args_list)
+
+    @pytest.mark.anyio
+    async def test_streak_older_than_max_staleness_fails_closed_on_the_next_failed_probe(  # noqa: PLR0913, PLR0917
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        mock_metrics: MagicMock,
+        clock: _FakeClock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """The staleness threshold bounds how long a streak may serve stale.
+
+        The streak's first failure was ``max_staleness`` ago and it is still
+        under the consecutive-failures threshold, so this probe's failure trips
+        the breaker on staleness alone — and the trip is counted exactly once.
+        """
+        clock.advance(20_000)
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=_make_branch_schema(schema_hash="H1"),
             schema_hash="H1",
             graphql_sdl="sdl",
-            fetched_at_monotonic=schema_cache._now() - 10_000,  # already past max_staleness
-            consecutive_failures=0,
+            fetched_at_monotonic=clock.now - 1_000,
+            consecutive_failures=3,  # well under max_consecutive_failures=10
+            last_attempt_monotonic=clock.now - 60,  # past the probe throttle
+            failing_since_monotonic=clock.now - 900,  # streak as old as max_staleness
         )
-        mock_client._get.side_effect = httpx.NetworkError("down")
+        mock_client._get.side_effect = httpx.NetworkError("still down")
 
-        with pytest.raises(ToolError, match="circuit-break threshold"):
+        with (
+            caplog.at_level("ERROR", logger="infrahub_mcp.schema_cache"),
+            pytest.raises(ToolError, match="circuit-break threshold"),
+        ):
             await get_cached_branch_schema(mock_ctx)
 
         breaks = [c for c in mock_metrics.record_schema_cache_event.call_args_list if c.args[0] == "circuit_break"]
         assert len(breaks) == 1
-        assert app_ctx.schema_cache["main"].circuit_break_recorded is True
+        trips = [r.message for r in caplog.records if "schema_cache_circuit_break" in r.message]
+        assert len(trips) == 1
+        assert "threshold=max_staleness" in trips[0]
+        assert "failing_for_seconds=900.0" in trips[0]
+        entry = app_ctx.schema_cache["main"]
+        assert entry.circuit_break_recorded is True
+        assert entry.failing_since_monotonic == clock.now - 900  # carried forward, not restarted
+
+    @pytest.mark.anyio
+    async def test_successful_revalidation_ends_the_streak_so_a_later_blip_is_served_stale(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        mock_metrics: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        """A hash match clears ``failing_since_monotonic`` along with the counter.
+
+        Without that reset the old streak's start would keep counting, and a
+        single blip long after recovery would trip the breaker on staleness.
+        """
+        clock.advance(20_000)
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=schema,
+            schema_hash="H1",
+            graphql_sdl="sdl",
+            fetched_at_monotonic=clock.now - 1_000,
+            consecutive_failures=5,
+            last_attempt_monotonic=clock.now - 60,
+            failing_since_monotonic=clock.now - 800,  # a streak, still under max_staleness
+        )
+        mock_client._get.return_value = _make_response(json_body={"main": "H1"})
+
+        await get_cached_branch_schema(mock_ctx)
+
+        healed = app_ctx.schema_cache["main"]
+        assert healed.consecutive_failures == 0
+        assert healed.failing_since_monotonic is None
+
+        # Long idle, then one blip: a fresh streak starts now and is served stale.
+        clock.advance(5_000)
+        mock_client._get.side_effect = httpx.NetworkError("blip")
+
+        result = await get_cached_branch_schema(mock_ctx)
+
+        assert result is schema
+        entry = app_ctx.schema_cache["main"]
+        assert entry.consecutive_failures == 1
+        assert entry.failing_since_monotonic == clock.now
+        assert not any(c.args[0] == "circuit_break" for c in mock_metrics.record_schema_cache_event.call_args_list)
+
+    @pytest.mark.anyio
+    async def test_max_staleness_zero_disables_the_streak_clause_alone(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        mock_metrics: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        """With the staleness threshold off, only the failure count can trip the breaker."""
+        app_ctx.config = _make_config(schema_cache_max_staleness_seconds=0)
+        clock.advance(20_000)
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=schema,
+            schema_hash="H1",
+            graphql_sdl="sdl",
+            fetched_at_monotonic=clock.now - 10_000,
+            consecutive_failures=3,
+            last_attempt_monotonic=clock.now - 60,
+            failing_since_monotonic=clock.now - 10_000,  # would trip any positive ceiling
+        )
+        mock_client._get.side_effect = httpx.NetworkError("still down")
+
+        result = await get_cached_branch_schema(mock_ctx)
+
+        assert result is schema
+        assert app_ctx.schema_cache["main"].consecutive_failures == 4
+        assert not any(c.args[0] == "circuit_break" for c in mock_metrics.record_schema_cache_event.call_args_list)
 
     @pytest.mark.anyio
     async def test_recovery_clears_the_recorded_break_so_a_later_trip_counts(
@@ -2350,7 +2488,7 @@ class TestGraphQLSDL:
     ) -> None:
         old_schema = _make_branch_schema(schema_hash="H1")
         new_schema = _make_branch_schema(schema_hash="H2")
-        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
+        old_time = schema_cache._now() - 100  # past skip-window
         app_ctx.schema_cache["main"] = CachedSchemaEntry(
             branch="main",
             schema=old_schema,

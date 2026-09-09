@@ -39,9 +39,14 @@ schema hash returned from ``GET /api/schema/summary``:
   server itself validated, keep serving stale within the breaker thresholds.
 - Transient revalidation/refetch failures serve stale + emit a WARN log;
   configurable circuit-break thresholds bound how long stale data may be
-  served before reads fail closed. A broken entry is not terminal: reads
-  retry revalidation so the cache recovers on its own once Infrahub is
-  healthy again.
+  served before reads fail closed: a run of consecutive failed probes, or a
+  failure streak that has lasted ``schema_cache_max_staleness_seconds``.
+  The streak is timed from its *first* failed probe, not from the last
+  success, so idle time with no failed probe never counts: a branch nobody
+  read for an hour is served stale on its first transient blip like any
+  other, rather than failing closed on it. A broken entry is not terminal:
+  reads retry revalidation so the cache recovers on its own once Infrahub
+  is healthy again.
 - Upstream probes are throttled to one per ``min(schema_cache_ttl, 30 s)``
   per branch from the first failure onward, whatever the breaker state:
   reads that land inside that window serve the stale entry (or, once the
@@ -129,12 +134,18 @@ class CachedSchemaEntry:
     structured-schema tool depends on it.
     """
     fetched_at_monotonic: float
+    """Monotonic time of the last *successful* fetch or revalidation.
+
+    Drives the skip-window only. The staleness threshold is not measured
+    from here — see ``failing_since_monotonic``.
+    """
     consecutive_failures: int = 0
     last_attempt_monotonic: float = 0.0
     """Monotonic time of the last upstream *attempt*, successful or not.
 
     Distinct from ``fetched_at_monotonic`` (last *success*, which drives the
-    skip-window and the staleness threshold). Together with
+    skip-window) and from ``failing_since_monotonic`` (first failure of the
+    current streak, which drives the staleness threshold). Together with
     ``consecutive_failures`` this field throttles probes after a failure,
     whether or not the breaker has tripped: while the last attempt failed
     less than ``min(schema_cache_ttl, 30 s)`` ago, reads serve the stale
@@ -142,6 +153,23 @@ class CachedSchemaEntry:
     each queueing on the cache lock behind its own upstream timeout. On its
     own it also debounces the revalidations a kind miss forces (see
     :data:`_FORCED_REVALIDATE_DEBOUNCE_SECONDS`).
+    """
+    failing_since_monotonic: float | None = None
+    """Monotonic time of the first failed probe of the current streak, or ``None`` outside one.
+
+    This is the timestamp ``schema_cache_max_staleness_seconds`` is measured
+    from: the threshold bounds how long a branch is served stale *during a
+    failure streak*. :func:`_note_failure` sets it when a failure lands on
+    an entry with no streak in progress and carries it forward on every
+    later failure; every success — hash match, hash-diff refetch, cold
+    fetch — builds an entry with it back to ``None``. Measuring from
+    ``fetched_at_monotonic`` instead would count idle time: a branch nobody
+    read for longer than the threshold was already "past" it when the next
+    read arrived, so one transient blip on that read's probe failed it
+    closed at ``consecutive_failures == 1`` where serving stale was the
+    documented behaviour. ``None`` rather than ``0.0`` for the same reason
+    as ``graphql_sdl_last_failure_monotonic``, and so an entry carrying a
+    failure count but no streak start is never read as failing since boot.
     """
     circuit_break_recorded: bool = False
     """Whether the current broken streak has already been counted.
@@ -269,9 +297,20 @@ def _is_circuit_broken(
     max_staleness_seconds: int,
     now: float,
 ) -> bool:
+    """Return True when *entry* has crossed either circuit-break threshold.
+
+    The consecutive-failures threshold counts failed probes. The staleness
+    threshold times the current failure streak from its first failed probe
+    (``failing_since_monotonic``), not from the last success: an entry with
+    no streak in progress is never broken by staleness however long ago it
+    was last fetched, because idle time says nothing about upstream health.
+    A threshold of 0 disables that clause.
+    """
     if max_consecutive_failures and entry.consecutive_failures >= max_consecutive_failures:
         return True
-    return bool(max_staleness_seconds and (now - entry.fetched_at_monotonic) >= max_staleness_seconds)
+    if not max_staleness_seconds or entry.failing_since_monotonic is None:
+        return False
+    return (now - entry.failing_since_monotonic) >= max_staleness_seconds
 
 
 def _is_within_skip_window(entry: CachedSchemaEntry, *, skip_window_seconds: int, now: float) -> bool:
@@ -464,20 +503,23 @@ async def _full_fetch(
     return branch_schema, graphql_sdl
 
 
-def _record_circuit_break(metrics: Any, branch: str, threshold: str, age: float) -> None:
+def _record_circuit_break(metrics: Any, branch: str, threshold: str, failing_for_seconds: float) -> None:
     """Record a circuit-break *transition* (entry newly crossed a threshold).
 
     Called once per transition, not once per blocked read, so the counter
     measures how often the breaker tripped rather than how many requests it
-    rejected.
+    rejected. ``failing_for_seconds`` is the duration of the failure streak
+    that tripped it — the quantity the staleness threshold measures — not
+    the age of the data since the last success, which would include idle
+    time the breaker deliberately ignores.
     """
     if metrics is not None:
         metrics.record_schema_cache_event("circuit_break")
     logger.error(
-        "schema_cache_circuit_break branch=%s threshold=%s last_success_age_seconds=%.1f",
+        "schema_cache_circuit_break branch=%s threshold=%s failing_for_seconds=%.1f",
         branch,
         threshold,
-        age,
+        failing_for_seconds,
     )
 
 
@@ -494,21 +536,26 @@ def _note_failure(
 ) -> CachedSchemaEntry:
     """Store a failure-incremented copy of *entry* and report a fresh break.
 
-    Returns the stored entry. Emits the ``circuit_break`` metric/log at most
-    once per broken streak — the first failed probe that leaves the entry
-    broken — so the counter measures trips rather than rejected reads.
-    A rejected credential never reaches here: both callers route it through
-    :func:`_raise_auth_error` first, so one caller's bad token cannot move
-    the counter or trip the breaker for everyone.
+    Returns the stored entry. A failure landing on an entry with no streak
+    in progress starts one: ``failing_since_monotonic`` is stamped *now* and
+    the staleness threshold counts from there; a failure inside a streak
+    carries the stamp forward. Emits the ``circuit_break`` metric/log at
+    most once per broken streak — the first failed probe that leaves the
+    entry broken — so the counter measures trips rather than rejected
+    reads. A rejected credential never reaches here: both callers route it
+    through :func:`_raise_auth_error` first, so one caller's bad token
+    cannot move the counter or trip the breaker for everyone.
     """
     config = app_ctx.config
     max_failures = config.schema_cache_max_consecutive_failures
     max_staleness = config.schema_cache_max_staleness_seconds
 
+    failing_since = now if entry.failing_since_monotonic is None else entry.failing_since_monotonic
     new_entry = replace(
         entry,
         consecutive_failures=entry.consecutive_failures + 1,
         last_attempt_monotonic=now,
+        failing_since_monotonic=failing_since,
     )
     if metrics is not None:
         metrics.record_schema_cache_event("revalidate_failure")
@@ -525,7 +572,7 @@ def _note_failure(
             metrics,
             entry.branch,
             _breach_threshold_name(new_entry, max_failures=max_failures),
-            now - new_entry.fetched_at_monotonic,
+            now - failing_since,
         )
     app_ctx.schema_cache[entry.branch] = new_entry
     return new_entry
@@ -593,8 +640,9 @@ async def _revalidate_under_lock(
 ) -> CachedSchemaEntry:
     """Revalidate an existing cache entry. Caller holds the lock.
 
-    On hash match: refresh the entry's ``fetched_at_monotonic`` and zero
-    its ``consecutive_failures`` (cache is current).
+    On hash match: refresh the entry's ``fetched_at_monotonic``, zero its
+    ``consecutive_failures`` and clear ``failing_since_monotonic`` (cache is
+    current; any failure streak is over).
 
     On hash differ: full refetch and replace the entry. Only a
     structured-schema failure counts as a failed refetch below; an SDL-only
@@ -615,8 +663,10 @@ async def _revalidate_under_lock(
     callers, and the next one probes with its own credential.
 
     On any other failure (transient): preserve the existing entry's
-    schema/hash/SDL but increment ``consecutive_failures`` and update
-    nothing else. Emit WARN log. Return the (failure-incremented) entry.
+    schema/hash/SDL, increment ``consecutive_failures``, stamp
+    ``last_attempt_monotonic`` and — if this failure starts a streak —
+    ``failing_since_monotonic`` (see :func:`_note_failure`). Emit WARN log.
+    Return the (failure-incremented) entry.
     """
     branch = entry.branch
     try:
@@ -643,6 +693,7 @@ async def _revalidate_under_lock(
             fetched_at_monotonic=now,
             consecutive_failures=0,
             last_attempt_monotonic=now,
+            failing_since_monotonic=None,
             circuit_break_recorded=False,
         )
         app_ctx.schema_cache[branch] = refreshed

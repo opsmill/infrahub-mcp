@@ -78,9 +78,14 @@ class ServerConfig(BaseSettings):
         schema_cache_max_consecutive_failures: After this many consecutive revalidation
             failures for a branch, the cache entry is marked unsafe and reads fail
             closed for that branch. Set to 0 to disable this circuit-break.
-        schema_cache_max_staleness_seconds: After this many seconds since the last
-            successful revalidation/refetch for a branch, the cache entry is marked
-            unsafe and reads fail closed for that branch. Set to 0 to disable.
+        schema_cache_max_staleness_seconds: Once revalidation for a branch has been
+            failing for this many seconds, the cache entry is marked unsafe and
+            reads fail closed for that branch. The clock runs from the first failed
+            probe of the current failure streak, not from the last success, so
+            idle time with no failed probe never counts: it bounds how long a
+            branch is served stale during an outage, and a branch nobody read
+            for a while is not failed closed by its first transient blip. Set to
+            0 to disable.
     """
 
     model_config = SettingsConfigDict(

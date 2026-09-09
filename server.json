@@ -207,7 +207,7 @@
         },
         {
           "name": "INFRAHUB_MCP_SCHEMA_CACHE_MAX_STALENESS_SECONDS",
-          "description": "Maximum seconds since last successful revalidation before reads fail closed; 0 disables (default: 900).",
+          "description": "Maximum seconds a branch is served stale during a revalidation failure streak, timed from the streak's first failed probe, before reads fail closed; idle time without a failed probe does not count; 0 disables (default: 900).",
           "isRequired": false,
           "format": "string",
           "isSecret": false
