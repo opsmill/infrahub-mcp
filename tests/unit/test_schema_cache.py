@@ -302,6 +302,187 @@ class TestDisabledFlagUsesSdkCache:
         mock_client.schema.get.assert_not_awaited()
 
 
+def _patch_fresh_client_per_call(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    configure: Callable[[MagicMock], None] | None = None,
+) -> list[MagicMock]:
+    """Make ``get_client`` build a distinct client on every call and record each one.
+
+    That is the passthrough-mode shape. The module fixture hands every call the
+    same ``mock_client``, which cannot tell a read that primed the caller's
+    client from one that primed a throwaway of its own.
+    """
+    built: list[MagicMock] = []
+
+    def build(_ctx: Any) -> MagicMock:
+        client = _make_client()
+        if configure is not None:
+            configure(client)
+        built.append(client)
+        return client
+
+    monkeypatch.setattr(schema_cache, "get_client", build)
+    return built
+
+
+class TestPrimedClientIsTheCallers:
+    """The SDK cache a read primes must belong to the client the caller keeps using.
+
+    In the passthrough auth modes a client the helper resolved for itself is
+    primed and dropped on return, while the tool's own client refetches
+    ``/api/schema`` on its first ``client.filters``. A read handed a client
+    must therefore prime that one and resolve none; a read without one must
+    resolve exactly one and run every upstream call through it.
+    """
+
+    @pytest.mark.anyio
+    async def test_cold_kind_read_primes_the_callers_client_and_resolves_none(
+        self,
+        mock_ctx: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        built = _patch_fresh_client_per_call(monkeypatch)
+        schema = _make_branch_schema(schema_hash="H1", kinds=["InfraDevice"])
+        caller = _make_client()
+        caller.schema._fetch.return_value = schema
+
+        kind = await get_cached_kind(mock_ctx, kind="InfraDevice", client=caller)
+
+        assert kind is schema.nodes["InfraDevice"]
+        caller.schema._fetch.assert_awaited_once_with(branch="main")
+        assert caller.schema.cache["main"] is schema
+        assert built == []
+
+    @pytest.mark.anyio
+    async def test_warm_branch_schema_read_primes_the_callers_client_and_resolves_none(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        built = _patch_fresh_client_per_call(monkeypatch)
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=schema,
+            schema_hash="H1",
+            graphql_sdl="sdl",
+            fetched_at_monotonic=schema_cache._now(),
+            consecutive_failures=0,
+        )
+        caller = _make_client()
+
+        result = await get_cached_branch_schema(mock_ctx, client=caller)
+
+        assert result is schema
+        assert caller.schema.cache["main"] is schema
+        caller.schema._fetch.assert_not_awaited()
+        assert built == []
+
+    @pytest.mark.anyio
+    async def test_forced_revalidation_on_kind_miss_runs_through_the_callers_client(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The ``tools/nodes.py`` peer loop: a miss must probe and refetch on the tool's own client."""
+        built = _patch_fresh_client_per_call(monkeypatch)
+        old_schema = _make_branch_schema(schema_hash="H1", kinds=["InfraDevice"])
+        new_schema = _make_branch_schema(schema_hash="H2", kinds=["InfraDevice", "NewKind"])
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=old_schema,
+            schema_hash="H1",
+            graphql_sdl="old-sdl",
+            fetched_at_monotonic=schema_cache._now(),
+            consecutive_failures=0,
+        )
+        caller = _make_client()
+        caller._get.return_value = _make_response(json_body={"main": "H2"})
+        caller.schema._fetch.return_value = new_schema
+
+        kind = await get_cached_kind(mock_ctx, kind="NewKind", client=caller)
+
+        assert kind is new_schema.nodes["NewKind"]
+        caller._get.assert_awaited_once()
+        caller.schema._fetch.assert_awaited_once()
+        assert caller.schema.cache["main"] is new_schema
+        assert built == []
+
+    @pytest.mark.anyio
+    async def test_sdl_read_without_client_resolves_one_client_for_probe_and_lazy_fill(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``infrahub://graphql-schema`` omits the client: the probe and the SDL fill share the one resolved."""
+
+        def configure(client: MagicMock) -> None:
+            client._get.return_value = _make_response(json_body={"main": "H1"})
+            client.schema.get_graphql_schema.return_value = "filled-sdl"
+
+        built = _patch_fresh_client_per_call(monkeypatch, configure=configure)
+        schema = _make_branch_schema(schema_hash="H1")
+        old_time = schema_cache._now() - 100  # past skip-window, under staleness ceiling
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=schema,
+            schema_hash="H1",
+            graphql_sdl=None,  # a lazy fill is due
+            fetched_at_monotonic=old_time,
+            consecutive_failures=0,
+        )
+
+        sdl = await get_cached_graphql_sdl(mock_ctx)
+
+        assert sdl == "filled-sdl"
+        assert len(built) == 1
+        (client,) = built
+        client._get.assert_awaited_once()
+        client.schema._fetch.assert_not_awaited()
+        client.schema.get_graphql_schema.assert_awaited_once_with(branch="main")
+        assert client.schema.cache["main"] is schema
+        assert app_ctx.schema_cache["main"].graphql_sdl == "filled-sdl"
+
+    @pytest.mark.anyio
+    async def test_kind_read_without_client_resolves_one_client_for_read_and_forced_revalidation(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``schema.py`` omits the client: the first read and the miss-driven probe share the one resolved."""
+
+        def configure(client: MagicMock) -> None:
+            client._get.return_value = _make_response(json_body={"main": "H2"})
+            client.schema._fetch.return_value = new_schema
+            client.schema.get_graphql_schema.return_value = "new-sdl"
+
+        old_schema = _make_branch_schema(schema_hash="H1", kinds=["InfraDevice"])
+        new_schema = _make_branch_schema(schema_hash="H2", kinds=["InfraDevice", "NewKind"])
+        built = _patch_fresh_client_per_call(monkeypatch, configure=configure)
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=old_schema,
+            schema_hash="H1",
+            graphql_sdl="old-sdl",
+            fetched_at_monotonic=schema_cache._now(),
+            consecutive_failures=0,
+        )
+
+        kind = await get_cached_kind(mock_ctx, kind="NewKind")
+
+        assert kind is new_schema.nodes["NewKind"]
+        assert len(built) == 1
+        (client,) = built
+        client._get.assert_awaited_once()
+        client.schema._fetch.assert_awaited_once()
+        assert client.schema.cache["main"] is new_schema
+
+
 class TestSingleFlight:
     @pytest.mark.anyio
     async def test_concurrent_cold_fetch_results_in_one_upstream_call(
