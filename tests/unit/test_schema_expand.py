@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any
+import contextlib
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from infrahub_sdk.exceptions import SchemaNotFoundError
 
 from infrahub_mcp.schema import get_schema_detail
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 def _make_attribute(name: str, kind: str = "Text", optional: bool = False) -> MagicMock:
@@ -39,20 +43,28 @@ def _make_schema_node(
     return node
 
 
-def _patch_cached_kind(schemas: dict[str, MagicMock]) -> Any:
-    """Patch the schema-cache lookup ``get_schema_detail`` uses to resolve kinds.
+@contextlib.contextmanager
+def _patch_cached_kind(schemas: dict[str, MagicMock]) -> Iterator[tuple[AsyncMock, MagicMock]]:
+    """Stub the schema-cache lookup and the client resolution ``get_schema_detail`` uses.
 
-    ``get_schema_detail`` takes a FastMCP ``Context`` and resolves kinds through
-    the hash-validated schema cache. These tests cover peer-expansion *shaping*
-    only, so the cache lookup is stubbed rather than exercised.
+    ``get_schema_detail`` takes a FastMCP ``Context``, resolves one client for
+    the call and reads kinds through the hash-validated schema cache. These
+    tests cover peer-expansion *shaping* only, so both are stubbed rather than
+    exercised. Yields the ``get_cached_kind`` stub and the ``get_client`` stub
+    for tests that assert how the call threads its client.
     """
 
-    def _get_cached_kind(ctx: Any, *, kind: str, branch: str | None = None) -> MagicMock:
+    def _get_cached_kind(ctx: Any, *, kind: str, branch: str | None = None, client: Any = None) -> MagicMock:
         if kind not in schemas:
             raise SchemaNotFoundError(kind)
         return schemas[kind]
 
-    return patch("infrahub_mcp.schema.get_cached_kind", new=AsyncMock(side_effect=_get_cached_kind))
+    cached_kind = AsyncMock(side_effect=_get_cached_kind)
+    with (
+        patch("infrahub_mcp.schema.get_cached_kind", new=cached_kind),
+        patch("infrahub_mcp.schema.get_client", return_value=MagicMock(name="resolved-client")) as get_client,
+    ):
+        yield cached_kind, get_client
 
 
 def _schemas_a_b() -> dict[str, MagicMock]:
@@ -139,3 +151,28 @@ async def test_filters_include_peer_attributes() -> None:
     filters = {f["filter"] for f in result["filters"]}
     assert "name__value" in filters
     assert "children__label__value" in filters
+
+
+async def test_kind_detail_with_peers_resolves_one_client_and_threads_it() -> None:
+    """One credential check per request: the kind and every gathered peer are read on the same client.
+
+    In the passthrough modes each unprimed client probes Infrahub with the
+    caller's credential, so a detail read that resolved a client per helper
+    call would probe once per peer.
+    """
+    with _patch_cached_kind(_schemas_a_b()) as (cached_kind, get_client):
+        await get_schema_detail(MagicMock(), kind="KindA", expand_peers=True)
+
+    get_client.assert_called_once()
+    assert cached_kind.await_count == 2  # KindA, then its peer KindB
+    assert all(call.kwargs["client"] is get_client.return_value for call in cached_kind.await_args_list)
+
+
+async def test_kind_detail_uses_the_callers_client_and_resolves_none() -> None:
+    caller = MagicMock(name="callers-client")
+    with _patch_cached_kind(_schemas_a_b()) as (cached_kind, get_client):
+        await get_schema_detail(MagicMock(), kind="KindA", expand_peers=True, client=caller)
+
+    get_client.assert_not_called()
+    assert cached_kind.await_count == 2
+    assert all(call.kwargs["client"] is caller for call in cached_kind.await_args_list)

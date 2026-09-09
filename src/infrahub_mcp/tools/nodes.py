@@ -238,7 +238,7 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
     try:
         schema = await get_cached_kind(ctx, kind=kind, branch=branch, client=client)
     except SchemaNotFoundError:
-        valid = await get_valid_kinds_summary(ctx, branch=branch)
+        valid = await get_valid_kinds_summary(ctx, branch=branch, client=client)
         await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",
@@ -364,7 +364,7 @@ async def search_nodes(
     try:
         schema = await get_cached_kind(ctx, kind=kind, branch=branch, client=client)
     except SchemaNotFoundError:
-        valid = await get_valid_kinds_summary(ctx, branch=branch)
+        valid = await get_valid_kinds_summary(ctx, branch=branch, client=client)
         await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",

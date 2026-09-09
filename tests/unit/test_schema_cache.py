@@ -26,6 +26,7 @@ from fastmcp.server.middleware.caching import (
 )
 from infrahub_sdk.exceptions import AuthenticationError, BranchNotFoundError, SchemaNotFoundError
 
+from infrahub_mcp import schema as schema_helpers
 from infrahub_mcp import schema_cache
 from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.middleware import (
@@ -140,8 +141,9 @@ def mock_ctx(app_ctx: AppContext) -> MagicMock:
 
 @pytest.fixture(autouse=True)
 def _patch_dependencies(mock_client: MagicMock, monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    """Patch get_client and get_default_branch globally for the test module."""
+    """Patch get_client (in ``schema_cache`` and ``schema``) and get_default_branch globally for the test module."""
     monkeypatch.setattr(schema_cache, "get_client", lambda _ctx: mock_client)
+    monkeypatch.setattr(schema_helpers, "get_client", lambda _ctx: mock_client)
 
     async def fake_default_branch(_ctx: Any) -> str:  # noqa: RUF029  # async signature required by production contract
         return "main"
@@ -323,6 +325,7 @@ def _patch_fresh_client_per_call(
         return client
 
     monkeypatch.setattr(schema_cache, "get_client", build)
+    monkeypatch.setattr(schema_helpers, "get_client", build)
     return built
 
 
@@ -1477,6 +1480,325 @@ class TestAuthErrorsAreCallerScoped:
         with pytest.raises(AuthenticationError):
             await get_cached_graphql_sdl(mock_ctx)
         assert mock_client.schema.get_graphql_schema.await_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Passthrough callers are validated before a cache hit
+# ---------------------------------------------------------------------------
+
+
+_PASSTHROUGH_AUTH_MODES = [
+    pytest.param("token-passthrough", id="token-passthrough"),
+    pytest.param("basic-passthrough", id="basic-passthrough"),
+]
+
+
+def _ctx_for_auth_mode(auth_mode: str) -> tuple[MagicMock, AppContext]:
+    """A request context whose ``AppContext`` runs in *auth_mode*."""
+    app_ctx = AppContext(client=None, config=_make_config(auth_mode=auth_mode), default_branch="main")
+    ctx = MagicMock()
+    ctx.request_context = MagicMock()
+    ctx.request_context.lifespan_context = app_ctx
+    return ctx, app_ctx
+
+
+def _within_window_entry(schema: MagicMock, *, now: float) -> CachedSchemaEntry:
+    """A warm ``main`` entry fetched just now — a plain ``hit`` for a validated caller."""
+    return _entry(schema, fetched_at_monotonic=now, last_attempt_monotonic=now)
+
+
+def _probe_connect_error(client: MagicMock) -> None:
+    client._get.side_effect = httpx.ConnectError("down")
+
+
+def _probe_http_503(client: MagicMock) -> None:
+    client._get.return_value = _make_response(status_code=httpx.codes.SERVICE_UNAVAILABLE)
+
+
+_TRANSIENT_PROBE_FAILURES = [
+    pytest.param(_probe_connect_error, id="connect-error"),
+    pytest.param(_probe_http_503, id="http-503"),
+]
+
+
+class TestPassthroughCallerIsValidatedBeforeAHit:
+    """In the passthrough modes a hot entry is served only to a client Infrahub has already seen.
+
+    ``get_client`` only checks that a credential is *present*. Before this, a
+    warm entry inside the skip-window was served to any caller with zero
+    upstream calls, so a passthrough caller with a garbage token got the full
+    schema from ``get_schema`` and the ``infrahub://schema*`` resources — and
+    kept getting it for as long as other callers refreshed the entry. The
+    signal that a caller has been validated is its own client's SDK cache,
+    which only an upstream call on that client earlier in the same request
+    primes. An unvalidated caller is never served stale either.
+    """
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
+    async def test_warm_read_on_an_unprimed_client_probes_with_that_client(
+        self,
+        mock_metrics: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+        auth_mode: str,
+    ) -> None:
+        ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = _within_window_entry(schema, now=schema_cache._now())
+
+        def configure(client: MagicMock) -> None:
+            client._get.return_value = _make_response(json_body={"main": "H1"})
+
+        built = _patch_fresh_client_per_call(monkeypatch, configure=configure)
+
+        result = await get_cached_branch_schema(ctx)
+
+        assert result is schema
+        (client,) = built
+        client._get.assert_awaited_once()  # /summary, with this caller's credential
+        client.schema._fetch.assert_not_awaited()  # the hash matched: no full refetch
+        assert client.schema.cache["main"] is schema  # primed: validated for the rest of the request
+        events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
+        assert "hash_match" in events
+        assert "hit" not in events
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
+    async def test_a_second_read_on_the_primed_client_makes_no_upstream_call(
+        self,
+        mock_metrics: MagicMock,
+        auth_mode: str,
+    ) -> None:
+        """One probe per request: the tool's later helper calls on the same client are plain hits."""
+        ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
+        schema = _make_branch_schema(schema_hash="H1", kinds=["InfraDevice"])
+        app_ctx.schema_cache["main"] = _within_window_entry(schema, now=schema_cache._now())
+        caller = _make_client()
+        caller._get.return_value = _make_response(json_body={"main": "H1"})
+
+        await get_cached_branch_schema(ctx, client=caller)
+        kind = await get_cached_kind(ctx, kind="InfraDevice", client=caller)
+        sdl = await get_cached_graphql_sdl(ctx, client=caller)
+
+        assert kind is schema.nodes["InfraDevice"]
+        assert sdl == "sdl"
+        caller._get.assert_awaited_once()
+        events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
+        assert events == ["hash_match", "hit", "hit"]
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
+    @pytest.mark.parametrize("status_code", [httpx.codes.UNAUTHORIZED, httpx.codes.FORBIDDEN])
+    async def test_a_rejected_credential_raises_to_that_caller_and_leaves_the_entry_servable(
+        self,
+        mock_metrics: MagicMock,
+        auth_mode: str,
+        status_code: int,
+    ) -> None:
+        ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
+        schema = _make_branch_schema(schema_hash="H1")
+        entry = _within_window_entry(schema, now=schema_cache._now())
+        app_ctx.schema_cache["main"] = entry
+        bogus = _make_client()
+        bogus._get.return_value = _make_response(status_code=status_code)
+
+        with pytest.raises(AuthenticationError, match=f"HTTP {int(status_code)}"):
+            await get_cached_branch_schema(ctx, client=bogus)
+
+        bogus.schema.set_cache.assert_not_called()  # the schema never reaches the rejected caller
+        assert app_ctx.schema_cache["main"] is entry  # same object: counters, timestamps and SDL untouched
+        events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
+        assert "revalidate_failure" not in events
+        assert "hit" not in events
+
+        # Nothing was armed against the next caller: it is served after its own probe.
+        genuine = _make_client()
+        genuine._get.return_value = _make_response(json_body={"main": "H1"})
+        assert await get_cached_branch_schema(ctx, client=genuine) is schema
+        genuine._get.assert_awaited_once()
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
+    async def test_catalog_read_with_a_garbage_token_is_refused_from_a_warm_cache(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        auth_mode: str,
+    ) -> None:
+        """The reported hole: ``get_schema`` / ``infrahub://schema`` on a warm entry with an unknown token."""
+        ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = _within_window_entry(schema, now=schema_cache._now())
+
+        def configure(client: MagicMock) -> None:
+            client._get.return_value = _make_response(status_code=httpx.codes.UNAUTHORIZED)
+
+        built = _patch_fresh_client_per_call(monkeypatch, configure=configure)
+
+        with pytest.raises(AuthenticationError):
+            await get_schema_catalog(ctx)
+
+        (client,) = built  # schema.py resolved one client for the read and probed with it
+        client._get.assert_awaited_once()
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
+    @pytest.mark.parametrize("configure", _TRANSIENT_PROBE_FAILURES)
+    async def test_a_transient_probe_failure_on_an_unprimed_client_fails_closed(
+        self,
+        mock_metrics: MagicMock,
+        clock: _FakeClock,
+        auth_mode: str,
+        configure: Callable[[MagicMock], None],
+    ) -> None:
+        """No validated credential, no schema: the caller is not served stale, but the failure still counts."""
+        ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = _within_window_entry(schema, now=clock.now)
+        caller = _make_client()
+        configure(caller)
+
+        with pytest.raises(ToolError, match="credential could not be checked"):
+            await get_cached_branch_schema(ctx, client=caller)
+
+        caller._get.assert_awaited_once()
+        caller.schema.set_cache.assert_not_called()
+        assert app_ctx.schema_cache["main"].consecutive_failures == 1  # breaker bookkeeping still ran
+        events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
+        assert events.count("revalidate_failure") == 1
+        assert "stale_hit" not in events
+
+        # Still unprimed, now inside the throttle: a further read in this request fails fast, no probe.
+        clock.advance(1)
+        with pytest.raises(ToolError, match="cannot be checked until the next upstream attempt"):
+            await get_cached_branch_schema(ctx, client=caller)
+        caller._get.assert_awaited_once()
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
+    async def test_an_unprimed_client_inside_the_failure_throttle_fails_fast_without_probing(
+        self,
+        mock_metrics: MagicMock,
+        clock: _FakeClock,
+        auth_mode: str,
+    ) -> None:
+        """Another caller's probe failed moments ago: neither stale schema nor a probe for this one."""
+        ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
+        schema = _make_branch_schema(schema_hash="H1")
+        entry = _entry(
+            schema,
+            fetched_at_monotonic=clock.now - 100,  # past the skip-window
+            consecutive_failures=1,
+            last_attempt_monotonic=clock.now - 5,  # failed probe inside the 30 s throttle
+        )
+        app_ctx.schema_cache["main"] = entry
+        caller = _make_client()
+        caller._get.side_effect = httpx.NetworkError("down")
+
+        with pytest.raises(ToolError, match="cannot be checked until the next upstream attempt in 25 s"):
+            await get_cached_branch_schema(ctx, client=caller)
+
+        caller._get.assert_not_awaited()
+        caller.schema.set_cache.assert_not_called()
+        assert app_ctx.schema_cache["main"] is entry
+        events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
+        assert "stale_hit" not in events
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
+    async def test_the_throttle_wins_over_the_skip_window_for_an_unprimed_client(
+        self,
+        clock: _FakeClock,
+        auth_mode: str,
+    ) -> None:
+        """A forced probe can fail inside the skip-window; the window must not route this caller to a probe."""
+        ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = _entry(
+            schema,
+            fetched_at_monotonic=clock.now - 10,  # inside the skip-window
+            consecutive_failures=1,
+            last_attempt_monotonic=clock.now - 5,  # a forced probe failed since
+        )
+        caller = _make_client()
+        caller._get.side_effect = httpx.NetworkError("down")
+
+        with pytest.raises(ToolError):
+            await get_cached_branch_schema(ctx, client=caller)
+
+        caller._get.assert_not_awaited()
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
+    async def test_a_client_validated_this_request_is_still_served_stale_on_a_transient_failure(
+        self,
+        clock: _FakeClock,
+        auth_mode: str,
+    ) -> None:
+        """The fail-closed residual is for unvalidated callers only; a primed client keeps the stale-serving."""
+        ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = _within_window_entry(schema, now=clock.now)
+        caller = _make_client()
+        caller._get.return_value = _make_response(json_body={"main": "H1"})
+        await get_cached_branch_schema(ctx, client=caller)  # validated and primed
+
+        clock.advance(31)  # past the skip-window
+        caller._get.side_effect = httpx.NetworkError("down")
+        result = await get_cached_branch_schema(ctx, client=caller)
+
+        assert result is schema
+        assert caller._get.await_count == 2
+        assert app_ctx.schema_cache["main"].consecutive_failures == 1
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
+    async def test_a_kind_miss_costs_the_request_one_probe_in_total(
+        self,
+        clock: _FakeClock,
+        auth_mode: str,
+    ) -> None:
+        """The validating probe arms the forced-revalidation debounce, so the miss does not probe again."""
+        ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
+        schema = _make_branch_schema(schema_hash="H1", kinds=["InfraDevice"])
+        app_ctx.schema_cache["main"] = _entry(
+            schema,
+            fetched_at_monotonic=clock.now - 10,
+            last_attempt_monotonic=clock.now - 10,  # past the 2 s debounce: a miss on its own would probe
+        )
+        caller = _make_client()
+        caller._get.return_value = _make_response(json_body={"main": "H1"})
+
+        with pytest.raises(SchemaNotFoundError):
+            await get_cached_kind(ctx, kind="GhostKind", client=caller)
+        clock.advance(1)
+        with pytest.raises(SchemaNotFoundError):
+            await get_cached_kind(ctx, kind="OtherGhost", client=caller)
+
+        caller._get.assert_awaited_once()
+        caller.schema._fetch.assert_not_awaited()
+
+    @pytest.mark.anyio
+    async def test_shared_credential_modes_keep_serving_a_warm_entry_with_zero_upstream_calls(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_metrics: MagicMock,
+    ) -> None:
+        """Contrast, ``auth_mode="none"``: the lifespan client's credential is the server's own.
+
+        ``TestPrimedClientIsTheCallers`` covers the priming side of this read.
+        """
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = _within_window_entry(schema, now=schema_cache._now())
+        caller = _make_client()  # unprimed, as a fresh client would be
+
+        result = await get_cached_branch_schema(mock_ctx, client=caller)
+
+        assert result is schema
+        caller._get.assert_not_awaited()
+        assert caller.schema.cache["main"] is schema
+        events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
+        assert events == ["hit"]
 
 
 # ---------------------------------------------------------------------------

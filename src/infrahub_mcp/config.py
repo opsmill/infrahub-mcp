@@ -70,6 +70,11 @@ class ServerConfig(BaseSettings):
         schema_cache_ttl: Skip-window in seconds; while a cache entry's age is below
             this value, reads serve from cache without contacting Infrahub. Past this
             window, ``GET /api/schema/summary`` is consulted to validate the hash.
+            In the passthrough modes the window applies within a request only: the
+            first schema read of each request probes ``/api/schema/summary`` with the
+            caller's own credential before anything is served from cache, so a
+            rejected token fails that caller even when the entry is fresh, and a
+            caller whose credential could not be checked is never served stale.
         schema_cache_max_consecutive_failures: After this many consecutive revalidation
             failures for a branch, the cache entry is marked unsafe and reads fail
             closed for that branch. Set to 0 to disable this circuit-break.

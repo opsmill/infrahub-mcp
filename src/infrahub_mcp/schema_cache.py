@@ -23,6 +23,20 @@ schema hash returned from ``GET /api/schema/summary``:
   primed and then dropped on return, while the tool's own client — built a
   moment earlier by the same ``get_client(ctx)`` — still held an empty SDK
   cache and refetched ``/api/schema`` on its first ``client.filters``.
+- In the passthrough modes a hit is not free for every caller. The
+  credential belongs to the caller and ``get_client`` only checks that one
+  is present, so a hot entry is served without an upstream call only to a
+  client whose SDK cache already holds the branch — which a per-request
+  passthrough client acquires only through a validated probe or fetch
+  earlier in the same request. An unprimed passthrough client probes
+  ``/summary`` with its own credential first: a whole tool call costs one
+  probe, and a rejected token raises ``AuthenticationError`` to that caller
+  alone. Such a caller is never handed stale schema either: inside the
+  failure throttle, or when its own probe fails transiently, the read fails
+  closed with the schema-unavailable error. During an outage passthrough
+  reads therefore fail as they did before this cache existed, while the
+  shared-credential modes (``none``, ``oidc``), whose lifespan client the
+  server itself validated, keep serving stale within the breaker thresholds.
 - Transient revalidation/refetch failures serve stale + emit a WARN log;
   configurable circuit-break thresholds bound how long stale data may be
   served before reads fail closed. A broken entry is not terminal: reads
@@ -76,6 +90,7 @@ import httpx
 from fastmcp.exceptions import ToolError
 from infrahub_sdk.exceptions import AuthenticationError, BranchNotFoundError, SchemaNotFoundError
 
+from infrahub_mcp.constants import AUTH_MODE_BASIC_PASSTHROUGH, AUTH_MODE_TOKEN_PASSTHROUGH
 from infrahub_mcp.utils import AppContext, get_client, get_default_branch
 
 if TYPE_CHECKING:
@@ -653,6 +668,36 @@ def _install_into_client(client: InfrahubClient, entry: CachedSchemaEntry) -> No
     client.schema.set_cache(schema=entry.schema, branch=entry.branch)
 
 
+_PASSTHROUGH_AUTH_MODES = frozenset({AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH})
+"""Auth modes in which the credential behind a client is the caller's, not the server's."""
+
+
+def _caller_is_validated(app_ctx: AppContext, client: InfrahubClient, branch: str) -> bool:
+    """Return True when *client* may be served a hot entry for *branch* without asking upstream.
+
+    In the shared-credential modes (``none``, ``oidc``) every read goes
+    through the lifespan client, whose credential the server owns and
+    Infrahub accepted when the entry was fetched, so a hot entry is servable
+    to any caller. In the passthrough modes the credential is the caller's
+    and :func:`infrahub_mcp.utils.get_client` only checks that one is
+    *present*: served straight from a hot entry, a caller with a garbage
+    token would get the full schema without Infrahub ever seeing the token.
+
+    The signal that Infrahub has seen it is the client's own SDK cache.
+    ``client.schema.cache`` holds *branch* only after an upstream call on
+    this very client that upstream answered — :func:`_install_into_client`
+    after a probe or fetch, or the SDK's own ``/api/schema`` fetch — and a
+    passthrough client lives for one request, so a primed one was validated
+    earlier in the same request. That makes a whole tool call cost one
+    ``/summary`` probe rather than one per helper call. An unprimed
+    passthrough client must take the lock path and probe with its own
+    credential; nothing is memoized across requests on purpose.
+    """
+    if app_ctx.config.auth_mode not in _PASSTHROUGH_AUTH_MODES:
+        return True
+    return branch in client.schema.cache
+
+
 _UNREACHABLE_HINT = "The Infrahub server may be unreachable; check server health and try again."
 _CIRCUIT_BREAK_MSG = f"circuit-break threshold reached. {_UNREACHABLE_HINT}"
 
@@ -744,6 +789,19 @@ def _try_serve_from_cache(
     outright: it falls through to the lock path so revalidation can heal it
     once Infrahub recovers.
 
+    Both shortcuts — ``hit`` and ``stale_hit`` — are for callers whose
+    credential Infrahub has already accepted (:func:`_caller_is_validated`).
+    In the shared-credential modes that is every caller. In the passthrough
+    modes it is only a client already primed for *resolved_branch* by a
+    validated upstream call earlier in this request; an unprimed passthrough
+    client is never served here. Inside the skip-window or the forced
+    debounce it returns ``None`` so the lock path probes ``/summary`` with
+    its own credential, and inside the failure throttle it fails closed with
+    ``ToolError`` instead of being handed the stale entry — probing there
+    would re-create the one-timeout-per-request serialization the throttle
+    exists to prevent, and serving stale would hand schema to a caller
+    upstream never saw.
+
     :func:`_ensure_entry` calls this again after acquiring the lock, so
     waiters queued behind a probe observe its outcome instead of repeating
     it: a failure serves them stale (or fails fast), and a forced probe's
@@ -767,20 +825,40 @@ def _try_serve_from_cache(
             _raise_schema_unavailable(resolved_branch, _CIRCUIT_BREAK_MSG)
         return None
 
+    validated = _caller_is_validated(app_ctx, client, resolved_branch)
+    throttled = bool(entry.consecutive_failures) and _is_retry_throttled(
+        entry.last_attempt_monotonic, throttle_seconds=throttle_seconds, now=now
+    )
+    if throttled and not validated:
+        # The last probe failed moments ago and this passthrough caller's
+        # credential has not been checked this request. Probing for it would
+        # serialize the read behind another upstream timeout; serving stale
+        # would hand the schema to a caller upstream never saw. Fail closed
+        # until the window elapses.
+        elapsed = now - entry.last_attempt_monotonic
+        _raise_schema_unavailable(
+            resolved_branch,
+            f"the last schema revalidation failed {elapsed:.0f} s ago and this caller's credential cannot be "
+            f"checked until the next upstream attempt in {math.ceil(throttle_seconds - elapsed)} s. "
+            f"{_UNREACHABLE_HINT}",
+        )
+
     current = (
         _is_forced_probe_debounced(entry, now=now)
         if force_revalidate
         else _is_within_skip_window(entry, skip_window_seconds=config.schema_cache_ttl, now=now)
     )
     if current:
+        if not validated:
+            # Current, but for a passthrough caller Infrahub has not seen this
+            # request: take the lock path and probe with its credential.
+            return None
         if metrics is not None:
             metrics.record_schema_cache_event("hit")
         _install_into_client(client, entry)
         return entry
 
-    if entry.consecutive_failures and _is_retry_throttled(
-        entry.last_attempt_monotonic, throttle_seconds=throttle_seconds, now=now
-    ):
+    if throttled:
         # Past the skip-window (or the forced debounce), but the last probe
         # failed moments ago: probing again would only serialize this read
         # behind another upstream timeout. Serve stale — the documented
@@ -817,6 +895,18 @@ async def _ensure_entry(
     every other rule in place. The re-check under the lock makes forced reads
     single-flight too: the first miss to take the lock probes, and the misses
     queued behind it are served by that probe's attempt.
+
+    In the passthrough modes a *client* not yet primed for the branch is a
+    caller whose credential Infrahub has not seen this request
+    (:func:`_caller_is_validated`). The hot path never serves it, so it
+    reaches the lock and probes with its own credential: a rejected one
+    raises ``AuthenticationError`` from :func:`_revalidate_under_lock` with
+    the entry untouched, an accepted one is served the entry and primed. A
+    transient failure of that probe fails closed here with ``ToolError``
+    rather than installing the stale entry — the caller was never validated,
+    and priming it would let its next read in this request pass as
+    validated — while :func:`_note_failure` has already counted the failure,
+    so a passthrough outage still trips and heals the breaker.
     """
     app_ctx = _get_app_ctx(ctx)
     resolved_branch = await _resolve_branch(ctx, branch)
@@ -869,6 +959,16 @@ async def _ensure_entry(
         now=_now(),
         msg_suffix="circuit-break threshold reached after revalidation failure.",
     )
+    if new_entry.consecutive_failures and not _caller_is_validated(app_ctx, client, resolved_branch):
+        # A success zeroes the counter, so a non-zero one means *this*
+        # attempt failed transiently — and it was this passthrough caller's
+        # own probe, so its credential is still unchecked. It is not handed
+        # the stale entry, and its client stays unprimed so a further read
+        # in this request fails fast inside the throttle instead of probing.
+        _raise_schema_unavailable(
+            resolved_branch,
+            f"schema revalidation failed and this caller's credential could not be checked. {_UNREACHABLE_HINT}",
+        )
     _install_into_client(client, new_entry)
     return new_entry
 
@@ -932,6 +1032,19 @@ async def get_cached_branch_schema(
     one client itself, exactly once, and every upstream call in this read
     goes through that one. In the shared-client auth modes both spellings
     name the same lifespan client.
+
+    In the passthrough modes the client also carries the caller's
+    credential, which :func:`infrahub_mcp.utils.get_client` only checks is
+    present. A hot entry is therefore served without an upstream call only
+    to a client already primed for *branch* — validated by an earlier
+    upstream call in this same request; an unprimed one probes ``/summary``
+    with its own credential first (one probe per request, serialized under
+    the cache lock), so a rejected token raises ``AuthenticationError`` to
+    that caller alone. An unvalidated passthrough caller is never served
+    stale: when its probe fails transiently, or the failure throttle forbids
+    one, the read fails closed with ``ToolError`` as it did before this
+    cache existed. The shared-credential modes serve a hot entry to every
+    caller and keep serving stale within the breaker thresholds.
 
     When ``schema_cache_enabled`` is False, the process-wide cache is
     bypassed and only the SDK's per-client cache is used (the pre-feature

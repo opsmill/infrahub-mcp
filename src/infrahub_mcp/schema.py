@@ -11,14 +11,30 @@ from infrahub_sdk.exceptions import SchemaNotFoundError
 
 from infrahub_mcp.constants import NAMESPACES_INTERNAL, schema_attribute_type_mapping
 from infrahub_mcp.schema_cache import get_cached_branch_schema, get_cached_kind
+from infrahub_mcp.utils import get_client
 
 if TYPE_CHECKING:
     from fastmcp import Context
+    from infrahub_sdk.client import InfrahubClient
 
 
-async def get_schema_catalog(ctx: "Context", branch: str | None = None) -> dict[str, str]:
-    """Return a kind-to-label mapping of all non-internal schema kinds."""
-    branch_schema = await get_cached_branch_schema(ctx, branch=branch)
+async def get_schema_catalog(
+    ctx: "Context",
+    branch: str | None = None,
+    *,
+    client: "InfrahubClient | None" = None,
+) -> dict[str, str]:
+    """Return a kind-to-label mapping of all non-internal schema kinds.
+
+    *client* is the client the schema read goes through; when omitted, one is
+    resolved here, once. A caller that already holds this request's client
+    passes it so the read reuses a credential Infrahub has already checked
+    instead of probing again — in the passthrough modes every unprimed client
+    costs one ``/summary`` probe (see
+    :func:`~infrahub_mcp.schema_cache.get_cached_branch_schema`).
+    """
+    client = client if client is not None else get_client(ctx)
+    branch_schema = await get_cached_branch_schema(ctx, branch=branch, client=client)
     return {
         kind: node.label or kind
         for kind, node in branch_schema.nodes.items()
@@ -48,7 +64,12 @@ def _build_peer_schema(peer: Any) -> dict[str, Any]:
 
 
 async def get_schema_detail(
-    ctx: "Context", kind: str, branch: str | None = None, expand_peers: bool = True
+    ctx: "Context",
+    kind: str,
+    branch: str | None = None,
+    expand_peers: bool = True,
+    *,
+    client: "InfrahubClient | None" = None,
 ) -> dict[str, Any]:
     """Return full schema detail for a specific kind.
 
@@ -61,11 +82,16 @@ async def get_schema_detail(
     relationships, inlined a single level deep. Peer schemas omit filters and
     are not expanded further (their relationships stay as plain peer references).
 
+    One client serves the whole call — the kind itself and every peer it
+    gathers — so a request validates its credential against Infrahub once,
+    not once per peer; see :func:`get_schema_catalog` for *client*.
+
     Args:
         ctx: FastMCP request context.
         kind: Schema kind to retrieve.
         branch: Optional branch to query.
         expand_peers: Inline one level of peer schemas on relationships.
+        client: Client the schema reads go through; resolved once here when omitted.
 
     Returns:
         Dict with keys: kind, label, namespace, attributes, relationships, filters.
@@ -73,7 +99,8 @@ async def get_schema_detail(
     Raises:
         SchemaNotFoundError: If the kind does not exist.
     """
-    schema = await get_cached_kind(ctx, kind=kind, branch=branch)
+    client = client if client is not None else get_client(ctx)
+    schema = await get_cached_kind(ctx, kind=kind, branch=branch, client=client)
 
     filter_list: list[dict[str, str]] = [
         {
@@ -87,7 +114,7 @@ async def get_schema_detail(
 
     async def _fetch_peer(peer_kind: str) -> tuple[str, Any]:
         try:
-            return peer_kind, await get_cached_kind(ctx, kind=peer_kind, branch=branch)
+            return peer_kind, await get_cached_kind(ctx, kind=peer_kind, branch=branch, client=client)
         except SchemaNotFoundError:
             return peer_kind, None
 
@@ -123,11 +150,18 @@ async def get_schema_detail(
     }
 
 
-async def get_valid_kinds_summary(ctx: "Context", branch: str | None = None) -> str:
+async def get_valid_kinds_summary(
+    ctx: "Context",
+    branch: str | None = None,
+    *,
+    client: "InfrahubClient | None" = None,
+) -> str:
     """Return a compact string listing all valid non-internal kinds.
 
     Intended for inclusion in error messages so agents can self-correct
-    without a second tool call.
+    without a second tool call. Tools call it after a ``SchemaNotFoundError``
+    from a read on their own client; passing that *client* keeps the error
+    path from probing Infrahub a second time (see :func:`get_schema_catalog`).
     """
-    catalog = await get_schema_catalog(ctx, branch=branch)
+    catalog = await get_schema_catalog(ctx, branch=branch, client=client)
     return "Valid kinds: " + ", ".join(sorted(catalog.keys()))
