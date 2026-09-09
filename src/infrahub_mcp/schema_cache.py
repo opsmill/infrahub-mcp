@@ -12,8 +12,9 @@ schema hash returned from ``GET /api/schema/summary``:
 - A short skip-window (``schema_cache_ttl``) lets bursts of requests
   serve from cache without any upstream call.
 - Past the skip-window, the helper fetches the cheap ``/summary`` payload
-  and compares ``main`` against the cached ``BranchSchema.hash``. Match
-  extends the cache; differ triggers a full refetch.
+  and compares ``main`` against the cached ``BranchSchema.hash`` (or, when
+  ``/api/schema`` omitted the hash, the ``/summary`` value the cold fetch
+  fell back to). Match extends the cache; differ triggers a full refetch.
 - A read also primes the SDK's per-client cache of the ``InfrahubClient``
   it was handed via ``client.schema.set_cache(...)``, so that client's
   subsequent ``client.schema.*`` calls inside the same request hit the SDK
@@ -125,6 +126,15 @@ class CachedSchemaEntry:
     branch: str
     schema: BranchSchema
     schema_hash: str
+    """The ``main`` schema hash a ``/summary`` probe is compared against.
+
+    Normally ``schema.hash`` as ``/api/schema`` returned it. When that
+    response omits the hash (the SDK then defaults it to ``""``), the cold
+    fetch and the hash-diff refetch both take the value ``/summary``
+    reported instead, so the entry is comparable from the start. ``""``
+    only when neither source had one; such an entry mismatches its first
+    probe and the refetch repairs it.
+    """
     graphql_sdl: str | None
     """Raw GraphQL SDL for the branch, or ``None`` when only its fetch failed.
 
@@ -628,6 +638,18 @@ async def _cold_fetch_under_lock(
     matching the revalidation path (ADR 0009). An SDL-only failure never
     reaches this handler: :func:`_full_fetch` absorbs it and the entry is
     stored with ``graphql_sdl=None``, so the marker is not armed for it.
+
+    ``/api/schema`` may omit the schema hash (the SDK then reports
+    ``BranchSchema.hash == ""``). An entry stored with an empty hash can
+    never match a ``/summary`` probe, so its first read past the skip-window
+    would pay a full refetch before the refetch path stored the upstream
+    hash. In that case only, the cold path asks ``/summary`` for the hash
+    once — the same source the hash-diff refetch falls back to — so the
+    entry is comparable from the start; the normal cold fetch makes no
+    ``/summary`` call. A failure of that fallback is not a failed read (the
+    schema itself was fetched): the entry is stored with an empty hash as
+    before, a WARN is logged, and neither the failure counter nor the
+    cold-failure marker is touched.
     """
     try:
         branch_schema, graphql_sdl = await _full_fetch(client, branch)
@@ -643,11 +665,25 @@ async def _cold_fetch_under_lock(
             exc,
         )
         raise
+    schema_hash = branch_schema.hash or ""
+    if not schema_hash:
+        # Degenerate case only: ``/api/schema`` answered without ``main``.
+        # Borrow the hash from ``/summary`` so the entry can hash-match on
+        # its first probe instead of paying one full refetch. The schema was
+        # fetched fine, so a failure here is swallowed and "" stored as before.
+        try:
+            schema_hash = await _fetch_summary_hash(client, branch)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "schema_cache_cold_hash_fallback_failure branch=%s exception=%r",
+                branch,
+                exc,
+            )
     now = _now()
     entry = CachedSchemaEntry(
         branch=branch,
         schema=branch_schema,
-        schema_hash=branch_schema.hash or "",
+        schema_hash=schema_hash,
         graphql_sdl=graphql_sdl,
         fetched_at_monotonic=now,
         consecutive_failures=0,
