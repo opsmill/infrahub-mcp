@@ -1,0 +1,25 @@
+tests/unit/test_schema_cache.py
+  s_291b5af4103ac9::t_794dd65367d4d5 15,243,248-299,302-303,305-313,315-322
+  s_291b5af4103ac9::t_337642b8347bb6 300-301,304,314
+  s_291b5af4103ac9::t_05a2fdd03166d7 323
+dev/adr/0009-hash-validated-schema-cache.md
+  s_291b5af4103ac9::t_f50a5c3edcca7e 22
+src/infrahub_mcp/schema_cache.py
+  s_291b5af4103ac9::t_f50a5c3edcca7e 15-17,129-137,641-652,668-681,686
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "e211afee2651ec38f4c575d09ddeaece4e7a4da5",
+  "prompts": {},
+  "sessions": {
+    "s_291b5af4103ac9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0abbfdb1-daab-4de7-8ff2-af1e19f5368e",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
