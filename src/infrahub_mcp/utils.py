@@ -45,6 +45,11 @@ class AppContext:  # pylint: disable=too-many-instance-attributes  # context agg
     object in ``WeakKeyDictionary`` maps. Entries are released automatically when
     a session ends (no unbounded growth), and a reset/recovery in one session
     never disturbs another. ``default_branch`` stays instance-wide.
+
+    The schema cache (``schema_cache``) is process-wide and keyed by branch
+    name, and so are its locks: ``_schema_cache_locks`` holds one
+    ``asyncio.Lock`` per branch, created on first use, so one branch's
+    upstream fetch never holds up another branch's reads.
     """
 
     client: InfrahubClient | None
@@ -63,7 +68,20 @@ class AppContext:  # pylint: disable=too-many-instance-attributes  # context agg
     successful cold fetch removes it. Kept apart from ``schema_cache`` so
     ``CachedSchemaEntry.schema`` stays non-optional for every reader.
     """
-    _schema_cache_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    _schema_cache_locks: dict[str, asyncio.Lock] = field(default_factory=dict)
+    """Branch name → the lock serializing that branch's upstream schema calls.
+
+    Taken by ``schema_cache._ensure_entry`` and ``schema_cache._fill_graphql_sdl``
+    for the branch they read, and held across the upstream call — up to its
+    timeout. One lock per branch rather than one for the whole cache: with a
+    single lock, a cold fetch or probe for one branch queued every other
+    branch's lock-path reads, healthy ones included, behind that timeout.
+    Locks are created on first use (``schema_cache._branch_lock``) and never
+    evicted: a branch-gone drops the cache entry, not the lock. Each is one
+    small object per branch name ever read, bounded by the branch namespace,
+    and evicting one while a waiter still queues on it would let the next
+    reader create a second lock and fetch the same branch concurrently.
+    """
 
 
 def get_client(ctx: Context) -> InfrahubClient:

@@ -574,6 +574,198 @@ class TestSingleFlight:
         assert call_count == 1, f"expected exactly one upstream fetch under burst, got {call_count}"
 
 
+class TestPerBranchLock:
+    """The cache lock is per branch: one branch's upstream call never queues another branch's reads.
+
+    The lock is held across the upstream call — up to its timeout. With one
+    lock for the whole cache, a cold fetch or probe for branch ``a`` held
+    every other branch's lock-path reads, healthy ones included, behind it;
+    during an outage with N branches in play, reads serialized behind N
+    upstream timeouts. Single-flight *within* a branch is unchanged
+    (:class:`TestSingleFlight`), and the lazy SDL fill for a branch takes
+    the same lock as its structured read.
+    """
+
+    @pytest.mark.anyio
+    async def test_a_parked_cold_fetch_for_one_branch_does_not_block_another(
+        self,
+        mock_ctx: MagicMock,
+        mock_client: MagicMock,
+    ) -> None:
+        schema_a = _make_branch_schema(schema_hash="HA")
+        schema_b = _make_branch_schema(schema_hash="HB")
+        entered_a = asyncio.Event()
+        release_a = asyncio.Event()
+
+        async def fetch(branch: str) -> Any:
+            if branch == "a":
+                entered_a.set()
+                await release_a.wait()
+                return schema_a
+            return schema_b
+
+        mock_client.schema._fetch.side_effect = fetch
+
+        read_a = asyncio.create_task(get_cached_branch_schema(mock_ctx, "a"))
+        await entered_a.wait()  # ``a`` is inside its upstream fetch, holding ``a``'s lock
+
+        result_b = await get_cached_branch_schema(mock_ctx, "b")
+
+        assert result_b is schema_b
+        assert not read_a.done(), "the read for `b` ran to completion while `a` still held its lock"
+        release_a.set()
+        assert await read_a is schema_a
+        assert mock_client.schema._fetch.await_count == 2
+
+    @pytest.mark.anyio
+    async def test_a_mixed_burst_costs_one_fetch_per_branch(
+        self,
+        mock_ctx: MagicMock,
+        mock_client: MagicMock,
+    ) -> None:
+        """Ten cold reads each for ``a`` and ``b``, interleaved: exactly one upstream fetch per branch."""
+        schemas = {"a": _make_branch_schema(schema_hash="HA"), "b": _make_branch_schema(schema_hash="HB")}
+        release = asyncio.Event()
+        fetched: list[str] = []
+
+        async def fetch(branch: str) -> Any:
+            fetched.append(branch)
+            await release.wait()
+            return schemas[branch]
+
+        mock_client.schema._fetch.side_effect = fetch
+        branches = ["a", "b"] * 10
+
+        tasks = [asyncio.create_task(get_cached_branch_schema(mock_ctx, branch)) for branch in branches]
+        await asyncio.sleep(0)  # park every waiter on its branch's lock behind that branch's first fetch
+        release.set()
+        results = await asyncio.gather(*tasks)
+
+        assert sorted(fetched) == ["a", "b"], f"expected one fetch per branch, got {fetched}"
+        assert all(result is schemas[branch] for result, branch in zip(results, branches, strict=True))
+
+    @pytest.mark.anyio
+    async def test_a_hanging_probe_for_one_branch_does_not_delay_another_branch_probe(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        """``a`` is timing out upstream; ``b``, past its skip-window, probes and is served meanwhile."""
+        now = schema_cache._now()
+        schema_a = _make_branch_schema(schema_hash="HA")
+        schema_b = _make_branch_schema(schema_hash="HB")
+        app_ctx.schema_cache["a"] = _past_window_entry(schema_a, now=now, branch="a")
+        app_ctx.schema_cache["b"] = _past_window_entry(schema_b, now=now, branch="b")
+        entered_a = asyncio.Event()
+        release_a = asyncio.Event()
+
+        async def probe(url: str, **_: Any) -> Any:
+            if urlencode([("branch", "a")]) in url:
+                entered_a.set()
+                await release_a.wait()
+                msg = "down"
+                raise httpx.NetworkError(msg)
+            return _make_response(json_body={"main": "H1"})
+
+        mock_client._get.side_effect = probe
+
+        read_a = asyncio.create_task(get_cached_branch_schema(mock_ctx, "a"))
+        await entered_a.wait()  # ``a``'s probe is in flight, holding ``a``'s lock
+
+        result_b = await get_cached_branch_schema(mock_ctx, "b")
+
+        assert result_b is schema_b
+        assert app_ctx.schema_cache["b"].consecutive_failures == 0
+        assert not read_a.done(), "the probe for `b` ran to completion while `a`'s probe still hung"
+        release_a.set()
+        assert await read_a is schema_a  # served stale: one failure, breaker not tripped
+        assert app_ctx.schema_cache["a"].consecutive_failures == 1
+        assert _summary_probes(mock_client) == 2
+
+    @pytest.mark.anyio
+    async def test_a_throttled_branch_does_not_stop_another_branch_probing(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        """``a`` inside its failure throttle serves stale without probing; ``b`` still probes."""
+        now = clock.now
+        schema_a = _make_branch_schema(schema_hash="HA")
+        schema_b = _make_branch_schema(schema_hash="HB")
+        app_ctx.schema_cache["a"] = _past_window_entry(
+            schema_a,
+            now=now,
+            branch="a",
+            consecutive_failures=1,
+            last_attempt_monotonic=now - 5,  # inside the min(ttl=30, 30) s throttle
+        )
+        app_ctx.schema_cache["b"] = _past_window_entry(schema_b, now=now, branch="b")
+        mock_client._get.return_value = _make_response(json_body={"main": "H1"})
+
+        assert await get_cached_branch_schema(mock_ctx, "a") is schema_a
+        assert await get_cached_branch_schema(mock_ctx, "b") is schema_b
+
+        assert _summary_probes(mock_client) == 1
+        assert urlencode([("branch", "b")]) in mock_client._get.await_args.kwargs["url"]
+        assert app_ctx.schema_cache["a"].consecutive_failures == 1  # untouched: ``a`` did not probe
+        assert app_ctx.schema_cache["b"].consecutive_failures == 0
+
+    @pytest.mark.anyio
+    async def test_the_sdl_fill_shares_its_branch_lock_and_leaves_other_branches_alone(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        """A parked lazy SDL fill for ``a`` holds ``a``'s lock — the one its structured reads take — and no other."""
+        now = clock.now
+        schema_a = _make_branch_schema(schema_hash="HA")
+        schema_b = _make_branch_schema(schema_hash="HB")
+        app_ctx.schema_cache["a"] = CachedSchemaEntry(
+            branch="a",
+            schema=schema_a,
+            schema_hash="H1",
+            graphql_sdl=None,  # only the SDL fetch failed; the next SDL read fills it lazily
+            fetched_at_monotonic=now,
+            consecutive_failures=0,
+            last_attempt_monotonic=now,
+        )
+        app_ctx.schema_cache["b"] = _past_window_entry(schema_b, now=now, branch="b")
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def slow_sdl(url: str) -> Any:
+            del url
+            entered.set()
+            await release.wait()
+            return _make_response(text="sdl-a")
+
+        mock_client.sdl_get.side_effect = slow_sdl
+        mock_client._get.return_value = _make_response(json_body={"main": "H1"})
+
+        fill_a = asyncio.create_task(get_cached_graphql_sdl(mock_ctx, "a"))
+        await entered.wait()  # the fill holds ``a``'s lock across its upstream call
+
+        assert await get_cached_branch_schema(mock_ctx, "b") is schema_b  # ``b`` probes and is served meanwhile
+
+        clock.advance(31)  # ``a`` is now past its skip-window: its next structured read takes the lock
+        read_a = asyncio.create_task(get_cached_branch_schema(mock_ctx, "a"))
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert not read_a.done(), "a structured read for `a` must queue behind `a`'s SDL fill"
+        assert not fill_a.done()
+
+        release.set()
+        assert await fill_a == "sdl-a"
+        assert await read_a is schema_a
+        assert app_ctx.schema_cache["a"].graphql_sdl == "sdl-a"
+        assert _summary_probes(mock_client) == 2  # one for ``b``, one for ``a`` once its lock was free
+
+
 # ---------------------------------------------------------------------------
 # US2 — Hash-validated revalidation
 # ---------------------------------------------------------------------------
@@ -1087,10 +1279,11 @@ def _past_window_entry(
     now: float,
     consecutive_failures: int = 0,
     last_attempt_monotonic: float = 0.0,
+    branch: str = "main",
 ) -> CachedSchemaEntry:
-    """A warm ``main`` entry past the 30 s skip-window."""
+    """A warm entry for *branch* (``main`` by default) past the 30 s skip-window."""
     return CachedSchemaEntry(
-        branch="main",
+        branch=branch,
         schema=schema,
         schema_hash="H1",
         graphql_sdl="sdl",
