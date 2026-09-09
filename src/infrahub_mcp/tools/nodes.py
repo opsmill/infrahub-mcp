@@ -116,14 +116,22 @@ async def _validate_filters(  # pylint: disable=too-many-arguments,too-many-posi
             remediation=(f"Remove reserved key(s) and check infrahub://schema/{kind} for valid filter names."),
         )
 
-    # Build the valid filter set from the schema (same logic as schema detail)
-    valid_filters: set[str] = {f"{attr.name}__value" for attr in schema.attributes}
-    for rel in schema.relationships:
+    # Build the valid filter set from the schema (same logic as schema detail).
+    # Distinct peers are resolved once each: two relationships pointing at the
+    # same peer kind used to resolve it twice.
+    peer_schemas: dict[str, Any] = {}
+    for peer_kind in dict.fromkeys(rel.peer for rel in schema.relationships):
         try:
-            rel_schema = await get_cached_kind(ctx, kind=rel.peer, branch=branch, client=client)
-            valid_filters.update(f"{rel.name}__{attr.name}__value" for attr in rel_schema.attributes)
+            peer_schemas[peer_kind] = await get_cached_kind(ctx, kind=peer_kind, branch=branch, client=client)
         except SchemaNotFoundError:
             continue
+
+    valid_filters: set[str] = {f"{attr.name}__value" for attr in schema.attributes}
+    for rel in schema.relationships:
+        rel_schema = peer_schemas.get(rel.peer)
+        if rel_schema is None:
+            continue
+        valid_filters.update(f"{rel.name}__{attr.name}__value" for attr in rel_schema.attributes)
     invalid_keys = set(filters.keys()) - valid_filters - _RESERVED_FILTER_KEYS
     if invalid_keys:
         sorted_valid = ", ".join(sorted(valid_filters))

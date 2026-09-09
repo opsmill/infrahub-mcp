@@ -11,7 +11,7 @@ from infrahub_sdk.exceptions import SchemaNotFoundError
 
 from infrahub_mcp.constants import NAMESPACES_INTERNAL, schema_attribute_type_mapping
 from infrahub_mcp.schema_cache import get_cached_branch_schema, get_cached_kind
-from infrahub_mcp.utils import get_client
+from infrahub_mcp.utils import resolve_client
 
 if TYPE_CHECKING:
     from fastmcp import Context
@@ -27,13 +27,10 @@ async def get_schema_catalog(
     """Return a kind-to-label mapping of all non-internal schema kinds.
 
     *client* is the client the schema read goes through; when omitted, one is
-    resolved here, once. A caller that already holds this request's client
-    passes it so the read reuses a credential Infrahub has already checked
-    instead of probing again — in the passthrough modes every unprimed client
-    costs one ``/summary`` probe (see
-    :func:`~infrahub_mcp.schema_cache.get_cached_branch_schema`).
+    resolved here, once. See :func:`~infrahub_mcp.utils.resolve_client` for why
+    a caller that already holds this request's client passes it.
     """
-    client = client if client is not None else get_client(ctx)
+    client = resolve_client(ctx, client)
     branch_schema = await get_cached_branch_schema(ctx, branch=branch, client=client)
     return {
         kind: node.label or kind
@@ -99,7 +96,7 @@ async def get_schema_detail(
     Raises:
         SchemaNotFoundError: If the kind does not exist.
     """
-    client = client if client is not None else get_client(ctx)
+    client = resolve_client(ctx, client)
     schema = await get_cached_kind(ctx, kind=kind, branch=branch, client=client)
 
     filter_list: list[dict[str, str]] = [
@@ -112,14 +109,25 @@ async def get_schema_detail(
 
     unique_peer_kinds: list[str] = list(dict.fromkeys(rel.peer for rel in schema.relationships))
 
+    # One branch-schema read resolves every peer the cache already holds —
+    # ``BranchSchema.nodes`` folds nodes, generics, profiles and templates
+    # together, so that is normally all of them. Resolving each peer through
+    # get_cached_kind instead re-entered the whole cache protocol per peer for
+    # the same mapping. Only kinds genuinely absent from it fall through to
+    # get_cached_kind, whose forced revalidation still catches a peer added
+    # upstream since the entry was fetched.
+    branch_nodes = (await get_cached_branch_schema(ctx, branch=branch, client=client)).nodes
+    peer_schemas: dict[str, Any] = {pk: branch_nodes[pk] for pk in unique_peer_kinds if pk in branch_nodes}
+
     async def _fetch_peer(peer_kind: str) -> tuple[str, Any]:
         try:
             return peer_kind, await get_cached_kind(ctx, kind=peer_kind, branch=branch, client=client)
         except SchemaNotFoundError:
             return peer_kind, None
 
-    peer_results = await asyncio.gather(*[_fetch_peer(pk) for pk in unique_peer_kinds])
-    peer_schemas: dict[str, Any] = {pk: s for pk, s in peer_results if s is not None}
+    missing_peer_kinds = [pk for pk in unique_peer_kinds if pk not in peer_schemas]
+    peer_results = await asyncio.gather(*[_fetch_peer(pk) for pk in missing_peer_kinds])
+    peer_schemas.update({pk: s for pk, s in peer_results if s is not None})
 
     for rel in schema.relationships:
         rel_schema = peer_schemas.get(rel.peer)

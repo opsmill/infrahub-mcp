@@ -96,6 +96,28 @@ class AppContext:  # pylint: disable=too-many-instance-attributes  # context agg
     """
 
 
+def get_app_ctx(ctx: Context) -> AppContext:
+    """Return the :class:`AppContext` carried by the current request's lifespan context."""
+    if ctx.request_context is None:
+        msg = "request_context must not be None"
+        raise RuntimeError(msg)
+    app_ctx: AppContext = ctx.request_context.lifespan_context
+    return app_ctx
+
+
+def resolve_client(ctx: Context, client: InfrahubClient | None) -> InfrahubClient:
+    """Return *client* when the caller passed one, otherwise resolve one via :func:`get_client`.
+
+    In the passthrough auth modes :func:`get_client` builds a fresh
+    ``InfrahubClient`` on every call, so a caller that already holds this
+    request's client passes it rather than letting the read resolve another:
+    the read then reuses a credential Infrahub has already accepted, instead
+    of costing another ``/summary`` probe. In the shared-client modes both
+    spellings name the same lifespan client.
+    """
+    return client if client is not None else get_client(ctx)
+
+
 def get_client(ctx: Context) -> InfrahubClient:
     """Get the Infrahub client for the current request.
 
@@ -107,10 +129,7 @@ def get_client(ctx: Context) -> InfrahubClient:
 
     In other modes, returns the shared lifespan client.
     """
-    if ctx.request_context is None:
-        msg = "request_context must not be None"
-        raise RuntimeError(msg)
-    app_ctx: AppContext = ctx.request_context.lifespan_context
+    app_ctx = get_app_ctx(ctx)
 
     if app_ctx.config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH}:
         address = os.environ.get("INFRAHUB_ADDRESS")
@@ -146,11 +165,7 @@ def get_client(ctx: Context) -> InfrahubClient:
 
 def get_config(ctx: Context) -> ServerConfig:
     """Return the server configuration for the current request."""
-    if ctx.request_context is None:
-        msg = "request_context must not be None"
-        raise RuntimeError(msg)
-    app_ctx: AppContext = ctx.request_context.lifespan_context
-    return app_ctx.config
+    return get_app_ctx(ctx).config
 
 
 def _session_obj(ctx: Context) -> object:
@@ -179,10 +194,7 @@ async def _get_session_lock(app_ctx: AppContext, session: object) -> asyncio.Loc
 
 def get_session_branch(ctx: Context) -> str | None:
     """Return the calling session's active branch, or ``None`` if none is set."""
-    if ctx.request_context is None:
-        msg = "request_context must not be None"
-        raise RuntimeError(msg)
-    app_ctx: AppContext = ctx.request_context.lifespan_context
+    app_ctx = get_app_ctx(ctx)
     return app_ctx._session_branches.get(_session_obj(ctx))  # noqa: SLF001
 
 
@@ -310,10 +322,7 @@ async def get_default_branch(ctx: Context) -> str:
     pay the round-trip once per session. Falls back to ``main`` if the server
     does not advertise a default branch.
     """
-    if ctx.request_context is None:
-        msg = "request_context must not be None"
-        raise RuntimeError(msg)
-    app_ctx: AppContext = ctx.request_context.lifespan_context
+    app_ctx = get_app_ctx(ctx)
     async with app_ctx._default_branch_lock:  # noqa: SLF001
         if app_ctx.default_branch is None:
             client = get_client(ctx)
@@ -363,10 +372,7 @@ async def get_or_create_session_branch(ctx: Context) -> str:
     is provisioned automatically — the caller is warned, naming both the old and
     new branch — so writes recover without a server restart.
     """
-    if ctx.request_context is None:
-        msg = "request_context must not be None"
-        raise RuntimeError(msg)
-    app_ctx: AppContext = ctx.request_context.lifespan_context
+    app_ctx = get_app_ctx(ctx)
     session = _session_obj(ctx)
     lock = await _get_session_lock(app_ctx, session)
     async with lock:
@@ -396,10 +402,7 @@ async def recover_if_session_branch_stale(ctx: Context) -> str | None:
     also contains "read-only"). Returns ``"<branch> <reason>"`` when the cached branch
     was stale and has now been cleared, or ``None`` when it is still writable.
     """
-    if ctx.request_context is None:
-        msg = "request_context must not be None"
-        raise RuntimeError(msg)
-    app_ctx: AppContext = ctx.request_context.lifespan_context
+    app_ctx = get_app_ctx(ctx)
     session = _session_obj(ctx)
     lock = await _get_session_lock(app_ctx, session)
     async with lock:
@@ -423,10 +426,7 @@ async def reset_or_switch_session_branch(ctx: Context, branch: str | None) -> di
 
     Affects only the calling session.
     """
-    if ctx.request_context is None:
-        msg = "request_context must not be None"
-        raise RuntimeError(msg)
-    app_ctx: AppContext = ctx.request_context.lifespan_context
+    app_ctx = get_app_ctx(ctx)
     session = _session_obj(ctx)
     lock = await _get_session_lock(app_ctx, session)
     async with lock:

@@ -28,8 +28,8 @@ from fastmcp.server.middleware.caching import (
 )
 from infrahub_sdk.exceptions import AuthenticationError, BranchNotFoundError, SchemaNotFoundError
 
-from infrahub_mcp import schema as schema_helpers
 from infrahub_mcp import schema_cache
+from infrahub_mcp import utils as mcp_utils
 from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.middleware import (
     MetricsMiddleware,
@@ -197,9 +197,8 @@ def mock_ctx(app_ctx: AppContext) -> MagicMock:
 
 @pytest.fixture(autouse=True)
 def _patch_dependencies(mock_client: MagicMock, monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    """Patch get_client (in ``schema_cache`` and ``schema``) and get_default_branch globally for the test module."""
-    monkeypatch.setattr(schema_cache, "get_client", lambda _ctx: mock_client)
-    monkeypatch.setattr(schema_helpers, "get_client", lambda _ctx: mock_client)
+    """Patch ``utils.get_client`` (the seam ``resolve_client`` uses) and get_default_branch for the module."""
+    monkeypatch.setattr(mcp_utils, "get_client", lambda _ctx: mock_client)
 
     async def fake_default_branch(_ctx: Any) -> str:  # noqa: RUF029  # async signature required by production contract
         return "main"
@@ -384,7 +383,7 @@ class TestDisabledFlagUsesSdkCache:
         for client in clients:
             client.schema._fetch.return_value = schema
         remaining = iter(clients)
-        monkeypatch.setattr(schema_cache, "get_client", lambda _ctx: next(remaining))
+        monkeypatch.setattr(mcp_utils, "get_client", lambda _ctx: next(remaining))
 
         first = await get_cached_branch_schema(mock_ctx)
         second = await get_cached_branch_schema(mock_ctx)
@@ -436,8 +435,7 @@ def _patch_fresh_client_per_call(
         built.append(client)
         return client
 
-    monkeypatch.setattr(schema_cache, "get_client", build)
-    monkeypatch.setattr(schema_helpers, "get_client", build)
+    monkeypatch.setattr(mcp_utils, "get_client", build)
     return built
 
 

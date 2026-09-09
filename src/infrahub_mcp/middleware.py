@@ -402,6 +402,9 @@ def _build_response_caching_middleware(config: ServerConfig) -> ResponseCachingM
         # and a lone ``excluded_tools=["get_schema"]`` would make every *other*
         # tool cacheable — replaying node queries and mutations. The subclass
         # bypasses tool caching outright instead.
+        # This TTL is inert: the subclass's ``on_call_tool`` never caches a
+        # tool result, so the value configures nothing. It is passed only
+        # because the parent's constructor requires the settings object.
         call_tool = CallToolSettings(ttl=config.cache_read_ttl)
         return _SchemaAwareResponseCachingMiddleware(
             list_tools_settings=list_tools,
