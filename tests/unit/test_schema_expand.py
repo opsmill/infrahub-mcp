@@ -48,9 +48,10 @@ def _patch_cached_kind(schemas: dict[str, MagicMock]) -> Iterator[tuple[AsyncMoc
     """Stub the schema-cache reads and the client resolution ``get_schema_detail`` uses.
 
     ``get_schema_detail`` takes a FastMCP ``Context``, resolves one client for
-    the call, reads the requested kind through the hash-validated schema cache
-    and resolves that kind's relationship peers from a single branch-schema
-    read — only peers absent from it fall back to ``get_cached_kind``. These
+    the call, and resolves the requested kind and its relationship peers from a
+    single branch-schema read — only kinds absent from it fall back to
+    ``get_cached_kind`` (whose forced revalidation catches a kind added
+    upstream since the cache entry was fetched). These
     tests cover peer-expansion *shaping* only, so all three are stubbed rather
     than exercised. Yields the ``get_cached_kind`` stub, the
     ``get_cached_branch_schema`` stub and the ``get_client`` stub for tests
@@ -145,9 +146,10 @@ async def test_missing_peer_kind_skipped() -> None:
     )
     with _patch_cached_kind({"KindA": schema_a}) as (cached_kind, _branch_read, _get_client):
         result = await get_schema_detail(MagicMock(), kind="KindA", expand_peers=True)
-    # A peer absent from the branch-schema read still falls back to
-    # get_cached_kind, whose forced revalidation catches a kind added upstream.
-    assert [call.kwargs["kind"] for call in cached_kind.await_args_list] == ["KindA", "NonExistent"]
+    # KindA comes from the single branch-schema read; only the peer absent from
+    # it falls back to get_cached_kind, whose forced revalidation catches a kind
+    # added upstream.
+    assert [call.kwargs["kind"] for call in cached_kind.await_args_list] == ["NonExistent"]
     broken = next(r for r in result["relationships"] if r["name"] == "broken")
     assert broken["peer"] == "NonExistent"
     assert broken["cardinality"] == "many"
@@ -175,9 +177,8 @@ async def test_kind_detail_with_peers_resolves_one_client_and_threads_it() -> No
 
     get_client.assert_called_once()
     branch_read.assert_awaited_once()
-    # KindA itself; its peer KindB comes from that one branch-schema read.
-    assert cached_kind.await_count == 1
-    assert all(call.kwargs["client"] is get_client.return_value for call in cached_kind.await_args_list)
+    # KindA and its peer KindB both come from that one branch-schema read.
+    assert cached_kind.await_count == 0
     assert branch_read.await_args_list[0].kwargs["client"] is get_client.return_value
 
 
@@ -188,6 +189,5 @@ async def test_kind_detail_uses_the_callers_client_and_resolves_none() -> None:
 
     get_client.assert_not_called()
     branch_read.assert_awaited_once()
-    assert cached_kind.await_count == 1
-    assert all(call.kwargs["client"] is caller for call in cached_kind.await_args_list)
+    assert cached_kind.await_count == 0
     assert branch_read.await_args_list[0].kwargs["client"] is caller

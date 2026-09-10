@@ -97,7 +97,17 @@ async def get_schema_detail(
         SchemaNotFoundError: If the kind does not exist.
     """
     client = resolve_client(ctx, client)
-    schema = await get_cached_kind(ctx, kind=kind, branch=branch, client=client)
+    # One branch-schema read serves the requested kind and every peer the cache
+    # already holds — ``BranchSchema.nodes`` folds nodes, generics, profiles and
+    # templates together, so that is normally all of them. Only kinds genuinely
+    # absent from it fall through to get_cached_kind, whose forced revalidation
+    # still catches a kind added upstream since the entry was fetched. Reading
+    # the requested kind through get_cached_kind first re-entered the whole
+    # cache protocol for a mapping this read already needs.
+    branch_nodes = (await get_cached_branch_schema(ctx, branch=branch, client=client)).nodes
+    schema = branch_nodes.get(kind)
+    if schema is None:
+        schema = await get_cached_kind(ctx, kind=kind, branch=branch, client=client)
 
     filter_list: list[dict[str, str]] = [
         {
@@ -109,14 +119,6 @@ async def get_schema_detail(
 
     unique_peer_kinds: list[str] = list(dict.fromkeys(rel.peer for rel in schema.relationships))
 
-    # One branch-schema read resolves every peer the cache already holds —
-    # ``BranchSchema.nodes`` folds nodes, generics, profiles and templates
-    # together, so that is normally all of them. Resolving each peer through
-    # get_cached_kind instead re-entered the whole cache protocol per peer for
-    # the same mapping. Only kinds genuinely absent from it fall through to
-    # get_cached_kind, whose forced revalidation still catches a peer added
-    # upstream since the entry was fetched.
-    branch_nodes = (await get_cached_branch_schema(ctx, branch=branch, client=client)).nodes
     peer_schemas: dict[str, Any] = {pk: branch_nodes[pk] for pk in unique_peer_kinds if pk in branch_nodes}
 
     async def _fetch_peer(peer_kind: str) -> tuple[str, Any]:
