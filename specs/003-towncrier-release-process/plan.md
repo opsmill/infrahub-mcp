@@ -43,7 +43,7 @@ This repository is the **pilot** for the same change in infrahub-skills and infr
 **Ask First gates** (from `AGENTS.md`): none are crossed.
 
 | Gate | Crossed? |
-|---|---|
+| --- | --- |
 | Adding new dependencies | No — towncrier is already a dev dependency |
 | Changing authentication behavior | No |
 | Modifying the middleware stack order | No |
