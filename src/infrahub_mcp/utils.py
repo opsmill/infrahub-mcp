@@ -3,6 +3,7 @@ import os
 import re
 import secrets
 import string
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -50,7 +51,10 @@ class AppContext:  # pylint: disable=too-many-instance-attributes  # context agg
     name, and so are its locks: ``_schema_cache_locks`` holds one
     ``asyncio.Lock`` per branch, created on first use, so one branch's
     upstream fetch never holds up another branch's reads, and dropped once
-    the branch has neither a cache entry nor a reader on the lock.
+    the branch has neither a cache entry nor a reader on the lock. The cache
+    itself is bounded by ``ServerConfig.schema_cache_max_branches`` and
+    evicts its least recently used branch past that count, which is what
+    keeps both maps finite under the default per-session branch pattern.
     """
 
     client: InfrahubClient | None
@@ -60,7 +64,17 @@ class AppContext:  # pylint: disable=too-many-instance-attributes  # context agg
     _session_branches: WeakKeyDictionary[object, str] = field(default_factory=WeakKeyDictionary)
     _session_locks: WeakKeyDictionary[object, asyncio.Lock] = field(default_factory=WeakKeyDictionary)
     _session_locks_guard: asyncio.Lock = field(default_factory=asyncio.Lock)
-    schema_cache: dict[str, "CachedSchemaEntry"] = field(default_factory=dict)
+    schema_cache: OrderedDict[str, "CachedSchemaEntry"] = field(default_factory=OrderedDict)
+    """Branch name → that branch's cached schema snapshot, in least-recently-used order.
+
+    Bounded by ``ServerConfig.schema_cache_max_branches``: every write goes
+    through ``schema_cache._store_entry`` and every read served from cache
+    marks its branch as used, so once the map is over the cap the
+    least-recently-used branch is evicted. An eviction is not a correctness
+    event — the next read of that branch cold-fetches it again — but it is
+    what keeps the map finite when ``branch_pattern`` mints a fresh branch
+    per session. ``0`` disables the bound.
+    """
     schema_cache_cold_failures: dict[str, float] = field(default_factory=dict)
     """Branch name → monotonic time of the last failed *cold* schema fetch.
 
@@ -83,9 +97,11 @@ class AppContext:  # pylint: disable=too-many-instance-attributes  # context agg
     branch, an evicted one, a failed cold fetch. It is kept while anyone holds
     or waits on it, so two readers of a branch never end up on two locks and
     fetch it twice, and while the branch has an entry, for that entry's
-    revalidations. The map is therefore bounded by the branches in the cache
-    plus those with a read in flight, not by every branch name — caller
-    input — ever asked for.
+    revalidations. That last rule leaves a lock behind when an entry is
+    removed with nobody on the lock, so LRU eviction drops the evicted
+    branch's lock itself (it only ever evicts unheld branches). The map is
+    therefore bounded by the branches in the cache plus those with a read in
+    flight, not by every branch name — caller input — ever asked for.
     """
     _schema_cache_lock_holders: dict[str, int] = field(default_factory=dict)
     """Branch name → how many tasks currently hold or wait on that branch's lock.

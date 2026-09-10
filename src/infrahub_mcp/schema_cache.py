@@ -59,7 +59,17 @@ schema hash returned from ``GET /api/schema/summary``:
   breaker has tripped, fail fast) instead of queueing on the branch's cache
   lock behind their own upstream timeout. A failed *cold* fetch is remembered
   the same way, so an empty cache during an outage costs one upstream
-  timeout per window rather than one per request.
+  timeout per window rather than one per request, and a marker is dropped
+  once its window has elapsed so the branch names an outage walks through
+  do not accumulate.
+- The cache holds at most ``schema_cache_max_branches`` branches (64 by
+  default, ``0`` disables the bound) and evicts the least recently used one
+  past that. Branch names are caller input and the default ``branch_pattern``
+  mints one per session, so without a bound a long-lived server keeps one
+  full ``BranchSchema`` — and its SDL — for every session it ever served. An
+  eviction costs only a cold fetch on that branch's next read; a branch with
+  a fetch in flight is never the victim. This reverses ADR 0009's rejection
+  of eviction (see :func:`_evict_lru`).
 - A rejected credential (HTTP 401/403, or the SDK's ``AuthenticationError``)
   is not a transient failure. In passthrough modes the credential belongs
   to the caller, so it says nothing about upstream health: the read raises
@@ -128,6 +138,13 @@ class CachedSchemaEntry:
     pull the entry from the dict without holding a lock — under the GIL
     a single dict assignment is atomic, so a reader either sees the old
     entry or the new one, never a torn intermediate.
+
+    An entry lives until something removes it: a ``/summary`` probe
+    reporting the branch gone, or :func:`_evict_lru` reclaiming the least
+    recently used branch once the cache is over
+    ``schema_cache_max_branches``. Neither is a correctness event — the next
+    read of that branch cold-fetches it — so nothing here may be treated as
+    permanent for the process lifetime.
     """
 
     branch: str
@@ -431,7 +448,10 @@ async def _branch_lock(app_ctx: AppContext, branch: str) -> AsyncIterator[None]:
     of a branch with an entry is kept for that entry's revalidations, a lock
     somebody still waits on is kept for them, and the lock of a branch with
     neither — an unknown branch, a branch-gone eviction, a failed cold fetch
-    — leaves nothing behind. The branch name is caller input, so without
+    — leaves nothing behind. An entry can also disappear from under a kept
+    lock, which no holder is then left to notice: :func:`_evict_lru` drops
+    the lock along with the entry for that reason, and only ever evicts a
+    branch nobody holds or waits on. The branch name is caller input, so without
     that rule the map grew by one lock per distinct name ever asked for.
     Single-flight is intact: a lock is only dropped once nobody holds or
     waits on it, so two readers of one branch can never sit on two locks
@@ -461,6 +481,96 @@ async def _branch_lock(app_ctx: AppContext, branch: str) -> AsyncIterator[None]:
             del holders[branch]
             if branch not in app_ctx.schema_cache:
                 del locks[branch]
+
+
+def _touch(app_ctx: AppContext, branch: str) -> None:
+    """Mark *branch* as the most recently used entry, if it is still cached.
+
+    Called wherever an entry is *served* as well as wherever one is written,
+    so a branch that stays hot without being rewritten — every read inside
+    its skip-window — is not the one :func:`_evict_lru` picks. A missing key
+    is not an error: the entry may have been evicted, or dropped by a
+    branch-gone probe, between the lookup that produced it and this call.
+    """
+    if branch in app_ctx.schema_cache:
+        app_ctx.schema_cache.move_to_end(branch)
+
+
+def _evict_lru(app_ctx: AppContext, *, keep: str | None = None) -> None:
+    """Evict least-recently-used entries until the cache is within its bound.
+
+    ``ServerConfig.schema_cache_max_branches`` caps how many branches the
+    process-wide cache holds; ``0`` disables the cap. The bound exists
+    because branch names are caller input and the default ``branch_pattern``
+    mints one per session: without it a long-lived server accumulates one
+    full ``BranchSchema`` — plus that branch's SDL — for every session it
+    ever served, since the only other way out of the cache is a 400/404
+    from ``/summary``, which requires the abandoned branch to be read again.
+
+    A branch someone currently holds or waits on the lock for is never the
+    victim: that task is in the middle of a fetch and is about to write the
+    entry back, so evicting it would only make the write re-grow the map.
+    Neither is *keep*, the entry the caller has just stored. If every
+    remaining branch is protected — pathological, and only reachable with a
+    cap far below the concurrency — the cache is left over its bound for now
+    rather than the caller being blocked; the next store tries again.
+
+    Evicting also drops the branch's lock when it is unheld, because
+    :func:`_branch_lock` only prunes a lock when its last holder leaves *and*
+    the branch has no entry: a lock whose entry disappeared from under it
+    would otherwise stay in the map for the life of the process, undoing that
+    map's own bounding rule.
+    """
+    cap = app_ctx.config.schema_cache_max_branches
+    if not cap:
+        return
+    holders = app_ctx._schema_cache_lock_holders  # noqa: SLF001
+    while len(app_ctx.schema_cache) > cap:
+        victim = next(
+            (branch for branch in app_ctx.schema_cache if branch != keep and not holders.get(branch, 0)),
+            None,
+        )
+        if victim is None:
+            return
+        del app_ctx.schema_cache[victim]
+        app_ctx._schema_cache_locks.pop(victim, None)  # noqa: SLF001
+        logger.debug("schema_cache_evicted branch=%s max_branches=%d", victim, cap)
+
+
+def _sweep_cold_failures(app_ctx: AppContext, *, now: float) -> None:
+    """Drop cold-failure markers that have aged out of the probe-throttle window.
+
+    A marker past its window already fails nothing fast — every reader of
+    ``AppContext.schema_cache_cold_failures`` goes through
+    :func:`_raise_if_cold_fetch_throttled`, which ignores it — so it is dead
+    weight, and the branch name is caller input: through an outage, a client
+    walking distinct branch names would otherwise leave one marker per name
+    for the life of the process. Swept from the one place that grows the
+    map, immediately before a new marker is recorded. Cold failures are rare
+    enough that the linear scan costs nothing.
+    """
+    window = _recovery_probe_seconds(app_ctx.config)
+    expired = [
+        branch
+        for branch, failed_at in app_ctx.schema_cache_cold_failures.items()
+        if not _is_retry_throttled(failed_at, throttle_seconds=window, now=now)
+    ]
+    for branch in expired:
+        del app_ctx.schema_cache_cold_failures[branch]
+
+
+def _store_entry(app_ctx: AppContext, entry: CachedSchemaEntry) -> None:
+    """Store *entry* as its branch's cache value, then enforce the cache bound.
+
+    The one write path into ``AppContext.schema_cache``. Every writer goes
+    through here so that recency ordering and the bound cannot be bypassed
+    by a new call site: a plain assignment to an existing key leaves an
+    ``OrderedDict`` entry where it was, which would let a branch rewritten
+    on every read still age out as least recently used.
+    """
+    app_ctx.schema_cache[entry.branch] = entry
+    app_ctx.schema_cache.move_to_end(entry.branch)
+    _evict_lru(app_ctx, keep=entry.branch)
 
 
 async def _resolve_branch(ctx: Context, branch: str | None) -> str:
@@ -652,7 +762,7 @@ def _note_failure(
             _breach_threshold_name(new_entry, max_failures=max_failures),
             now - failing_since,
         )
-    app_ctx.schema_cache[entry.branch] = new_entry
+    _store_entry(app_ctx, new_entry)
     return new_entry
 
 
@@ -696,7 +806,11 @@ async def _cold_fetch_under_lock(
     ``AppContext.schema_cache_cold_failures`` so reads landing inside the
     probe-throttle window fail fast instead of each paying an upstream
     timeout under the lock (see :func:`_raise_if_cold_fetch_throttled`); the
-    failure itself still propagates unchanged to the caller.
+    failure itself still propagates unchanged to the caller. Recording a
+    marker first sweeps the ones whose window has elapsed
+    (:func:`_sweep_cold_failures`), which bounds that map to the branches
+    that failed inside the window rather than every branch name an outage
+    was asked for.
     ``BranchNotFoundError`` is not remembered: an unknown branch is a fast,
     caller-specific answer rather than an upstream-health signal, and it
     must keep surfacing as ``BranchNotFoundError``. Nor is a rejected
@@ -728,7 +842,9 @@ async def _cold_fetch_under_lock(
     except Exception as exc:
         if _is_auth_error(exc):
             _raise_auth_error(exc, branch=branch)
-        app_ctx.schema_cache_cold_failures[branch] = _now()
+        failed_at = _now()
+        _sweep_cold_failures(app_ctx, now=failed_at)
+        app_ctx.schema_cache_cold_failures[branch] = failed_at
         logger.warning(
             "schema_cache_cold_fetch_failure branch=%s exception=%r",
             branch,
@@ -750,7 +866,7 @@ async def _cold_fetch_under_lock(
         consecutive_failures=0,
         last_attempt_monotonic=now,
     )
-    app_ctx.schema_cache[branch] = entry
+    _store_entry(app_ctx, entry)
     app_ctx.schema_cache_cold_failures.pop(branch, None)
     return entry
 
@@ -814,7 +930,7 @@ async def _revalidate_under_lock(
             failing_since_monotonic=None,
             circuit_break_recorded=False,
         )
-        app_ctx.schema_cache[branch] = refreshed
+        _store_entry(app_ctx, refreshed)
         if metrics is not None:
             metrics.record_schema_cache_event("hash_match")
         return refreshed
@@ -837,7 +953,7 @@ async def _revalidate_under_lock(
         consecutive_failures=0,
         last_attempt_monotonic=now,
     )
-    app_ctx.schema_cache[branch] = refreshed
+    _store_entry(app_ctx, refreshed)
     if metrics is not None:
         metrics.record_schema_cache_event("hash_diff")
     return refreshed
@@ -928,7 +1044,8 @@ def _raise_if_cold_fetch_throttled(app_ctx: AppContext, *, branch: str, now: flo
     is taking the lock and probing again — exactly the one-timeout-per-
     request serialization the throttle exists to prevent. The marker is set
     by :func:`_cold_fetch_under_lock` and cleared by its next success; a read
-    landing past the window falls through and probes again.
+    landing past the window falls through and probes again, dropping the
+    spent marker on its way through.
     """
     _raise_if_attempt_throttled(
         branch,
@@ -937,6 +1054,10 @@ def _raise_if_cold_fetch_throttled(app_ctx: AppContext, *, branch: str, now: flo
         now=now,
         what="the last schema fetch",
     )
+    # Not throttled, so any marker for this branch is past its window and
+    # throttles nothing from here on: drop it rather than wait for the sweep
+    # that the next cold failure anywhere runs.
+    app_ctx.schema_cache_cold_failures.pop(branch, None)
 
 
 def _check_circuit_break(
@@ -1011,6 +1132,10 @@ def _try_serve_from_cache(
     against a warm, unbroken entry in :func:`_validate_caller_outside_lock`
     without taking the lock, and on the lock path in every other case.
 
+    Both shortcuts also mark the branch as most recently used, so a hot
+    branch served from cache without ever being rewritten is not the one
+    :func:`_evict_lru` reclaims.
+
     :func:`_ensure_entry` calls this again after acquiring the lock, so
     waiters queued behind a probe observe its outcome instead of repeating
     it: a failure serves them stale (or fails fast), and a forced probe's
@@ -1064,6 +1189,7 @@ def _try_serve_from_cache(
     if current:
         if metrics is not None:
             metrics.record_schema_cache_event("hit")
+        _touch(app_ctx, resolved_branch)
         _install_into_client(client, entry)
         return entry
 
@@ -1075,6 +1201,7 @@ def _try_serve_from_cache(
         # the window do the next probe.
         if metrics is not None:
             metrics.record_schema_cache_event("stale_hit")
+        _touch(app_ctx, resolved_branch)
         _install_into_client(client, entry)
         return entry
     return None
@@ -1194,7 +1321,7 @@ async def _validate_caller_outside_lock(
         failing_since_monotonic=None,
         circuit_break_recorded=False,
     )
-    app_ctx.schema_cache[resolved_branch] = refreshed
+    _store_entry(app_ctx, refreshed)
     if metrics is not None:
         metrics.record_schema_cache_event("hash_match")
     _install_into_client(client, refreshed)
@@ -1483,11 +1610,11 @@ async def _fill_graphql_sdl(*, app_ctx: AppContext, client: InfrahubClient, bran
             if _is_auth_error(exc):
                 _raise_auth_error(exc, branch=branch)
             if entry is not None and app_ctx.schema_cache.get(branch) is entry:
-                app_ctx.schema_cache[branch] = replace(entry, graphql_sdl_last_failure_monotonic=_now())
+                _store_entry(app_ctx, replace(entry, graphql_sdl_last_failure_monotonic=_now()))
             logger.warning("schema_cache_sdl_fill_failure branch=%s exception=%r", branch, exc)
             raise
         if entry is not None and app_ctx.schema_cache.get(branch) is entry:
-            app_ctx.schema_cache[branch] = replace(entry, graphql_sdl=sdl)
+            _store_entry(app_ctx, replace(entry, graphql_sdl=sdl))
         return sdl
 
 

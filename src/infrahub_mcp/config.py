@@ -86,6 +86,14 @@ class ServerConfig(BaseSettings):
             branch is served stale during an outage, and a branch nobody read
             for a while is not failed closed by its first transient blip. Set to
             0 to disable.
+        schema_cache_max_branches: Maximum number of branches held in the process-wide
+            schema cache. Past this many, the least recently used entry is evicted;
+            a later read of an evicted branch pays a cold fetch. Each entry holds one
+            full ``BranchSchema`` plus that branch's GraphQL SDL, so this bounds the
+            cache's worst-case memory. The default suits the session-branch pattern,
+            where ``branch_pattern`` mints a fresh branch per session and every one of
+            them would otherwise leave a schema behind for the life of the process.
+            Set to 0 to disable the bound.
     """
 
     model_config = SettingsConfigDict(
@@ -128,6 +136,7 @@ class ServerConfig(BaseSettings):
     schema_cache_ttl: int = Field(default=30, ge=0)
     schema_cache_max_consecutive_failures: int = Field(default=10, ge=0)
     schema_cache_max_staleness_seconds: int = Field(default=900, ge=0)
+    schema_cache_max_branches: int = Field(default=64, ge=0)
 
     @property
     def log_level_debug(self) -> bool:

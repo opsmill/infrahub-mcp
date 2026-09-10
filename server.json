@@ -211,6 +211,13 @@
           "isRequired": false,
           "format": "string",
           "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_SCHEMA_CACHE_MAX_BRANCHES",
+          "description": "Schema cache max branches (default: 64)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
         }
       ]
     }

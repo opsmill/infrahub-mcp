@@ -980,6 +980,215 @@ class TestPerBranchLock:
         assert app_ctx._schema_cache_lock_holders == {}
 
 
+def _ctx_with_cap(max_branches: int) -> tuple[MagicMock, AppContext]:
+    """A request context whose schema cache holds at most *max_branches* branches."""
+    app_ctx = AppContext(
+        client=None,
+        config=_make_config(schema_cache_max_branches=max_branches),
+        default_branch="main",
+    )
+    ctx = MagicMock()
+    ctx.request_context = MagicMock()
+    ctx.request_context.lifespan_context = app_ctx
+    return ctx, app_ctx
+
+
+class TestCacheIsBoundedByBranchCount:
+    """The cache holds at most ``schema_cache_max_branches`` branches, evicting the least recently used.
+
+    Branch names are caller input and the default ``branch_pattern`` mints
+    one per session, so an unbounded cache kept a full ``BranchSchema`` — and
+    that branch's SDL — for every session the process ever served: the only
+    other way out is a 400/404 from ``/summary``, which needs the abandoned
+    branch to be read again. Every leaked entry also pinned that branch's
+    lock, since a lock is kept while its branch has an entry.
+
+    Eviction is a memory bound, not a correctness boundary: the next read of
+    an evicted branch cold-fetches it. A branch with a read in flight is
+    never the victim, and evicting drops the branch's lock along with its
+    entry.
+    """
+
+    @pytest.mark.anyio
+    async def test_filling_past_the_cap_evicts_the_least_recently_used_branch(
+        self,
+        mock_client: MagicMock,
+    ) -> None:
+        ctx, app_ctx = _ctx_with_cap(2)
+        schemas = {branch: _make_branch_schema(schema_hash=f"H{branch}") for branch in ("a", "b", "c")}
+
+        def fetch(branch: str) -> Any:
+            return schemas[branch]
+
+        mock_client.schema._fetch.side_effect = fetch
+
+        for branch in ("a", "b", "c"):
+            assert await get_cached_branch_schema(ctx, branch) is schemas[branch]
+
+        assert list(app_ctx.schema_cache) == ["b", "c"], "the coldest branch should have gone, the newest stayed"
+
+    @pytest.mark.anyio
+    async def test_serving_a_branch_from_cache_marks_it_used(
+        self,
+        mock_client: MagicMock,
+    ) -> None:
+        """A hot branch is not evicted for having gone unwritten: a read counts as use."""
+        ctx, app_ctx = _ctx_with_cap(2)
+        schemas = {branch: _make_branch_schema(schema_hash=f"H{branch}") for branch in ("a", "b", "c")}
+
+        def fetch(branch: str) -> Any:
+            return schemas[branch]
+
+        mock_client.schema._fetch.side_effect = fetch
+
+        await get_cached_branch_schema(ctx, "a")
+        await get_cached_branch_schema(ctx, "b")
+        assert await get_cached_branch_schema(ctx, "a") is schemas["a"]  # served from cache, no fetch
+        assert list(app_ctx.schema_cache) == ["b", "a"]
+
+        await get_cached_branch_schema(ctx, "c")
+
+        assert list(app_ctx.schema_cache) == ["a", "c"], "the branch just read must outlive the colder one"
+        assert mock_client.schema._fetch.await_count == 3  # a, b, c — the re-read of ``a`` was a cache hit
+
+    @pytest.mark.anyio
+    async def test_a_cap_of_zero_disables_the_bound(
+        self,
+        mock_client: MagicMock,
+    ) -> None:
+        ctx, app_ctx = _ctx_with_cap(0)
+        branches = [f"branch-{index}" for index in range(12)]
+
+        def fetch(branch: str) -> Any:
+            return _make_branch_schema(schema_hash=f"H{branch}")
+
+        mock_client.schema._fetch.side_effect = fetch
+
+        for branch in branches:
+            await get_cached_branch_schema(ctx, branch)
+
+        assert list(app_ctx.schema_cache) == branches
+
+    @pytest.mark.anyio
+    async def test_an_evicted_branch_also_loses_its_lock(
+        self,
+        mock_client: MagicMock,
+    ) -> None:
+        """``_branch_lock`` keeps a lock while its branch has an entry, so eviction must drop it too."""
+        ctx, app_ctx = _ctx_with_cap(1)
+
+        def fetch(branch: str) -> Any:
+            return _make_branch_schema(schema_hash=f"H{branch}")
+
+        mock_client.schema._fetch.side_effect = fetch
+
+        await get_cached_branch_schema(ctx, "a")
+        assert "a" in app_ctx._schema_cache_locks  # kept for the entry's revalidations
+
+        await get_cached_branch_schema(ctx, "b")
+
+        assert list(app_ctx.schema_cache) == ["b"]
+        assert "a" not in app_ctx._schema_cache_locks
+        assert app_ctx._schema_cache_lock_holders == {}
+
+    @pytest.mark.anyio
+    async def test_a_branch_with_a_read_in_flight_is_never_the_victim(
+        self,
+        mock_client: MagicMock,
+    ) -> None:
+        """``a``'s probe hangs while ``b`` is stored: nothing is evicted until ``a``'s read lets go."""
+        ctx, app_ctx = _ctx_with_cap(1)
+        schema_a = _make_branch_schema(schema_hash="H1")
+        schema_b = _make_branch_schema(schema_hash="HB")
+        app_ctx.schema_cache["a"] = _past_window_entry(schema_a, now=schema_cache._now(), branch="a")
+        entered_a = asyncio.Event()
+        release_a = asyncio.Event()
+
+        async def probe(url: str, **_: Any) -> Any:
+            if urlencode([("branch", "a")]) in url:
+                entered_a.set()
+                await release_a.wait()
+            return _make_response(json_body={"main": "H1"})
+
+        mock_client._get.side_effect = probe
+        mock_client.schema._fetch.return_value = schema_b
+
+        read_a = asyncio.create_task(get_cached_branch_schema(ctx, "a"))
+        await entered_a.wait()  # ``a``'s probe is in flight, holding ``a``'s lock
+
+        assert await get_cached_branch_schema(ctx, "b") is schema_b
+        assert sorted(app_ctx.schema_cache) == ["a", "b"], "a branch mid-fetch must not be evicted"
+
+        release_a.set()
+
+        assert await read_a is schema_a
+        assert list(app_ctx.schema_cache) == ["a"], "the next store retries the eviction it had to skip"
+
+    @pytest.mark.anyio
+    async def test_re_reading_an_evicted_branch_fetches_it_again(
+        self,
+        mock_client: MagicMock,
+    ) -> None:
+        ctx, app_ctx = _ctx_with_cap(1)
+        schemas = {branch: _make_branch_schema(schema_hash=f"H{branch}") for branch in ("a", "b")}
+
+        def fetch(branch: str) -> Any:
+            return schemas[branch]
+
+        mock_client.schema._fetch.side_effect = fetch
+
+        await get_cached_branch_schema(ctx, "a")
+        await get_cached_branch_schema(ctx, "b")
+
+        assert await get_cached_branch_schema(ctx, "a") is schemas["a"]
+        assert list(app_ctx.schema_cache) == ["a"]
+        assert [call.kwargs["branch"] for call in mock_client.schema._fetch.await_args_list] == ["a", "b", "a"]
+
+
+class TestColdFailureMarkersAreBounded:
+    """Cold-failure markers do not outlive the window in which they fail a read fast.
+
+    One marker is recorded per branch whose cold fetch failed, and only a
+    later *successful* cold fetch of that same branch removed it. Through an
+    outage, a client walking distinct branch names — the default session
+    pattern does exactly that — left one permanent marker each.
+    """
+
+    @pytest.mark.anyio
+    async def test_recording_a_failure_sweeps_markers_past_the_throttle_window(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        app_ctx.schema_cache_cold_failures["expired"] = clock.now - 100  # window is min(ttl, 30) = 30 s
+        app_ctx.schema_cache_cold_failures["recent"] = clock.now - 5
+        mock_client.schema._fetch.side_effect = httpx.NetworkError("down")
+
+        with pytest.raises(httpx.NetworkError):
+            await get_cached_branch_schema(mock_ctx, "new")
+
+        assert set(app_ctx.schema_cache_cold_failures) == {"recent", "new"}
+
+    @pytest.mark.anyio
+    async def test_a_read_past_the_window_drops_the_spent_marker(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        """``BranchNotFoundError`` records no marker of its own, so only the read-path drop can clear this one."""
+        app_ctx.schema_cache_cold_failures["gone"] = clock.now - 100
+        mock_client.schema._fetch.side_effect = BranchNotFoundError(identifier="gone")
+
+        with pytest.raises(BranchNotFoundError):
+            await get_cached_branch_schema(mock_ctx, "gone")
+
+        assert "gone" not in app_ctx.schema_cache_cold_failures
+
+
 # ---------------------------------------------------------------------------
 # US2 — Hash-validated revalidation
 # ---------------------------------------------------------------------------
