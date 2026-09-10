@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+import contextlib
+from typing import TYPE_CHECKING, Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from infrahub_sdk.exceptions import SchemaNotFoundError
 
 from infrahub_mcp.schema import get_schema_detail
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 def _make_attribute(name: str, kind: str = "Text", optional: bool = False) -> MagicMock:
@@ -39,16 +43,36 @@ def _make_schema_node(
     return node
 
 
-def _make_client(schemas: dict[str, MagicMock]) -> AsyncMock:
-    client = AsyncMock()
+@contextlib.contextmanager
+def _patch_cached_kind(schemas: dict[str, MagicMock]) -> Iterator[tuple[AsyncMock, AsyncMock, MagicMock]]:
+    """Stub the schema-cache reads and the client resolution ``get_schema_detail`` uses.
 
-    def _get_schema(kind: str, branch: str | None = None) -> MagicMock:
+    ``get_schema_detail`` takes a FastMCP ``Context``, resolves one client for
+    the call, and resolves the requested kind and its relationship peers from a
+    single branch-schema read — only kinds absent from it fall back to
+    ``get_cached_kind`` (whose forced revalidation catches a kind added
+    upstream since the cache entry was fetched). These
+    tests cover peer-expansion *shaping* only, so all three are stubbed rather
+    than exercised. Yields the ``get_cached_kind`` stub, the
+    ``get_cached_branch_schema`` stub and the ``get_client`` stub for tests
+    that assert how the call reads and threads its client.
+    """
+
+    def _get_cached_kind(ctx: Any, *, kind: str, branch: str | None = None, client: Any = None) -> MagicMock:
         if kind not in schemas:
             raise SchemaNotFoundError(kind)
         return schemas[kind]
 
-    client.schema.get = AsyncMock(side_effect=_get_schema)
-    return client
+    branch_schema = MagicMock(name="branch-schema")
+    branch_schema.nodes = schemas
+    cached_kind = AsyncMock(side_effect=_get_cached_kind)
+    branch_read = AsyncMock(return_value=branch_schema)
+    with (
+        patch("infrahub_mcp.schema.get_cached_kind", new=cached_kind),
+        patch("infrahub_mcp.schema.get_cached_branch_schema", new=branch_read),
+        patch("infrahub_mcp.utils.get_client", return_value=MagicMock(name="resolved-client")) as get_client,
+    ):
+        yield cached_kind, branch_read, get_client
 
 
 def _schemas_a_b() -> dict[str, MagicMock]:
@@ -70,7 +94,8 @@ def _schemas_a_b() -> dict[str, MagicMock]:
 
 
 async def test_no_peer_schema_when_disabled() -> None:
-    result = await get_schema_detail(_make_client(_schemas_a_b()), kind="KindA", expand_peers=False)
+    with _patch_cached_kind(_schemas_a_b()):
+        result = await get_schema_detail(MagicMock(), kind="KindA", expand_peers=False)
     assert result["kind"] == "KindA"
     assert "filters" in result
     for rel in result["relationships"]:
@@ -78,7 +103,8 @@ async def test_no_peer_schema_when_disabled() -> None:
 
 
 async def test_peer_schema_present_when_enabled() -> None:
-    result = await get_schema_detail(_make_client(_schemas_a_b()), kind="KindA", expand_peers=True)
+    with _patch_cached_kind(_schemas_a_b()):
+        result = await get_schema_detail(MagicMock(), kind="KindA", expand_peers=True)
     children = next(r for r in result["relationships"] if r["name"] == "children")
     assert children["peer_schema"]["kind"] == "KindB"
     assert "attributes" in children["peer_schema"]
@@ -87,7 +113,8 @@ async def test_peer_schema_present_when_enabled() -> None:
 
 
 async def test_peer_schema_relationships_not_expanded() -> None:
-    result = await get_schema_detail(_make_client(_schemas_a_b()), kind="KindA", expand_peers=True)
+    with _patch_cached_kind(_schemas_a_b()):
+        result = await get_schema_detail(MagicMock(), kind="KindA", expand_peers=True)
     children = next(r for r in result["relationships"] if r["name"] == "children")
     for rel in children["peer_schema"]["relationships"]:
         assert "peer_schema" not in rel
@@ -101,7 +128,8 @@ async def test_self_referential_kind_expands_one_level() -> None:
         attributes=[_make_attribute("name")],
         relationships=[_make_relationship("parent", "KindA")],
     )
-    result = await get_schema_detail(_make_client({"KindA": schema_a}), kind="KindA", expand_peers=True)
+    with _patch_cached_kind({"KindA": schema_a}):
+        result = await get_schema_detail(MagicMock(), kind="KindA", expand_peers=True)
     parent = next(r for r in result["relationships"] if r["name"] == "parent")
     assert parent["peer_schema"]["kind"] == "KindA"
     for rel in parent["peer_schema"]["relationships"]:
@@ -116,7 +144,12 @@ async def test_missing_peer_kind_skipped() -> None:
         attributes=[_make_attribute("name")],
         relationships=[_make_relationship("broken", "NonExistent")],
     )
-    result = await get_schema_detail(_make_client({"KindA": schema_a}), kind="KindA", expand_peers=True)
+    with _patch_cached_kind({"KindA": schema_a}) as (cached_kind, _branch_read, _get_client):
+        result = await get_schema_detail(MagicMock(), kind="KindA", expand_peers=True)
+    # KindA comes from the single branch-schema read; only the peer absent from
+    # it falls back to get_cached_kind, whose forced revalidation catches a kind
+    # added upstream.
+    assert [call.kwargs["kind"] for call in cached_kind.await_args_list] == ["NonExistent"]
     broken = next(r for r in result["relationships"] if r["name"] == "broken")
     assert broken["peer"] == "NonExistent"
     assert broken["cardinality"] == "many"
@@ -125,7 +158,36 @@ async def test_missing_peer_kind_skipped() -> None:
 
 
 async def test_filters_include_peer_attributes() -> None:
-    result = await get_schema_detail(_make_client(_schemas_a_b()), kind="KindA", expand_peers=True)
+    with _patch_cached_kind(_schemas_a_b()):
+        result = await get_schema_detail(MagicMock(), kind="KindA", expand_peers=True)
     filters = {f["filter"] for f in result["filters"]}
     assert "name__value" in filters
     assert "children__label__value" in filters
+
+
+async def test_kind_detail_with_peers_resolves_one_client_and_threads_it() -> None:
+    """One credential check per request: the kind and its peers are read on the same client.
+
+    In the passthrough modes each unprimed client probes Infrahub with the
+    caller's credential, so a detail read that resolved a client per helper
+    call would probe once per peer.
+    """
+    with _patch_cached_kind(_schemas_a_b()) as (cached_kind, branch_read, get_client):
+        await get_schema_detail(MagicMock(), kind="KindA", expand_peers=True)
+
+    get_client.assert_called_once()
+    branch_read.assert_awaited_once()
+    # KindA and its peer KindB both come from that one branch-schema read.
+    assert cached_kind.await_count == 0
+    assert branch_read.await_args_list[0].kwargs["client"] is get_client.return_value
+
+
+async def test_kind_detail_uses_the_callers_client_and_resolves_none() -> None:
+    caller = MagicMock(name="callers-client")
+    with _patch_cached_kind(_schemas_a_b()) as (cached_kind, branch_read, get_client):
+        await get_schema_detail(MagicMock(), kind="KindA", expand_peers=True, client=caller)
+
+    get_client.assert_not_called()
+    branch_read.assert_awaited_once()
+    assert cached_kind.await_count == 0
+    assert branch_read.await_args_list[0].kwargs["client"] is caller

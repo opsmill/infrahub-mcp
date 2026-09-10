@@ -84,6 +84,39 @@ class ServerConfig(BaseSettings):
         token_passthrough_header: HTTP header carrying the per-request credential
             (Bearer token or Basic user:pass) when ``auth_mode`` is ``token-passthrough``
             or ``basic-passthrough``.
+        schema_cache_enabled: Enable the process-wide hash-validated schema cache.
+            Applies in every auth mode; passthrough modes benefit most, because their
+            per-request client discards the SDK cache entirely. When False, the server
+            falls back to the SDK's per-client cache only (the pre-feature baseline:
+            refetched every request in passthrough modes, cached without revalidation
+            for the process lifetime in the shared-client modes).
+        schema_cache_ttl: Skip-window in seconds; while a cache entry's age is below
+            this value, reads serve from cache without contacting Infrahub. Past this
+            window, ``GET /api/schema/summary`` is consulted to validate the hash.
+            In the passthrough modes the window applies within a request only: the
+            first schema read of each request probes ``/api/schema/summary`` with the
+            caller's own credential before anything is served from cache, so a
+            rejected token fails that caller even when the entry is fresh, and a
+            caller whose credential could not be checked is never served stale.
+        schema_cache_max_consecutive_failures: After this many consecutive revalidation
+            failures for a branch, the cache entry is marked unsafe and reads fail
+            closed for that branch. Set to 0 to disable this circuit-break.
+        schema_cache_max_staleness_seconds: Once revalidation for a branch has been
+            failing for this many seconds, the cache entry is marked unsafe and
+            reads fail closed for that branch. The clock runs from the first failed
+            probe of the current failure streak, not from the last success, so
+            idle time with no failed probe never counts: it bounds how long a
+            branch is served stale during an outage, and a branch nobody read
+            for a while is not failed closed by its first transient blip. Set to
+            0 to disable.
+        schema_cache_max_branches: Maximum number of branches held in the process-wide
+            schema cache. Past this many, the least recently used entry is evicted;
+            a later read of an evicted branch pays a cold fetch. Each entry holds one
+            full ``BranchSchema`` plus that branch's GraphQL SDL, so this bounds the
+            cache's worst-case memory. The default suits the session-branch pattern,
+            where ``branch_pattern`` mints a fresh branch per session and every one of
+            them would otherwise leave a schema behind for the life of the process.
+            Set to 0 to disable the bound.
     """
 
     model_config = SettingsConfigDict(
@@ -122,6 +155,11 @@ class ServerConfig(BaseSettings):
     oidc_audience: str = ""
     oidc_user_claim: str = "email"
     token_passthrough_header: str = "Authorization"  # noqa: S105
+    schema_cache_enabled: bool = True
+    schema_cache_ttl: int = Field(default=30, ge=0)
+    schema_cache_max_consecutive_failures: int = Field(default=10, ge=0)
+    schema_cache_max_staleness_seconds: int = Field(default=900, ge=0)
+    schema_cache_max_branches: int = Field(default=64, ge=0)
 
     @property
     def log_level_debug(self) -> bool:

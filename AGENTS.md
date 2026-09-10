@@ -33,22 +33,32 @@ uv sync                          # Install dependencies
 
 uv run pytest                    # Run full test suite
 
-uv run invoke format             # Auto-format with ruff
-uv run invoke lint               # All linters (yaml, ruff, pylint, mypy)
-uv run invoke lint-ruff          # Ruff only
+uv run invoke format             # Auto-format with ruff and apply lint autofixes
+uv run invoke lint               # All linters (yaml -s, ruff check + format-check, mypy, ty, pylint, rumdl, vale)
+uv run invoke validate           # docker-compose env vars + server.json env vars + CAPABILITIES.md freshness
+uv run invoke ci                 # Full CI mirror: lint + validate + docs build + pytest. Run before pushing.
+uv run invoke ci --no-docs       # Same, minus the docs website build (prints a skipped-gate banner)
+uv run invoke lint-ruff          # Ruff only (mirrors CI: check + format --check --diff)
 uv run invoke lint-pylint        # Pylint only
-uv run invoke lint-mypy          # MyPy type checking only
-uv run invoke lint-yaml          # Yamllint only
+uv run invoke lint-mypy          # MyPy type checking only (src/infrahub_mcp)
+uv run invoke lint-ty            # ty type checking only (whole tree, mirrors CI)
+uv run invoke lint-yaml          # Yamllint strict (-s, mirrors CI)
+uv run invoke lint-markdown      # rumdl on docs/ (mirrors CI's markdown-lint job)
+uv run invoke lint-vale          # Vale documentation style (fails if the vale binary is absent)
 
-uv run rumdl check docs/docs/    # Check markdown linting
+uv run rumdl check docs/docs/    # Check markdown linting (CI scope is the wider docs/)
 uv run rumdl fmt docs/docs/      # Auto-fix markdown formatting
-cd docs && npm run build         # Test documentation build
+uv run invoke docs               # Build the docs website (mirrors CI; needs docs/node_modules)
+cd docs && pnpm install --frozen-lockfile   # Install docs deps once, as CI does
+brew install vale                # Vale binary (one-time, required for invoke lint-vale and invoke ci)
 
 uv run pre-commit run            # Ruff + rumdl on staged files, Mypy on src/
 uv run pre-commit install        # Optional: run those same hooks on every commit
 ```
 
-`ruff` and `mypy` are authoritative for Python syntax, style, and type issues. Do not eyeball Python errors — run `uv run invoke format lint` and rely on the output.
+`ruff`, `mypy`, and `ty` are authoritative for Python syntax, style, and type issues. Do not eyeball Python errors — run `uv run invoke format ci` and rely on the output.
+
+The `invoke ci` task mirrors every gate a pull request runs: the lint jobs (ruff, ty, yamllint, rumdl, Vale), the `validate-*` jobs, the docs website build, and the unit tests from `.github/workflows/ci.yml`, plus the `validate-capabilities` job from `.github/workflows/ci-mcp-discovery.yml` — a separate workflow that fires on any change under `src/infrahub_mcp/**`. It runs them unconditionally, whereas CI path-gates most jobs off `files-changed` — so `invoke ci` is stricter than CI, never looser. Two things break that symmetry: `--no-docs` drops the docs build (the run then prints a skipped-gate banner and no longer predicts CI), and CI lints the PR merged with its base while `invoke ci` only sees the working tree. A clean `invoke ci` otherwise predicts CI pass; if CI flags something it missed, treat that gap as a bug in `tasks.py` and patch the task.
 
 ## MCP Objects
 
@@ -72,7 +82,9 @@ The stack is composed once at startup via `configure_middleware()` in `middlewar
 
 ### Always Do
 
-- Run `uv sync && uv run pre-commit run && uv run pytest` before committing
+- Run `uv run invoke format ci` before pushing — applies autofixes, then runs the full CI mirror (lint, markdown, docs style, repo-state validation, docs website build, tests)
+- When adding a new `ServerConfig` field, land it in every location on the [config-field checklist](dev/guidelines/feature-completion.md#new-serverconfig-field) — that list is authoritative, and it marks which entries CI actually enforces (`server.json` and `docker-compose.yml`) versus which are convention only
+- After implementing a feature scaffolded under `specs/`, follow the [spec lifecycle](dev/guidelines/feature-completion.md#spec-lifecycle) — extract durable decisions into `dev/adr/`, archive the spec under `specs/archive/`
 - Use Infrahub SDK for all Infrahub operations (never raw HTTP)
 - Tag write tools with `"write"`
 - Validate configuration at startup via `ServerConfig`

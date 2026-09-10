@@ -4,13 +4,13 @@ Internal documentation for infrahub-mcp contributors. For user-facing docs, see 
 
 ## Quick Navigation
 
-| I want to...                     | Go to              |
-|----------------------------------|---------------------|
-| Understand the architecture      | `knowledge/`        |
-| Follow coding standards          | `guidelines/`       |
-| Learn why we made a decision     | `adr/`              |
-| Read the project constitution    | `constitution.md`   |
-| Use agent commands               | `../.agents/commands/` |
+| I want to...                  | Go to                  |
+| ----------------------------- | ---------------------- |
+| Understand the architecture   | `knowledge/`           |
+| Follow coding standards       | `guidelines/`          |
+| Learn why we made a decision  | `adr/`                 |
+| Read the project constitution | `constitution.md`      |
+| Use agent commands            | `../.agents/commands/` |
 
 ## Directory Guide
 
@@ -37,6 +37,7 @@ Mark deprecated docs clearly. Don't delete — update with pointers to replaceme
 ## Current Guidelines
 
 - [Python](guidelines/python.md) - Python coding standards, FastMCP patterns, testing conventions
+- [Feature completion](guidelines/feature-completion.md) - Post-implementation checklist: env-var registration, spec→ADR→archive lifecycle, pre-push CI mirror
 
 ## Current Knowledge
 
@@ -50,3 +51,6 @@ Mark deprecated docs clearly. Don't delete — update with pointers to replaceme
 - [0004](adr/0004-tag-based-read-only-mode.md) - Tag-Based Read-Only Mode with Defense-in-Depth
 - [0005](adr/0005-lazy-session-branch-creation.md) - Lazy Session Branch Creation with Collision Retry
 - [0006](adr/0006-config-validation-at-boundary.md) - Configuration Validation at Boundary, Not Model
+- [0007](adr/0007-per-session-branch-recovery-and-reset.md) - Per-Session Branch Recovery, Reset, and Scoping
+- [0008](adr/0008-graph-traversal-over-schema-depth.md) - Graph Traversal Tools over Recursive Schema-Depth Expansion
+- [0009](adr/0009-hash-validated-schema-cache.md) - Hash-Validated Schema Cache for Passthrough Auth Modes
