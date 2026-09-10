@@ -36,12 +36,17 @@ jobs:
           fi
 
   # ---------------------------------------------------------------------------
-  # Bump: calculate next version, update files, commit
+  # Bump: calculate the next version, assemble the changelog, open a release PR
   #
-  # Tag creation is deferred to release publication. When a maintainer
-  # publishes the draft maintained by release-drafter, GitHub creates the
-  # tag against the release's targetCommitish (stable HEAD at that moment),
-  # guaranteeing the tag includes every PR merged up to publish time.
+  # Nothing is pushed to `stable` directly and no tag is created here. The
+  # version bump and the assembled changelog land as a reviewable pull
+  # request; merging it is the act that authorises the release, and
+  # release-publish.yml then creates the tag and the GitHub Release.
+  #
+  # The version is computed in its own step whose sole output is a version
+  # string. That is the seam for a later migration onto the shared
+  # `release-prepare` workflow, which accepts exactly that as
+  # `bump-strategy: manual` + `version:`.
   # ---------------------------------------------------------------------------
   bump:
     needs: guard
@@ -111,36 +116,78 @@ jobs:
         if: steps.compare.outputs.changed == 'true'
         run: bash scripts/update-capabilities.sh
 
-      - name: Commit version bump
+      - name: Assemble the changelog
         if: steps.compare.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.next.outputs.next-version }}
         run: |
-          VERSION="${{ steps.next.outputs.next-version }}"
+          set -euo pipefail
+
+          # A release must say what changed. Fail loudly rather than tag a
+          # version whose notes are empty — the same rule the shared
+          # changelog-towncrier composite enforces, with no opt-out.
+          shopt -s nullglob
+          FRAGMENTS=(changelog/*.md)
+          KEPT=()
+          for f in "${FRAGMENTS[@]}"; do
+            [ "$f" = "changelog/towncrier.md.template" ] && continue
+            KEPT+=("$f")
+          done
+          if [ ${#KEPT[@]} -eq 0 ]; then
+            MSG="No news fragments in changelog/ — refusing to cut"
+            MSG="${MSG} v${VERSION} with an empty changelog."
+            MSG="${MSG} Add a fragment (housekeeping is fine) and re-run."
+            echo "::error::${MSG}"
+            exit 1
+          fi
+
+          uv run towncrier build --version "${VERSION}" --yes
+
+      - name: Open the release pull request
+        if: steps.compare.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_INFRAHUB_BOT_TOKEN }}
+          VERSION: ${{ steps.next.outputs.next-version }}
+        run: |
+          set -euo pipefail
+          BRANCH="release/v${VERSION}"
+
           git config user.name "opsmill-bot"
           git config user.email "opsmill-bot@users.noreply.github.com"
-          # Stage only the files version-sync + capabilities regen are
-          # allowed to touch. Avoids picking up stray files dropped by
-          # third-party tools (e.g. mcp-discovery tarball contents).
-          git add pyproject.toml server.json uv.lock CAPABILITIES.md
-          git commit -m "chore(release): bump to v${VERSION}"
-          git push origin stable
+          git switch -c "${BRANCH}"
 
-  # ---------------------------------------------------------------------------
-  # Release draft: create/update a draft GitHub release.
-  # The draft's tag (`v${VERSION}`) is materialized by GitHub only when the
-  # maintainer publishes the draft — guaranteeing the tag points at HEAD at
-  # publish time, with every subsequent PR included.
-  # ---------------------------------------------------------------------------
-  release-draft:
-    needs: bump
-    if: always() && needs.bump.result == 'success'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: release-drafter/release-drafter@v7
-        with:
-          tag: "v${{ needs.bump.outputs.version }}"
-          version: "${{ needs.bump.outputs.version }}"
-          publish: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_INFRAHUB_BOT_TOKEN }}
+          # Stage only what the bump and changelog assembly are allowed to
+          # touch. `git add -A` would sweep up stray files dropped by
+          # third-party tools (e.g. mcp-discovery tarball contents).
+          git add pyproject.toml server.json uv.lock CAPABILITIES.md \
+                  CHANGELOG.md changelog/
+          git commit -m "chore(release): v${VERSION}"
+
+          # Re-running on a later push to stable refreshes the same branch
+          # rather than opening a second PR for the same version. Plain
+          # --force rather than --force-with-lease: checkout does not fetch
+          # this branch's remote ref, so a lease has nothing to compare
+          # against. The branch is bot-owned and regenerated every run.
+          git push --force origin "${BRANCH}"
+
+          if gh pr view "${BRANCH}" --json number >/dev/null 2>&1; then
+            echo "Release PR for ${BRANCH} already open — updated in place."
+            exit 0
+          fi
+
+          gh pr create \
+            --base stable \
+            --head "${BRANCH}" \
+            --title "chore(release): v${VERSION}" \
+            --label "ci/skip-changelog" \
+            --body "$(cat <<EOF
+          Prepared automatically. Merging this pull request authorises the release:
+          \`release-publish.yml\` then tags \`v${VERSION}\` and publishes the GitHub
+          Release using the changelog section below.
+
+          - Version bumped to \`${VERSION}\` across \`pyproject.toml\`, \`server.json\` and \`CAPABILITIES.md\`
+          - \`CHANGELOG.md\` assembled from the news fragments, which are consumed by this commit
+
+          Review the assembled changelog before merging — it is what users will read.
+          EOF
+          )"
