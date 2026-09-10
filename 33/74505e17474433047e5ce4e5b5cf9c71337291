@@ -1,0 +1,55 @@
+dev/adr/0009-hash-validated-schema-cache.md
+  s_291b5af4103ac9::t_f799b58d5a6762 22,24,27,57
+docs/docs/references/configuration.mdx
+  s_291b5af4103ac9::t_6e4c802fccacb7 77,83
+  s_291b5af4103ac9::t_b80dcfc44ff764 84
+src/infrahub_mcp/config.py
+  s_291b5af4103ac9::t_968c5c82d6aedd 139
+  s_291b5af4103ac9::t_e1c8b7c32b7f37 89-96
+server.json
+  s_291b5af4103ac9::t_6c9ea47b3a07fd 214-220
+tests/unit/test_schema_cache.py
+  s_291b5af4103ac9::t_196b9184781a79 983-1019,1021-1038,1040-1061,1063-1079,1081-1134,1136-1191
+  s_291b5af4103ac9::t_967a300e05001a 1020,1039,1062,1080,1135
+src/infrahub_mcp/utils.py
+  s_291b5af4103ac9::t_e6a9566de53b7f 6,67-77
+  s_291b5af4103ac9::t_d59b399f2dfe73 100-104
+  s_291b5af4103ac9::t_69124057f10f55 54-57
+development/docker-compose.yml
+  s_291b5af4103ac9::t_9a1f8c1aa491b6 29
+src/infrahub_mcp/schema_cache.py
+  s_291b5af4103ac9::t_05eaf7ad49e4c2 540-561
+  s_291b5af4103ac9::t_b12fdb43614e4f 845-847,1057-1060,1192,1204
+  s_291b5af4103ac9::t_de5fb715b690cc 141-147,1135-1137
+  s_291b5af4103ac9::t_70292101f1a2ee 62-72,451-454,809-813,1047-1048
+  s_291b5af4103ac9::t_9a5f2bd9f95724 765,869,933,956,1324,1613,1617
+  s_291b5af4103ac9::t_ad1c6d0fc9efba 486-494,496-539,562-575
+  s_291b5af4103ac9::t_9dd4dd95bfb658 495
+  s_fe99a41d5e7f9e::t_99cde307ffa3e9 1138
+docker-compose.yml
+  s_291b5af4103ac9::t_6c9ea47b3a07fd 34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "3374505e17474433047e5ce4e5b5cf9c71337291",
+  "prompts": {},
+  "sessions": {
+    "s_291b5af4103ac9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0abbfdb1-daab-4de7-8ff2-af1e19f5368e",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    },
+    "s_fe99a41d5e7f9e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f610d975-3725-4fda-8281-a3570da3554a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
