@@ -82,7 +82,8 @@ For a release worth explaining, a maintainer produces a workflow-first prose pag
 - **FR-002**: System MUST compute the next version from PR labels (`changes/*`, `type/*`) and expose it as a single version string produced by a discrete step.
 - **FR-003**: System MUST assemble `CHANGELOG.md` from newsfragments using towncrier at release time, and MUST fail rather than emit an empty section.
 - **FR-004**: System MUST use the towncrier-rendered section as the GitHub Release body.
-- **FR-005**: System MUST keep `pyproject.toml`, `server.json` and `CAPABILITIES.md` at the same version, via the existing `scripts/sync-versions.sh` and `scripts/update-capabilities.sh`.
+- **FR-005**: System MUST keep the two versioned files — `pyproject.toml` and `server.json` (both its top-level `version` and `packages[0].version`) — in step via `scripts/sync-versions.sh`.
+- **FR-005a**: System MUST regenerate `CAPABILITIES.md` in the release commit via `scripts/update-capabilities.sh`. `CAPABILITIES.md` carries **no version string** — it is a generated capability listing that `ci-mcp-discovery.yml` validates by regenerating and diffing — so the requirement is that it is current, not that it matches a version.
 - **FR-006**: System MUST create `CHANGELOG.md` with the towncrier start marker on first build.
 - **FR-007**: Users MUST be able to skip the fragment requirement on a trivial PR via `ci/skip-changelog`.
 - **FR-008**: Release changes MUST arrive as a reviewable pull request that requires approval before a tag is created.
@@ -96,7 +97,7 @@ For a release worth explaining, a maintainer produces a workflow-first prose pag
 - **CHANGELOG.md**: the assembled canonical record; does not yet exist, created by the first build.
 - **Release PR**: `chore(release): vX.Y.Z`; carries version files plus the assembled changelog section and is the approval point.
 - **GitHub Release body**: the towncrier-rendered section; replaces the release-drafter PR-title list.
-- **Version string**: label-derived; written to three files and used as the `v`-prefixed git tag.
+- **Version string**: label-derived; written to `pyproject.toml` and `server.json`, and used as the `v`-prefixed git tag.
 - **Curated release-notes page**: optional prose page on the docs site, generated from the changelog section.
 
 ## Success Criteria *(mandatory)*
@@ -107,7 +108,7 @@ For a release worth explaining, a maintainer produces a workflow-first prose pag
 - **SC-002**: Zero fragments are discarded — every fragment merged reaches exactly one published release.
 - **SC-003**: Zero changelog merge conflicts across all pull requests in the first two release cycles.
 - **SC-004**: No release requires a changelog commit after publication — notes are complete at publish time.
-- **SC-005**: `pyproject.toml`, `server.json` and `CAPABILITIES.md` report the same version at every tagged commit.
+- **SC-005**: `pyproject.toml` and `server.json` report the same version at every tagged commit, and `CAPABILITIES.md` matches what `update-capabilities.sh` regenerates at that commit.
 - **SC-006**: A later migration onto the shared workflows changes only workflow wiring — zero edits to fragment content, fragment directory, or category taxonomy.
 
 ## Governance Gates Crossed
