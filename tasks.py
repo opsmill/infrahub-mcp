@@ -117,8 +117,10 @@ def lint_vale(context: Context) -> None:
         vale_bin = "vale"
 
     prune = " -o ".join(f'-name "{d}"' for d in VALE_PRUNED_DIRECTORIES)
-    find_cmd = f'find ./docs \\( {prune} \\) -prune -o -type f \\( -name "*.mdx" -o -name "*.md" \\) -print'
-    exec_cmd = f"{find_cmd} | xargs {vale_bin}"
+    # ``-print0``/``-0`` so a path containing a space stays one argument, and
+    # ``-r`` so an empty match does not run Vale over the whole tree.
+    find_cmd = f'find ./docs \\( {prune} \\) -prune -o -type f \\( -name "*.mdx" -o -name "*.md" \\) -print0'
+    exec_cmd = f"{find_cmd} | xargs -0 -r {vale_bin}"
     with context.cd(MAIN_DIRECTORY_PATH):
         context.run(exec_cmd)
 
