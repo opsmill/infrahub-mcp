@@ -1,0 +1,25 @@
+specs/003-towncrier-release-process/spec.md
+  s_e814976895190a::t_a280d79ce83374 85-86
+  s_e814976895190a::t_85755cfcef2584 111
+  s_e814976895190a::t_167c43c18c9076 100
+specs/003-towncrier-release-process/tasks.md
+  s_e814976895190a::t_713fbe40e041d2 1-88
+specs/003-towncrier-release-process/plan.md
+  s_e814976895190a::t_9b88f2f388cf23 1-90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "253a09c93c1653c3cfc1e4782b49ee108b363bef",
+  "prompts": {},
+  "sessions": {
+    "s_e814976895190a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f38e30c4-8c78-42ea-9268-f3396fdc0b01",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
