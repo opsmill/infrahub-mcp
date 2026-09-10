@@ -31,7 +31,13 @@ schema hash returned from ``GET /api/schema/summary``:
   earlier in the same request. An unprimed passthrough client probes
   ``/summary`` with its own credential first: a whole tool call costs one
   probe, and a rejected token raises ``AuthenticationError`` to that caller
-  alone. Such a caller is never handed stale schema either: inside the
+  alone. That probe runs *outside* the branch's cache lock whenever there
+  is a warm, unbroken entry to compare against, so concurrent callers on
+  one branch probe simultaneously rather than one after another; only the
+  shared work — a cold fetch, or the refetch a hash difference triggers —
+  is single-flighted under the lock. A probe that cannot be answered from
+  the entry alone falls back to the lock path. Such a caller is never
+  handed stale schema either: inside the
   failure throttle, or when its own probe fails transiently, the read fails
   closed with the schema-unavailable error. During an outage passthrough
   reads therefore fail as they did before this cache existed, while the
@@ -869,8 +875,10 @@ def _caller_is_validated(app_ctx: AppContext, client: InfrahubClient, branch: st
     passthrough client lives for one request, so a primed one was validated
     earlier in the same request. That makes a whole tool call cost one
     ``/summary`` probe rather than one per helper call. An unprimed
-    passthrough client must take the lock path and probe with its own
-    credential; nothing is memoized across requests on purpose.
+    passthrough client must probe with its own credential before it is
+    served — outside the branch lock against a warm entry
+    (:func:`_validate_caller_outside_lock`), on the lock path otherwise;
+    nothing is memoized across requests on purpose.
     """
     if app_ctx.config.auth_mode not in _PASSTHROUGH_AUTH_MODES:
         return True
@@ -999,7 +1007,9 @@ def _try_serve_from_cache(
     stale entry — probing there would re-create the one-timeout-per-request
     serialization the throttle exists to prevent, and serving stale would
     hand schema to a caller upstream never saw — and otherwise it returns
-    ``None``, so the lock path probes ``/summary`` with its own credential.
+    ``None``, so that caller probes ``/summary`` with its own credential:
+    against a warm, unbroken entry in :func:`_validate_caller_outside_lock`
+    without taking the lock, and on the lock path in every other case.
 
     :func:`_ensure_entry` calls this again after acquiring the lock, so
     waiters queued behind a probe observe its outcome instead of repeating
@@ -1070,6 +1080,127 @@ def _try_serve_from_cache(
     return None
 
 
+def _fast_validation_candidate(
+    app_ctx: AppContext, client: InfrahubClient, resolved_branch: str
+) -> CachedSchemaEntry | None:
+    """Return the entry an unvalidated passthrough caller may validate outside the lock, if any.
+
+    Three conditions, all of them narrowing:
+
+    - The caller must be unvalidated (:func:`_caller_is_validated` False),
+      which only a passthrough client not yet primed for *resolved_branch*
+      is. In the shared-credential modes the predicate is always True, so
+      the fast path never runs there: those callers share one credential
+      and have no per-caller check to make, and the lock's single-flight is
+      already the right behaviour for them.
+    - An entry must exist. A cold branch has nothing to validate against
+      and its full fetch is exactly the shared work the lock exists for.
+    - The entry must not be circuit-broken. A broken entry's recovery probe
+      carries breaker bookkeeping that belongs under the lock, and a branch
+      already failing closed is not the latency-critical case.
+    """
+    if _caller_is_validated(app_ctx, client, resolved_branch):
+        return None
+    entry = app_ctx.schema_cache.get(resolved_branch)
+    if entry is None:
+        return None
+    config = app_ctx.config
+    if _is_circuit_broken(
+        entry,
+        max_consecutive_failures=config.schema_cache_max_consecutive_failures,
+        max_staleness_seconds=config.schema_cache_max_staleness_seconds,
+        now=_now(),
+    ):
+        return None
+    return entry
+
+
+async def _validate_caller_outside_lock(
+    *,
+    app_ctx: AppContext,
+    client: InfrahubClient,
+    resolved_branch: str,
+    metrics: Any,
+) -> CachedSchemaEntry | None:
+    """Second hot-path attempt: check an unvalidated passthrough caller's credential without the lock.
+
+    Returns the entry to serve, or ``None`` meaning "carry on to the lock
+    path". Runs after :func:`_try_serve_from_cache` has declined and before
+    :func:`_ensure_entry` takes the branch lock.
+
+    The branch lock exists to make the expensive *shared* work single-flight:
+    the full fetch. A passthrough caller's ``/summary`` probe is neither. It
+    must carry that caller's own credential, so N concurrent callers on one
+    branch cannot be coalesced into one probe — and run under the lock they
+    were N *sequential* probes, each waiting out every earlier caller's
+    round-trip. The pre-cache baseline issued its heavier ``/api/schema``
+    fetches concurrently, so that serialization could make the cache raise
+    p99 latency under load instead of lowering it. Probing here lets those
+    N probes fly at once; only a refetch still queues behind the lock.
+
+    Concurrency: every write here is a single atomic dict assignment of a
+    frozen entry, so a refresh racing another writer is last-write-wins on
+    near-identical values and never tears — the reasoning
+    :class:`CachedSchemaEntry` documents for lock-free readers. The entry is
+    re-read after the await for the same reason: it may have been replaced
+    or evicted meanwhile.
+
+    Outcomes:
+
+    - Branch gone: evict and raise ``BranchNotFoundError``, as
+      :func:`_revalidate_under_lock` does.
+    - Rejected credential: :func:`_raise_auth_error`, caller-scoped, with
+      the entry and every counter untouched — the property the whole
+      passthrough design rests on.
+    - Any other failure: record nothing and fall through to the lock, where
+      the existing machinery owns the failure bookkeeping. Under an outage
+      the first caller to take the lock counts the failure and the rest then
+      fail fast on the throttle, so nothing is lost by staying silent here.
+    - Hash match: the credential was accepted *and* the cache is current, so
+      serve without ever taking the lock.
+    - Hash differ: fall through to the lock, since the refetch is shared
+      work. That caller probes once more under the lock — bounded, and only
+      right after a real schema change.
+    """
+    entry = _fast_validation_candidate(app_ctx, client, resolved_branch)
+    if entry is None:
+        return None
+
+    try:
+        upstream_hash = await _fetch_summary_hash(client, resolved_branch)
+    except _BranchGoneError as exc:
+        # ``pop``, not ``del``: another task may have evicted it while we awaited.
+        app_ctx.schema_cache.pop(resolved_branch, None)
+        logger.warning("schema_cache_branch_gone branch=%s", resolved_branch)
+        raise BranchNotFoundError(identifier=resolved_branch) from exc
+    except Exception as exc:  # noqa: BLE001
+        if _is_auth_error(exc):
+            _raise_auth_error(exc, branch=resolved_branch)
+        # Deliberately no bookkeeping: the lock path counts this failure when
+        # this caller retries the probe there, so the streak, the breaker and
+        # the throttle keep exactly one owner.
+        return None
+
+    entry = app_ctx.schema_cache.get(resolved_branch)
+    if entry is None or upstream_hash != entry.schema_hash:
+        return None
+
+    now = _now()
+    refreshed = replace(
+        entry,
+        fetched_at_monotonic=now,
+        consecutive_failures=0,
+        last_attempt_monotonic=now,
+        failing_since_monotonic=None,
+        circuit_break_recorded=False,
+    )
+    app_ctx.schema_cache[resolved_branch] = refreshed
+    if metrics is not None:
+        metrics.record_schema_cache_event("hash_match")
+    _install_into_client(client, refreshed)
+    return refreshed
+
+
 async def _ensure_entry(
     *,
     ctx: Context,
@@ -1099,11 +1230,17 @@ async def _ensure_entry(
     In the passthrough modes a *client* not yet primed for the branch is a
     caller whose credential Infrahub has not seen this request
     (:func:`_caller_is_validated`). The hot path never serves it, so it
-    reaches the lock. With a warm entry it probes with its own credential:
-    a rejected one raises ``AuthenticationError`` from
-    :func:`_revalidate_under_lock` with the entry untouched, an accepted one
-    is served the entry and primed. A transient failure of that probe fails
-    closed here with ``ToolError`` rather than installing the stale entry —
+    probes ``/summary`` with its own credential. With a warm, unbroken entry
+    that probe runs in :func:`_validate_caller_outside_lock`, *before* the
+    lock, so callers on one branch probe concurrently instead of queueing:
+    a rejected credential raises ``AuthenticationError`` there with the entry
+    untouched, and a hash match serves and primes the caller without the lock
+    being taken at all. Everything else — a cold branch, a broken entry, a
+    hash difference, a failed probe — falls through to the lock, which still
+    single-flights the shared work. Under the lock the probe repeats through
+    :func:`_revalidate_under_lock`, with the same caller-scoped auth rule. A
+    transient failure of that probe fails closed here with ``ToolError``
+    rather than installing the stale entry —
     the caller was never validated, and priming it would let its next read
     in this request pass as validated — while :func:`_note_failure` has
     already counted the failure, so a passthrough outage still trips and
@@ -1126,6 +1263,15 @@ async def _ensure_entry(
     )
     if hot_entry is not None:
         return hot_entry
+
+    validated_entry = await _validate_caller_outside_lock(
+        app_ctx=app_ctx,
+        client=client,
+        resolved_branch=resolved_branch,
+        metrics=metrics,
+    )
+    if validated_entry is not None:
+        return validated_entry
 
     async with _branch_lock(app_ctx, resolved_branch):
         # Re-read after acquiring the branch lock — another waiter may have populated.
@@ -1244,9 +1390,9 @@ async def get_cached_branch_schema(
     present. A hot entry is therefore served without an upstream call only
     to a client already primed for *branch* — validated by an earlier
     upstream call in this same request; an unprimed one probes ``/summary``
-    with its own credential first (one probe per request, serialized under
-    the branch's cache lock), so a rejected token raises ``AuthenticationError`` to
-    that caller alone. An unvalidated passthrough caller is never served
+    with its own credential first (one probe per request, run outside the
+    branch's cache lock so concurrent callers probe at the same time), so a
+    rejected token raises ``AuthenticationError`` to that caller alone. An unvalidated passthrough caller is never served
     stale: when its probe fails transiently, or the failure throttle forbids
     one, the read fails closed with ``ToolError`` as it did before this
     cache existed. The shared-credential modes serve a hot entry to every

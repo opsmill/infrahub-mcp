@@ -2177,7 +2177,9 @@ class TestPassthroughCallerIsValidatedBeforeAHit:
         with pytest.raises(ToolError, match="credential could not be checked"):
             await get_cached_branch_schema(ctx, client=caller)
 
-        caller._get.assert_awaited_once()
+        # Two probes: the validating one outside the lock, then the lock path's own after it fell
+        # through. Only the second is counted — the fast path deliberately records no failure.
+        assert _summary_probes(caller) == 2
         caller.schema.set_cache.assert_not_called()
         assert app_ctx.schema_cache["main"].consecutive_failures == 1  # breaker bookkeeping still ran
         events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
@@ -2188,7 +2190,7 @@ class TestPassthroughCallerIsValidatedBeforeAHit:
         clock.advance(1)
         with pytest.raises(ToolError, match="cannot be checked until the next upstream attempt"):
             await get_cached_branch_schema(ctx, client=caller)
-        caller._get.assert_awaited_once()
+        assert _summary_probes(caller) == 2
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
@@ -2316,6 +2318,205 @@ class TestPassthroughCallerIsValidatedBeforeAHit:
         assert caller.schema.cache["main"] is schema
         events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
         assert events == ["hit"]
+
+
+class TestPassthroughProbesRunOutsideTheBranchLock:
+    """An unvalidated passthrough caller checks its credential before taking the branch lock.
+
+    Its ``/summary`` probe carries its own credential, so N concurrent
+    callers on one branch cannot be coalesced into one probe. Run under the
+    lock they were N *sequential* probes, each waiting out every earlier
+    caller's round-trip, where the pre-cache baseline issued its heavier
+    ``/api/schema`` fetches concurrently. The probe therefore runs outside
+    the lock whenever there is a warm, unbroken entry to compare against;
+    only the shared work — a cold fetch, or the refetch a hash difference
+    triggers — still queues behind the lock.
+    """
+
+    @staticmethod
+    def _gated_probe(client: MagicMock, gate: asyncio.Event, entered: list[MagicMock]) -> None:
+        """Park *client*'s ``/summary`` probe on *gate*, recording the client that reached it."""
+
+        async def probe(url: str, **_: Any) -> Any:
+            if _SDL_PATH in url:
+                return await client.sdl_get(url=url)
+            entered.append(client)
+            await gate.wait()
+            return _make_response(json_body={"main": "H1"})
+
+        client._get.side_effect = probe
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
+    async def test_concurrent_unprimed_callers_probe_simultaneously_without_the_lock(
+        self,
+        auth_mode: str,
+    ) -> None:
+        """The point of the change: five callers, five probes in flight at once, no lock taken."""
+        ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = _within_window_entry(schema, now=schema_cache._now())
+
+        gate = asyncio.Event()
+        entered: list[MagicMock] = []
+        callers = [_make_client() for _ in range(5)]
+        for caller in callers:
+            self._gated_probe(caller, gate, entered)
+
+        tasks = [asyncio.create_task(get_cached_branch_schema(ctx, client=caller)) for caller in callers]
+        for _ in range(20):  # yield until every caller has reached its own probe
+            if len(entered) == len(callers):
+                break
+            await asyncio.sleep(0)
+
+        assert len(entered) == 5, f"probes in flight: {len(entered)} — they are serializing"
+        assert not any(task.done() for task in tasks)  # all five parked on their own probe, none served yet
+        assert not app_ctx._schema_cache_lock_holders  # no reader took or queued on the branch lock
+
+        gate.set()
+        results = await asyncio.gather(*tasks)
+
+        assert all(result is schema for result in results)
+        assert all(caller.schema.cache["main"] is schema for caller in callers)  # each primed for its request
+        assert all(_summary_probes(caller) == 1 for caller in callers)
+        assert all(caller.schema._fetch.await_count == 0 for caller in callers)  # hash matched: no refetch
+        assert not app_ctx._schema_cache_lock_holders
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
+    @pytest.mark.parametrize("status_code", [httpx.codes.UNAUTHORIZED, httpx.codes.FORBIDDEN])
+    async def test_a_rejected_credential_outside_the_lock_leaves_the_entry_untouched(
+        self,
+        mock_metrics: MagicMock,
+        auth_mode: str,
+        status_code: int,
+    ) -> None:
+        """Caller-scoped, exactly as under the lock: no counter moves and the caller stays unprimed."""
+        ctx, passthrough_ctx = _ctx_for_auth_mode(auth_mode)
+        schema = _make_branch_schema(schema_hash="H1")
+        entry = _within_window_entry(schema, now=schema_cache._now())
+        passthrough_ctx.schema_cache["main"] = entry
+        bogus = _make_client()
+        bogus._get.return_value = _make_response(status_code=status_code)
+
+        with pytest.raises(AuthenticationError, match=f"HTTP {int(status_code)}"):
+            await get_cached_branch_schema(ctx, client=bogus)
+
+        assert passthrough_ctx.schema_cache["main"] is entry  # same object: counters and timestamps untouched
+        assert entry.consecutive_failures == 0
+        bogus.schema.set_cache.assert_not_called()
+        assert not passthrough_ctx._schema_cache_lock_holders
+        events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
+        assert "revalidate_failure" not in events
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
+    @pytest.mark.parametrize("status_code", _BRANCH_GONE_PARAMS)
+    async def test_a_branch_gone_outside_the_lock_evicts_and_raises(
+        self,
+        auth_mode: str,
+        status_code: int,
+    ) -> None:
+        ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = _within_window_entry(schema, now=schema_cache._now())
+        caller = _make_client()
+        caller._get.return_value = _make_response(status_code=status_code)
+
+        with pytest.raises(BranchNotFoundError):
+            await get_cached_branch_schema(ctx, client=caller)
+
+        assert "main" not in app_ctx.schema_cache
+        caller.schema.set_cache.assert_not_called()
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
+    @pytest.mark.parametrize("configure", _TRANSIENT_PROBE_FAILURES)
+    async def test_a_transient_probe_failure_falls_through_to_the_lock_and_counts_once(
+        self,
+        mock_metrics: MagicMock,
+        clock: _FakeClock,
+        auth_mode: str,
+        configure: Callable[[MagicMock], None],
+    ) -> None:
+        """The fast path records nothing; the lock path owns the bookkeeping and the caller fails closed."""
+        ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = _within_window_entry(schema, now=clock.now)
+        caller = _make_client()
+        configure(caller)
+
+        with pytest.raises(ToolError, match="credential could not be checked"):
+            await get_cached_branch_schema(ctx, client=caller)
+
+        assert _summary_probes(caller) == 2  # once outside the lock, once under it
+        assert app_ctx.schema_cache["main"].consecutive_failures == 1  # counted exactly once
+        caller.schema.set_cache.assert_not_called()
+        events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
+        assert events.count("revalidate_failure") == 1
+        assert "stale_hit" not in events
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
+    async def test_a_hash_difference_refetches_under_the_lock(
+        self,
+        mock_metrics: MagicMock,
+        auth_mode: str,
+    ) -> None:
+        """The refetch is shared work: the fast path declines and the lock path serves the new schema."""
+        ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
+        old = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = _within_window_entry(old, now=schema_cache._now())
+        new = _make_branch_schema(schema_hash="H2", kinds=["InfraDevice"])
+        caller = _make_client()
+        caller._get.return_value = _make_response(json_body={"main": "H2"})
+        caller.schema._fetch.return_value = new
+
+        result = await get_cached_branch_schema(ctx, client=caller)
+
+        assert result is new
+        assert app_ctx.schema_cache["main"].schema_hash == "H2"
+        assert _summary_probes(caller) == 2  # the fast-path probe, then the lock path's own
+        caller.schema._fetch.assert_awaited_once_with(branch="main")
+        assert caller.schema.cache["main"] is new
+        events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
+        assert "hash_diff" in events
+        assert "hash_match" not in events
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
+    async def test_a_circuit_broken_entry_still_takes_the_lock_path(
+        self,
+        clock: _FakeClock,
+        auth_mode: str,
+    ) -> None:
+        """A recovery probe carries breaker bookkeeping, so the fast path is skipped for a broken entry."""
+        ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
+        app_ctx.config = _make_config(auth_mode=auth_mode, schema_cache_max_consecutive_failures=2)
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = _entry(
+            schema,
+            fetched_at_monotonic=clock.now - 100,
+            consecutive_failures=2,  # broken
+            last_attempt_monotonic=clock.now - 100,  # past the throttle: a recovery probe is due
+        )
+        caller = _make_client()
+        caller._get.return_value = _make_response(json_body={"main": "H1"})
+        held: list[int] = []
+
+        original = schema_cache._revalidate_under_lock
+
+        async def recording_revalidate(**kwargs: Any) -> Any:
+            held.append(app_ctx._schema_cache_lock_holders.get("main", 0))
+            return await original(**kwargs)
+
+        with patch.object(schema_cache, "_revalidate_under_lock", recording_revalidate):
+            result = await get_cached_branch_schema(ctx, client=caller)
+
+        assert result is schema
+        assert held == [1]  # the probe ran with the branch lock held
+        assert _summary_probes(caller) == 1  # only the lock path's recovery probe: the fast path never ran
+        assert app_ctx.schema_cache["main"].consecutive_failures == 0  # healed
 
 
 # ---------------------------------------------------------------------------
