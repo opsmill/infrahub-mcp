@@ -30,6 +30,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           set -euo pipefail
 
@@ -42,6 +43,16 @@ jobs:
               exit 0
               ;;
           esac
+
+          # Dependabot applies ci/skip-changelog from .github/dependabot.yml,
+          # but only at creation time, so PRs opened before that config landed
+          # carry no label and this required check would block them forever.
+          # Its PRs are dependency bumps by construction; exempt the author as
+          # well. Only this one bot is exempt — humans still need a fragment.
+          if [ "${AUTHOR}" = "dependabot[bot]" ]; then
+            echo "Opened by ${AUTHOR} — dependency update, no fragment required."
+            exit 0
+          fi
 
           # towncrier only assembles direct children of changelog/ whose name
           # is <id>.<type>.md, where <type> is one of the types configured in
