@@ -50,6 +50,17 @@ uv run pre-commit install        # Optional: run those same hooks on every commi
 
 `ruff` and `mypy` are authoritative for Python syntax, style, and type issues. Do not eyeball Python errors — run `uv run invoke format lint` and rely on the output.
 
+## Changelog
+
+Every pull request that changes behaviour carries a news fragment in `changelog/`; CI fails the PR without one. `CHANGELOG.md` is assembled from those fragments by towncrier at release time, so entries never collide on a shared file.
+
+- `uv run towncrier create -c "Fixed the thing" 42.fixed.md` — one fragment per change, named `<issue>.<type>.md`. With no issue or PR number, use a descriptive slug prefixed with `+`, e.g. `+schema-cache-ttl.added.md`.
+- Types: `security`, `removed`, `deprecated`, `added`, `changed`, `fixed`, `housekeeping`. Internal and tooling work is `housekeeping`.
+- `uv run towncrier build --draft --version X.Y.Z` — preview what the release will say.
+- Label a PR `ci/skip-changelog` when it genuinely needs no entry (dependency bumps, typo fixes).
+
+Releases are not cut by hand: a push to `stable` opens a `chore(release): vX.Y.Z` pull request carrying the version bump and the assembled changelog. Merging it tags the release and publishes it with that changelog as the body. Never build the changelog or bump versions directly on `stable`.
+
 ## MCP Objects
 
 Changes to MCP functionality typically span all three object types:
