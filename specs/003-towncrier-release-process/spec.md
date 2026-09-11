@@ -72,7 +72,7 @@ For a release worth explaining, a maintainer produces a workflow-first prose pag
 - **Two PRs choosing the same fragment slug** collide as an ordinary file conflict, resolved in git.
 - **The first build has no `CHANGELOG.md`** — towncrier creates it. The file must gain the `<!-- towncrier release notes start -->` marker so subsequent builds insert rather than overwrite.
 - **`update-capabilities.sh` rewrites `CAPABILITIES.md`** during the bump; the release PR must include that regeneration rather than leaving it to a follow-up commit.
-- **Three version files** (`pyproject.toml`, `server.json`, `CAPABILITIES.md`) must move together via `sync-versions.sh`.
+- **Three version-carrying files** (`pyproject.toml`, `server.json`, `CAPABILITIES.md`) must all report the release version, but they are not written the same way: `sync-versions.sh` edits the first two directly, while `CAPABILITIES.md` — whose heading is `## Infrahub MCP Server <version>` — takes the version from the running server when `update-capabilities.sh` regenerates it. Regeneration must therefore follow the sync, in the same release commit.
 
 ## Requirements *(mandatory)*
 
@@ -82,8 +82,8 @@ For a release worth explaining, a maintainer produces a workflow-first prose pag
 - **FR-002**: System MUST compute the next version from PR labels (`changes/*`, `type/*`) and expose it as a single version string produced by a discrete step.
 - **FR-003**: System MUST assemble `CHANGELOG.md` from newsfragments using towncrier at release time, and MUST fail rather than emit an empty section.
 - **FR-004**: System MUST use the towncrier-rendered section as the GitHub Release body.
-- **FR-005**: System MUST keep the two versioned files — `pyproject.toml` and `server.json` (both its top-level `version` and `packages[0].version`) — in step via `scripts/sync-versions.sh`.
-- **FR-005a**: System MUST regenerate `CAPABILITIES.md` in the release commit via `scripts/update-capabilities.sh`. `CAPABILITIES.md` carries **no version string** — it is a generated capability listing that `ci-mcp-discovery.yml` validates by regenerating and diffing — so the requirement is that it is current, not that it matches a version.
+- **FR-005**: System MUST keep the three version-carrying files — `pyproject.toml`, `server.json` (both its top-level `version` and `packages[0].version`) and `CAPABILITIES.md` — reporting the same version at release time. `scripts/sync-versions.sh` writes the first two directly.
+- **FR-005a**: System MUST regenerate `CAPABILITIES.md` in the release commit via `scripts/update-capabilities.sh`, after `scripts/sync-versions.sh` has run. `CAPABILITIES.md` is a generated capability listing whose heading embeds the package version (`## Infrahub MCP Server <version>`, read from the server's own `version("infrahub-mcp")`), so regeneration is both what stamps the new version into it and what keeps its tool listing current. `ci-mcp-discovery.yml` validates both by regenerating and diffing.
 - **FR-006**: System MUST create `CHANGELOG.md` with the towncrier start marker on first build.
 - **FR-007**: Users MUST be able to skip the fragment requirement on a trivial PR via `ci/skip-changelog`.
 - **FR-008**: Release changes MUST arrive as a reviewable pull request that requires approval before a tag is created.
@@ -97,7 +97,7 @@ For a release worth explaining, a maintainer produces a workflow-first prose pag
 - **CHANGELOG.md**: the assembled canonical record; does not yet exist, created by the first build.
 - **Release PR**: `chore(release): vX.Y.Z`; carries version files plus the assembled changelog section and is the approval point.
 - **GitHub Release body**: the towncrier-rendered section; replaces the release-drafter PR-title list.
-- **Version string**: label-derived; written to `pyproject.toml` and `server.json`, and used as the `v`-prefixed git tag.
+- **Version string**: label-derived; written to `pyproject.toml` and `server.json` by `sync-versions.sh`, picked up by `CAPABILITIES.md` when `update-capabilities.sh` regenerates it, and used as the `v`-prefixed git tag.
 - **Curated release-notes page**: optional prose page on the docs site, generated from the changelog section.
 
 ## Success Criteria *(mandatory)*
@@ -108,7 +108,7 @@ For a release worth explaining, a maintainer produces a workflow-first prose pag
 - **SC-002**: Zero fragments are discarded — every fragment merged reaches exactly one published release.
 - **SC-003**: Zero changelog merge conflicts across all pull requests in the first two release cycles.
 - **SC-004**: No release requires a changelog commit after publication — notes are complete at publish time.
-- **SC-005**: `pyproject.toml` and `server.json` report the same version at every tagged commit, and `CAPABILITIES.md` matches what `update-capabilities.sh` regenerates at that commit.
+- **SC-005**: `pyproject.toml`, `server.json` and `CAPABILITIES.md` all report the same version at every tagged commit, and `CAPABILITIES.md` matches what `update-capabilities.sh` regenerates at that commit.
 - **SC-006**: A later migration onto the shared workflows changes only workflow wiring — zero edits to fragment content, fragment directory, or category taxonomy.
 
 ## Governance Gates Crossed

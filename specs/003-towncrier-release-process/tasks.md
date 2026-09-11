@@ -49,7 +49,7 @@ description: "Task list for the towncrier-based release process"
 - [x] T004 [US2] Keep version computation in `auto-bump.yml` in its own step whose only output is a version string (the seam for `release-prepare`'s `bump-strategy: manual`).
 - [x] T005 [US2] Add a changelog-assembly step that hard-fails when `changelog/` holds no fragments, then runs `towncrier build --version "$VERSION" --yes`.
 - [x] T006 [US2] Replace the direct `stable` push with a step that creates `release/v<version>`, commits `pyproject.toml`, `server.json`, `uv.lock`, `CAPABILITIES.md`, `CHANGELOG.md` and the consumed `changelog/`, and opens the release pull request. Re-running refreshes the same branch instead of opening a second PR.
-- [x] T007 [US2] Preserve the `CAPABILITIES.md` regeneration in the release commit so `ci-mcp-discovery.yml`'s diff check does not fail on the release PR.
+- [x] T007 [US2] Preserve the `CAPABILITIES.md` regeneration in the release commit, ordered after `sync-versions.sh`, so the regenerated file carries the new version and `ci-mcp-discovery.yml`'s diff check does not fail on the release PR.
 - [x] T008 [US2] Add `.github/workflows/release-publish.yml`, tagging and publishing on merge with the assembled section as the body. Key the decision off *"does a tag exist for the version in `pyproject.toml`?"* rather than the commit message, so squash, rebase and merge behave identically.
 - [x] T009 [US2] Guard the extracted body: fail if empty, and fail if it does not mention the version being released.
 - [x] T010 [US2] Remove `release-drafter` — delete `.github/release-drafter.yml` and the `release-draft` job.
