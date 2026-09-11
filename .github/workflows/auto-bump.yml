@@ -150,7 +150,7 @@ jobs:
           VERSION: ${{ steps.next.outputs.next-version }}
         run: |
           set -euo pipefail
-          BRANCH="release/v${VERSION}"
+          export BRANCH="release/v${VERSION}"
 
           git config user.name "opsmill-bot"
           git config user.email "opsmill-bot@users.noreply.github.com"
@@ -169,6 +169,24 @@ jobs:
           # this branch's remote ref, so a lease has nothing to compare
           # against. The branch is bot-owned and regenerated every run.
           git push --force origin "${BRANCH}"
+
+          # A run that computes a different version opens a different branch,
+          # so an earlier release PR can still be open. Merging that one after
+          # this one would walk the version files back and let release-publish
+          # tag a version older than the one already released — supersede it
+          # rather than let the two race.
+          STALE=$(
+            gh pr list --state open --base stable --json number,headRefName \
+              --jq '.[]
+                    | select(.headRefName | startswith("release/v"))
+                    | select(.headRefName != env.BRANCH)
+                    | .number'
+          )
+          for PR in ${STALE}; do
+            echo "Closing release PR #${PR}, superseded by ${BRANCH}."
+            gh pr close "${PR}" \
+              --comment "Superseded by the release pull request for v${VERSION}."
+          done
 
           if gh pr view "${BRANCH}" --json number >/dev/null 2>&1; then
             echo "Release PR for ${BRANCH} already open — updated in place."
