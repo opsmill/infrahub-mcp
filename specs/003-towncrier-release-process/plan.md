@@ -27,8 +27,8 @@ This repository is the **pilot** for the same change in infrahub-skills and infr
 **Constraints**:
 
 - The long-lived branch is **`stable`**, not `main`. Tags are `v`-prefixed.
-- The version lives in `pyproject.toml` and `server.json` (twice — top level and `packages[0]`), reconciled by `scripts/sync-versions.sh`.
-- `CAPABILITIES.md` is **generated, not versioned** — `scripts/update-capabilities.sh` regenerates it and `ci-mcp-discovery.yml` validates it by regenerating and diffing. It must be regenerated in the release commit, but it carries no version string to keep in sync.
+- The version is authored in `pyproject.toml` and `server.json` (twice — top level and `packages[0]`), reconciled by `scripts/sync-versions.sh`.
+- `CAPABILITIES.md` is **generated and version-carrying** — its heading is `## Infrahub MCP Server <version>`, which `mcp-discovery` reads from the server's `version("infrahub-mcp")`. `scripts/sync-versions.sh` does not edit it; it takes the new version when `scripts/update-capabilities.sh` regenerates it, so regeneration must run after the sync and land in the same release commit. `ci-mcp-discovery.yml` validates it by regenerating and diffing.
 - Version computation must stay isolated in one step emitting only a version string, so a later migration onto the shared `release-prepare` can consume it as `bump-strategy: manual` + `version:`.
 - `version-sync.yml` chains off the `Auto bump version` workflow by name via `workflow_run`; renaming that workflow would silently break it.
 
