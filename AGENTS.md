@@ -59,7 +59,7 @@ Every pull request that changes behaviour carries a news fragment in `changelog/
 - `uv run towncrier build --draft --version X.Y.Z` — preview what the release will say.
 - Label a PR `ci/skip-changelog` when it genuinely needs no entry (dependency bumps, typo fixes).
 
-Releases are not cut by hand: a push to `stable` opens a `chore(release): vX.Y.Z` pull request carrying the version bump and the assembled changelog. Merging it tags the release and publishes it with that changelog as the body. Never build the changelog or bump versions directly on `stable`.
+Releases are not cut by hand, and merging to `stable` does not prepare one: dispatch the **Auto bump version** workflow from Actions with `stable` selected, which opens a `chore(release): vX.Y.Z` pull request carrying the version bump and the assembled changelog. Merging that pull request tags the release and publishes it with that changelog as the body. Never build the changelog or bump versions directly on `stable`.
 
 ## MCP Objects
 
