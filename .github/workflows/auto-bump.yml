@@ -61,6 +61,11 @@ jobs:
         with:
           token: ${{ secrets.GH_INFRAHUB_BOT_TOKEN }}
           fetch-depth: 0
+          # The version guard below refuses a version that is already
+          # tagged, which it can only do if the tags are here. `fetch-depth:
+          # 0` happens to bring them today, but asking for them is the
+          # contract, spelled out the way release-publish.yml spells it out.
+          fetch-tags: true
 
       - uses: astral-sh/setup-uv@v7
         with:
@@ -165,7 +170,7 @@ jobs:
 
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-      - name: Refuse a version that is already released
+      - name: Refuse a version that is not a step forward
         env:
           VERSION: ${{ steps.resolved.outputs.version }}
         run: |
@@ -178,14 +183,61 @@ jobs:
           # pushes are not releases. A dispatch is someone asking for a
           # release, so having nothing to cut is a mistake worth reporting
           # rather than a no-op run that looks green.
-          if [ "${CURRENT}" = "${VERSION}" ]; then
-            MSG="${VERSION} is already the current version — there is nothing"
-            MSG="${MSG} new to release. Merge the pull requests you want in"
-            MSG="${MSG} this release first, or dispatch again with an"
-            MSG="${MSG} explicit version."
+          #
+          # Ordered, not compared for equality. Refusing only the current
+          # version let a lower one through: sync-versions.sh writes
+          # whatever it is handed into pyproject.toml and server.json, and
+          # release-publish.yml asks whether the version on disk is tagged,
+          # never whether it is newer than the last one released. The gap is
+          # real — the tags jump v1.0.1 to v1.1.1, so dispatching 1.1.0
+          # against 1.1.8 would walk the version files backwards and publish
+          # a GitHub Release older than the one already shipped. Ordered
+          # with packaging rather than with the shell, which compares
+          # strings and so ranks 1.10.0 below 1.9.0. packaging is already
+          # installed by `Install dependencies` above.
+          CURRENT="${CURRENT}" uv run python - <<'PY'
+          import os
+          import sys
+
+          from packaging.version import Version
+
+          current = Version(os.environ["CURRENT"])
+          version = Version(os.environ["VERSION"])
+
+          if version == current:
+              print(
+                  f"::error::{version} is already the current version —"
+                  " there is nothing new to release. Merge the pull requests"
+                  " you want in this release first, or dispatch again with"
+                  " an explicit version."
+              )
+              sys.exit(1)
+
+          if version < current:
+              print(
+                  f"::error::{version} is older than the current version"
+                  f" {current} — preparing it would walk pyproject.toml and"
+                  " server.json backwards and publish a release behind the"
+                  " one already shipped. Dispatch again with a version"
+                  f" above {current}."
+              )
+              sys.exit(1)
+          PY
+
+          # A version can be ahead of pyproject.toml and still have been
+          # released, if the version on `stable` was rolled back under a tag
+          # that stayed. Merging a release pull request for it would publish
+          # nothing — release-publish.yml skips a version that is already
+          # tagged — and would leave that tag describing something other
+          # than what `stable` now says it does.
+          if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
+            MSG="v${VERSION} has already been released — a tag for it"
+            MSG="${MSG} exists. Dispatch again with a version that has not"
+            MSG="${MSG} been released yet."
             echo "::error::${MSG}"
             exit 1
           fi
+
           echo "Version bump: ${CURRENT} -> ${VERSION}"
 
       - name: Sync versions to all files
