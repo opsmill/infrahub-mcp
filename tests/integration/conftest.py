@@ -49,6 +49,26 @@ KEEP_ENV = "INFRAHUB_TESTCONTAINERS_KEEP"
 READINESS_TIMEOUT_S = 240
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _disable_dotenv_loading() -> Iterator[None]:
+    """Disable ``.env`` probing for the whole suite.
+
+    Unlike the unit tests, these fixtures actually run ``app_lifespan`` with the
+    repo root as CWD, so without this a maintainer's own repo-root ``.env`` would
+    be primed on top of the credentials set by ``seeded_infrahub`` — permanently,
+    since ``os.environ`` mutation is process-wide.
+    """
+    previous = os.environ.get("INFRAHUB_MCP_ENV_FILE")
+    os.environ["INFRAHUB_MCP_ENV_FILE"] = ""
+    try:
+        yield
+    finally:
+        if previous is None:
+            del os.environ["INFRAHUB_MCP_ENV_FILE"]
+        else:
+            os.environ["INFRAHUB_MCP_ENV_FILE"] = previous
+
+
 def _docker_available() -> bool:
     try:
         result = subprocess.run(

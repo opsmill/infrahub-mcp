@@ -1,6 +1,15 @@
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _disable_dotenv_loading(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Disable ``.env`` probing by default so a developer's repo-root ``.env`` never
+    leaks into the test environment. Tests that exercise ``.env`` loading clear the
+    environment themselves (``patch.dict(..., clear=True)``) and are unaffected.
+    """
+    monkeypatch.setenv("INFRAHUB_MCP_ENV_FILE", "")
+
+
 @pytest.fixture
 def locationsite_filters() -> dict[str, str]:
     return {

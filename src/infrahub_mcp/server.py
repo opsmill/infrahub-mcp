@@ -1,5 +1,4 @@
 import logging
-import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib.metadata import version
@@ -18,7 +17,7 @@ from infrahub_mcp.auth import (
     set_passthrough_basic,
     set_passthrough_token,
 )
-from infrahub_mcp.config import ServerConfig, load_config
+from infrahub_mcp.config import ServerConfig, _prime_env_from_dotenv, env_get, load_config
 from infrahub_mcp.constants import (
     AUTH_MODE_BASIC_PASSTHROUGH,
     AUTH_MODE_OIDC,
@@ -56,23 +55,39 @@ def _validate_env() -> None:
     if _config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH}:
         return
 
-    address = os.environ.get("INFRAHUB_ADDRESS")
+    address = env_get("INFRAHUB_ADDRESS")
     if not address:
         msg = "INFRAHUB_ADDRESS is required. Set it to the URL of your Infrahub instance (e.g. http://localhost:8000)."
         raise RuntimeError(msg)
 
-    api_token = os.environ.get("INFRAHUB_API_TOKEN")
-    username = os.environ.get("INFRAHUB_USERNAME")
-    password = os.environ.get("INFRAHUB_PASSWORD")
+    api_token = env_get("INFRAHUB_API_TOKEN")
+    username = env_get("INFRAHUB_USERNAME")
+    password = env_get("INFRAHUB_PASSWORD")
 
     if not api_token and not (username and password):
         msg = "Authentication required. Set INFRAHUB_API_TOKEN  —or—  both INFRAHUB_USERNAME and INFRAHUB_PASSWORD."
         raise RuntimeError(msg)
 
+    # Below: mirror the SDK Config validators so a credential mix collected from
+    # several sources (.mcp.json "env" block, .env file, real environment) fails
+    # with actionable guidance instead of a raw pydantic ValidationError.
+    if api_token and password:
+        msg = (
+            "Conflicting credentials: INFRAHUB_API_TOKEN cannot be combined with "
+            "INFRAHUB_USERNAME/INFRAHUB_PASSWORD. Keep exactly one of the two, and check every "
+            "source in use (the .mcp.json 'env' block, the .env file, and the real environment)."
+        )
+        raise RuntimeError(msg)
+
+    if (username is None) != (password is None):
+        msg = "INFRAHUB_USERNAME and INFRAHUB_PASSWORD must be set together."
+        raise RuntimeError(msg)
+
 
 @asynccontextmanager
 async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: ARG001
-    """Manage the application lifecycle: validate config, create client, yield context."""
+    """Manage the application lifecycle: load .env, validate config, create client, yield context."""
+    _prime_env_from_dotenv()
     _validate_env()
     client = (
         None if _config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH} else InfrahubClient()
@@ -104,7 +119,7 @@ async def health_check(request: Request) -> JSONResponse:  # noqa: ARG001
     credentials exist so we only verify the Infrahub address is configured.
     Returns 200 when healthy, 503 when unhealthy.
     """
-    address = os.environ.get("INFRAHUB_ADDRESS", "")
+    address = env_get("INFRAHUB_ADDRESS") or ""
 
     if _config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH}:
         if not address:

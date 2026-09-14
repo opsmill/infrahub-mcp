@@ -60,6 +60,17 @@ uv run pre-commit install        # Optional: run those same hooks on every commi
 
 The `invoke ci` task mirrors every gate a pull request runs: the lint jobs (ruff, ty, yamllint, rumdl, Vale), the `validate-*` jobs, the docs website build, and the unit tests from `.github/workflows/ci.yml`, plus the `validate-capabilities` job from `.github/workflows/ci-mcp-discovery.yml` — a separate workflow that fires on any change under `src/infrahub_mcp/**`. It runs them unconditionally, whereas CI path-gates most jobs off `files-changed` — so `invoke ci` is stricter than CI, never looser. Two things break that symmetry: `--no-docs` drops the docs build (the run then prints a skipped-gate banner and no longer predicts CI), and CI lints the PR merged with its base while `invoke ci` only sees the working tree. A clean `invoke ci` otherwise predicts CI pass; if CI flags something it missed, treat that gap as a bug in `tasks.py` and patch the task.
 
+## Changelog
+
+Every pull request that changes behaviour carries a news fragment in `changelog/`; CI fails the PR without one. `CHANGELOG.md` is assembled from those fragments by towncrier at release time, so entries never collide on a shared file.
+
+- `uv run towncrier create -c "Fixed the thing" 42.fixed.md` — one fragment per change, named `<issue>.<type>.md`. With no issue or PR number, use a descriptive slug prefixed with `+`, e.g. `+schema-cache-ttl.added.md`.
+- Types: `security`, `removed`, `deprecated`, `added`, `changed`, `fixed`, `housekeeping`. Internal and tooling work is `housekeeping`.
+- `uv run towncrier build --draft --version X.Y.Z` — preview what the release will say.
+- Label a PR `ci/skip-changelog` when it genuinely needs no entry (dependency bumps, typo fixes).
+
+Releases are not cut by hand, and merging to `stable` does not prepare one: dispatch the **Auto bump version** workflow from Actions with `stable` selected, which opens a `chore(release): vX.Y.Z` pull request carrying the version bump and the assembled changelog. Merging that pull request tags the release and publishes it with that changelog as the body. Never build the changelog or bump versions directly on `stable`.
+
 ## MCP Objects
 
 Changes to MCP functionality typically span all three object types:

@@ -29,6 +29,56 @@ Create `.mcp.json` at the root of the repository where you want the Infrahub ser
 
 Claude Code loads the server on the next session. Run `claude` in the project directory and you should see `infrahub` listed under **/mcp**.
 
+## Keeping the token out of `.mcp.json`
+
+`.mcp.json` is usually committed to your repository, so it should not contain
+secrets. Instead, keep only the non-secret `INFRAHUB_ADDRESS` in its `env:`
+block and put the token in a `.env` file (kept out of version control) in the
+same directory.
+
+`.mcp.json` (committed):
+
+```json
+{
+  "mcpServers": {
+    "infrahub": {
+      "command": "uvx",
+      "args": ["infrahub-mcp"],
+      "env": {
+        "INFRAHUB_ADDRESS": "http://localhost:8000"
+      }
+    }
+  }
+}
+```
+
+`.env` (add it to `.gitignore`; place it in the directory Claude Code launches from):
+
+```bash
+INFRAHUB_API_TOKEN=your-token-here
+# or, instead of a token:
+# INFRAHUB_USERNAME=admin
+# INFRAHUB_PASSWORD=infrahub
+```
+
+At server startup the server loads exactly four keys from `.env`:
+`INFRAHUB_ADDRESS`, `INFRAHUB_API_TOKEN`, `INFRAHUB_USERNAME`, and
+`INFRAHUB_PASSWORD`. Every other key is ignored, including other Infrahub SDK
+settings such as `INFRAHUB_PROXY` and `INFRAHUB_TLS_INSECURE`, and the
+`INFRAHUB_MCP_*` server settings (set those in the real environment or the
+`.mcp.json` `env:` block). Values already set in the real environment take
+precedence, so `.env` never overrides an explicitly set variable. Set
+`INFRAHUB_MCP_ENV_FILE=/path/to/file` to load a different file (`~` is expanded),
+or `INFRAHUB_MCP_ENV_FILE=` (empty) to disable loading.
+
+Use either a token or a username and password, not both. If `.env` and the
+`.mcp.json` `env:` block each supply one of the two, the server stops at startup
+with a message naming the conflict.
+
+In the HTTP `token-passthrough` and `basic-passthrough` modes the Infrahub
+credential comes from the request `Authorization` header, so a token in `.env`
+is ignored; `.env` still supplies `INFRAHUB_ADDRESS`.
+
 ## User-scoped setup
 
 For always-on access across every project, add the same block to `~/.claude/settings.json` instead. The server is spawned once per Claude Code session.

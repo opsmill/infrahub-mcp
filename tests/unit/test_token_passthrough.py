@@ -513,6 +513,26 @@ class TestGetClientPassthrough:
             with pytest.raises(ToolError, match="INFRAHUB_ADDRESS is required"):
                 get_client(ctx)
 
+    @pytest.mark.parametrize("mode", ["token-passthrough", "basic-passthrough"])
+    def test_accepts_lowercase_infrahub_address(self, mode: str) -> None:
+        """A lowercase ``infrahub_address`` is what the SDK itself reads, and it is
+        what /health validates, so get_client() must resolve it the same way."""
+        config = ServerConfig(auth_mode=cast("AuthMode", mode))
+        ctx = _make_ctx(AppContext(client=None, config=config))
+
+        if mode == "token-passthrough":
+            set_passthrough_token("some-token")
+        else:
+            set_passthrough_basic(("user", "pass"))
+
+        with (
+            patch.dict(os.environ, {"infrahub_address": "http://lower:8000"}, clear=True),
+            patch("infrahub_mcp.utils.InfrahubClient") as mock_cls,
+        ):
+            get_client(ctx)
+
+        assert mock_cls.call_args.kwargs["config"].address == "http://lower:8000"
+
     def test_raises_when_shared_client_is_none(self) -> None:
         config = ServerConfig(auth_mode="none")
         ctx = _make_ctx(AppContext(client=None, config=config))
