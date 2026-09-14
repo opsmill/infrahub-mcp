@@ -114,13 +114,55 @@ jobs:
           VERSION="${INPUT_VERSION:-${DRAFTED_VERSION}}"
           VERSION="${VERSION#v}"
 
-          if ! printf '%s' "${VERSION}" \
-              | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$'; then
-            MSG="'${VERSION}' is not a usable version string — refusing to"
-            MSG="${MSG} prepare a release from it."
-            echo "::error::${MSG}"
-            exit 1
-          fi
+          # Checked with packaging rather than a regex. This string is
+          # written verbatim into pyproject.toml, whose `project.version`
+          # must be PEP 440, so PEP 440 is the grammar that matters and
+          # packaging is its reference implementation. The hand-rolled
+          # pattern that stood here only approximated it and accepted
+          # `1.4.0.foo`, which surfaced as a release pull request CI could
+          # never pass. A stricter SemVer pattern is no better: it rejects
+          # `1.2.0rc1` and `1.2.0.post1`, which PEP 440 allows and this
+          # project may want to ship. packaging is already installed by
+          # `Install dependencies` above.
+          VERSION="${VERSION}" uv run python - <<'PY'
+          import os
+          import sys
+
+          from packaging.version import InvalidVersion, Version
+
+          raw = os.environ["VERSION"]
+
+          try:
+              version = Version(raw)
+          except InvalidVersion:
+              problem = "is not a PEP 440 version"
+          else:
+              problem = ""
+              # The tag, the CHANGELOG heading and server.json all assume
+              # X.Y.Z, so 1.4 and 1.4.0.1 are refused even though PEP 440
+              # accepts both, and so are epochs and local versions, which
+              # parse but describe something that cannot be published.
+              if len(version.release) != 3:
+                  problem = "does not have exactly three release segments"
+              elif version.epoch or version.local:
+                  problem = "carries an epoch or a local version segment"
+              # One spelling has to reach the tag, pyproject.toml,
+              # server.json and CHANGELOG.md alike, so the version must be
+              # typed the way PEP 440 normalises it: 1.4.0-rc1 and 1.04.0
+              # both parse, but under a different name than was typed.
+              elif str(version) != raw:
+                  problem = f"is normalised by PEP 440 to '{version}'"
+
+          if problem:
+              print(
+                  f"::error::'{raw}' {problem} — refusing to prepare a"
+                  " release from it. Dispatch again with a three-part"
+                  " PEP 440 version, such as 1.4.0, 1.4.0rc1 or"
+                  " 1.4.0.post1."
+              )
+              sys.exit(1)
+          PY
+
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Refuse a version that is already released
