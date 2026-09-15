@@ -1,0 +1,19 @@
+changelog/84.added.md
+  s_5db31637b558e7::t_9a4b82629038ec 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9c7c78805167f8cacc96ca5004df266bf85a7825",
+  "prompts": {},
+  "sessions": {
+    "s_5db31637b558e7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3417cf1a-d75a-4132-ab23-7f79d89d21b8",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
