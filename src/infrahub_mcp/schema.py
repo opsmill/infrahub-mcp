@@ -10,23 +10,33 @@ from typing import TYPE_CHECKING, Any
 from infrahub_sdk.exceptions import SchemaNotFoundError
 
 from infrahub_mcp.constants import NAMESPACES_INTERNAL, schema_attribute_type_mapping
+from infrahub_mcp.schema_cache import get_cached_branch_schema, get_cached_kind
+from infrahub_mcp.utils import resolve_client
 
 if TYPE_CHECKING:
+    from fastmcp import Context
     from infrahub_sdk.client import InfrahubClient
 
 
-async def get_schema_catalog(client: "InfrahubClient", branch: str | None = None) -> dict[str, str]:
+async def get_schema_catalog(
+    ctx: "Context",
+    branch: str | None = None,
+    *,
+    client: "InfrahubClient | None" = None,
+) -> dict[str, str]:
     """Return a kind-to-label mapping of all non-internal schema kinds.
 
-    Args:
-        client: Infrahub SDK client.
-        branch: Optional branch to query. Defaults to the default branch.
-
-    Returns:
-        Dict mapping kind names to human-readable labels.
+    *client* is the client the schema read goes through; when omitted, one is
+    resolved here, once. See :func:`~infrahub_mcp.utils.resolve_client` for why
+    a caller that already holds this request's client passes it.
     """
-    all_schemas = await client.schema.all(branch=branch)
-    return {kind: node.label or kind for kind, node in all_schemas.items() if node.namespace not in NAMESPACES_INTERNAL}
+    client = resolve_client(ctx, client)
+    branch_schema = await get_cached_branch_schema(ctx, branch=branch, client=client)
+    return {
+        kind: node.label or kind
+        for kind, node in branch_schema.nodes.items()
+        if node.namespace not in NAMESPACES_INTERNAL
+    }
 
 
 def _shape_attribute(attr: Any) -> dict[str, Any]:
@@ -51,23 +61,34 @@ def _build_peer_schema(peer: Any) -> dict[str, Any]:
 
 
 async def get_schema_detail(
-    client: "InfrahubClient", kind: str, branch: str | None = None, expand_peers: bool = True
+    ctx: "Context",
+    kind: str,
+    branch: str | None = None,
+    expand_peers: bool = True,
+    *,
+    client: "InfrahubClient | None" = None,
 ) -> dict[str, Any]:
     """Return full schema detail for a specific kind.
 
     Includes attributes, relationships, and the complete filter map
-    (with filters derived from related peer schemas fetched in parallel).
+    (with filters derived from related peer schemas resolved from the
+    same cached BranchSchema).
 
     When ``expand_peers`` is ``True``, each relationship whose peer kind exists
     includes a ``peer_schema`` key holding that peer's attributes and
     relationships, inlined a single level deep. Peer schemas omit filters and
     are not expanded further (their relationships stay as plain peer references).
 
+    One client serves the whole call — the kind itself and every peer it
+    gathers — so a request validates its credential against Infrahub once,
+    not once per peer; see :func:`get_schema_catalog` for *client*.
+
     Args:
-        client: Infrahub SDK client.
+        ctx: FastMCP request context.
         kind: Schema kind to retrieve.
         branch: Optional branch to query.
         expand_peers: Inline one level of peer schemas on relationships.
+        client: Client the schema reads go through; resolved once here when omitted.
 
     Returns:
         Dict with keys: kind, label, namespace, attributes, relationships, filters.
@@ -75,7 +96,18 @@ async def get_schema_detail(
     Raises:
         SchemaNotFoundError: If the kind does not exist.
     """
-    schema = await client.schema.get(kind=kind, branch=branch)
+    client = resolve_client(ctx, client)
+    # One branch-schema read serves the requested kind and every peer the cache
+    # already holds — ``BranchSchema.nodes`` folds nodes, generics, profiles and
+    # templates together, so that is normally all of them. Only kinds genuinely
+    # absent from it fall through to get_cached_kind, whose forced revalidation
+    # still catches a kind added upstream since the entry was fetched. Reading
+    # the requested kind through get_cached_kind first re-entered the whole
+    # cache protocol for a mapping this read already needs.
+    branch_nodes = (await get_cached_branch_schema(ctx, branch=branch, client=client)).nodes
+    schema = branch_nodes.get(kind)
+    if schema is None:
+        schema = await get_cached_kind(ctx, kind=kind, branch=branch, client=client)
 
     filter_list: list[dict[str, str]] = [
         {
@@ -87,14 +119,17 @@ async def get_schema_detail(
 
     unique_peer_kinds: list[str] = list(dict.fromkeys(rel.peer for rel in schema.relationships))
 
+    peer_schemas: dict[str, Any] = {pk: branch_nodes[pk] for pk in unique_peer_kinds if pk in branch_nodes}
+
     async def _fetch_peer(peer_kind: str) -> tuple[str, Any]:
         try:
-            return peer_kind, await client.schema.get(kind=peer_kind, branch=branch)
+            return peer_kind, await get_cached_kind(ctx, kind=peer_kind, branch=branch, client=client)
         except SchemaNotFoundError:
             return peer_kind, None
 
-    peer_results = await asyncio.gather(*[_fetch_peer(pk) for pk in unique_peer_kinds])
-    peer_schemas: dict[str, Any] = {pk: s for pk, s in peer_results if s is not None}
+    missing_peer_kinds = [pk for pk in unique_peer_kinds if pk not in peer_schemas]
+    peer_results = await asyncio.gather(*[_fetch_peer(pk) for pk in missing_peer_kinds])
+    peer_schemas.update({pk: s for pk, s in peer_results if s is not None})
 
     for rel in schema.relationships:
         rel_schema = peer_schemas.get(rel.peer)
@@ -125,18 +160,18 @@ async def get_schema_detail(
     }
 
 
-async def get_valid_kinds_summary(client: "InfrahubClient", branch: str | None = None) -> str:
+async def get_valid_kinds_summary(
+    ctx: "Context",
+    branch: str | None = None,
+    *,
+    client: "InfrahubClient | None" = None,
+) -> str:
     """Return a compact string listing all valid non-internal kinds.
 
     Intended for inclusion in error messages so agents can self-correct
-    without a second tool call.
-
-    Args:
-        client: Infrahub SDK client.
-        branch: Optional branch to query.
-
-    Returns:
-        String like "Valid kinds: InfraDevice, InfraInterfaceL3, ..."
+    without a second tool call. Tools call it after a ``SchemaNotFoundError``
+    from a read on their own client; passing that *client* keeps the error
+    path from probing Infrahub a second time (see :func:`get_schema_catalog`).
     """
-    catalog = await get_schema_catalog(client, branch=branch)
+    catalog = await get_schema_catalog(ctx, branch=branch, client=client)
     return "Valid kinds: " + ", ".join(sorted(catalog.keys()))

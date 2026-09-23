@@ -37,11 +37,13 @@ async def test_has_more_is_none_when_total_count_unavailable() -> None:
 
     mock_client = MagicMock()
     mock_schema = MagicMock(kind="LocationSite")
-    mock_client.schema.get = AsyncMock(return_value=mock_schema)
 
     fake_nodes = [_make_node("a"), _make_node("b")]
 
-    with patch("infrahub_mcp.tools.nodes.get_client", return_value=mock_client):
+    with (
+        patch("infrahub_mcp.tools.nodes.get_client", return_value=mock_client),
+        patch("infrahub_mcp.tools.nodes.get_cached_kind", AsyncMock(return_value=mock_schema)),
+    ):
         with patch("infrahub_mcp.tools.nodes._get_total_count", AsyncMock(return_value=-1)):
             with patch("infrahub_mcp.tools.nodes._fetch_nodes", AsyncMock(return_value=fake_nodes)):
                 result = await get_nodes(ctx=ctx, kind="LocationSite")
@@ -58,11 +60,13 @@ async def test_has_more_true_when_more_pages_available() -> None:
 
     mock_client = MagicMock()
     mock_schema = MagicMock(kind="LocationSite")
-    mock_client.schema.get = AsyncMock(return_value=mock_schema)
 
     fake_nodes = [_make_node("a"), _make_node("b")]
 
-    with patch("infrahub_mcp.tools.nodes.get_client", return_value=mock_client):
+    with (
+        patch("infrahub_mcp.tools.nodes.get_client", return_value=mock_client),
+        patch("infrahub_mcp.tools.nodes.get_cached_kind", AsyncMock(return_value=mock_schema)),
+    ):
         with patch("infrahub_mcp.tools.nodes._get_total_count", AsyncMock(return_value=10)):
             with patch("infrahub_mcp.tools.nodes._fetch_nodes", AsyncMock(return_value=fake_nodes)):
                 result = await get_nodes(ctx=ctx, kind="LocationSite", limit=2, offset=0)
@@ -78,11 +82,13 @@ async def test_has_more_false_on_exact_page_boundary() -> None:
 
     mock_client = MagicMock()
     mock_schema = MagicMock(kind="LocationSite")
-    mock_client.schema.get = AsyncMock(return_value=mock_schema)
 
     fake_nodes = [_make_node("a"), _make_node("b")]
 
-    with patch("infrahub_mcp.tools.nodes.get_client", return_value=mock_client):
+    with (
+        patch("infrahub_mcp.tools.nodes.get_client", return_value=mock_client),
+        patch("infrahub_mcp.tools.nodes.get_cached_kind", AsyncMock(return_value=mock_schema)),
+    ):
         with patch("infrahub_mcp.tools.nodes._get_total_count", AsyncMock(return_value=4)):
             with patch("infrahub_mcp.tools.nodes._fetch_nodes", AsyncMock(return_value=fake_nodes)):
                 result = await get_nodes(ctx=ctx, kind="LocationSite", limit=2, offset=2)
