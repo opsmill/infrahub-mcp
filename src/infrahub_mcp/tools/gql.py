@@ -16,7 +16,7 @@ from infrahub_mcp.utils import _log_and_raise_error, get_client
 mcp: FastMCP = FastMCP(name="Infrahub GraphQL")
 
 
-@mcp.tool(tags={"graphql", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"graphql", "retrieve"}, annotations=ToolAnnotations(read_only_hint=True))
 async def query_graphql(
     ctx: Context,
     query: Annotated[

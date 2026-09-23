@@ -133,7 +133,7 @@ async def _validate_filters(  # noqa: PLR0913, PLR0917
         )
 
 
-@mcp.tool(tags={"nodes", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"nodes", "retrieve"}, annotations=ToolAnnotations(read_only_hint=True))
 async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals  # noqa: PLR0913, PLR0917
     ctx: Context,
     kind: Annotated[
@@ -289,7 +289,7 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
     }
 
 
-@mcp.tool(tags={"nodes", "search"}, annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"nodes", "search"}, annotations=ToolAnnotations(read_only_hint=True))
 async def search_nodes(
     ctx: Context,
     query: Annotated[

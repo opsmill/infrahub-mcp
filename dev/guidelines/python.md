@@ -44,7 +44,7 @@ Constitution Principles IV (Type Safety) and VII (Simplicity).
 - **Tool tagging:** Write tools MUST be tagged `"write"` so
   `ReadOnlyMiddleware` can filter them.
 - **Error handling:** Raise `ToolError` for user-facing errors.
-  Use `McpError` with standard error codes for protocol-level errors.
+  Use `MCPError(code=..., message=...)` with standard error codes for protocol-level errors.
 
 ## Configuration
 
