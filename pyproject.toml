@@ -27,7 +27,7 @@ dev = [
     "ruff>=0.15.11",
     "pylint>=4.0.5",
     "yamllint>=1.37.1",
-    "infrahub-testcontainers>=1.10.0",
+    "infrahub-testcontainers==1.11.3",
     "towncrier>=25.8.0",
     "pre-commit>=4.6.1",
 ]
