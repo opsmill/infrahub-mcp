@@ -11,7 +11,7 @@ from infrahub_mcp.utils import get_session_branch
 mcp: FastMCP = FastMCP(name="Infrahub Session")
 
 
-@mcp.tool(tags={"session", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"session", "retrieve"}, annotations=ToolAnnotations(read_only_hint=True))
 async def get_session_info(ctx: Context) -> dict[str, Any]:
     """Return the current MCP session state — call before writes to know which branch they target.
 
