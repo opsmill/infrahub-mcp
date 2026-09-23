@@ -1,0 +1,43 @@
+changelog/+mcp-sdk-v2.housekeeping.md
+  s_03cb999cd4b66b::t_caf8be213b0a96 1
+pyproject.toml
+  s_03cb999cd4b66b::t_e9fa88779120a2 129
+src/infrahub_mcp/middleware.py
+  s_03cb999cd4b66b::t_6680eb4d0a2401 52,201-207,250,260,274,299-300,303,305-310,313-318,510,531
+src/infrahub_mcp/tools/gql.py
+  s_03cb999cd4b66b::t_6e7ce6ff6ebdf4 19
+src/infrahub_mcp/tools/nodes.py
+  s_03cb999cd4b66b::t_304b522d38ff72 136,292
+src/infrahub_mcp/tools/schema.py
+  s_03cb999cd4b66b::t_d977625411102d 18
+src/infrahub_mcp/tools/session.py
+  s_03cb999cd4b66b::t_c7abfbc7be1d5d 14
+src/infrahub_mcp/tools/traversal.py
+  s_03cb999cd4b66b::t_68773c8763a690 89,135
+src/infrahub_mcp/tools/write.py
+  s_03cb999cd4b66b::t_7094325b425066 132,263,341,421,475
+tests/integration/test_failure_modes.py
+  s_03cb999cd4b66b::t_18c1c69d49fb76 16,28
+tests/integration/test_graphql_tool.py
+  s_03cb999cd4b66b::t_bea97a5e82ff97 9,31
+tests/integration/test_write_tool.py
+  s_03cb999cd4b66b::t_6db782940cf9c9 9,42
+tests/unit/test_middleware.py
+  s_03cb999cd4b66b::t_41160774370df7 20,71,193,222,235,974,977,996,999,1013,1063,1075,1155,1166,1177,1189,1203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "abd63967d4cb6aac5d5c89ab79648fb11c30711f",
+  "prompts": {},
+  "sessions": {
+    "s_03cb999cd4b66b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c298441e-199b-4b26-a274-db99161d2155",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <Kohler.benoit@bearchitek.com>"
+    }
+  }
+}
