@@ -49,8 +49,7 @@ from fastmcp.server.middleware.response_limiting import (
 from fastmcp.server.middleware.timing import DetailedTimingMiddleware
 from httpx import ConnectError as HttpxConnectError
 from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
-from mcp import McpError
-from mcp.types import ErrorData
+from mcp import MCPError
 
 from infrahub_mcp.auth import get_passthrough_basic, get_passthrough_token, get_user_from_token
 from infrahub_mcp.constants import (
@@ -199,15 +198,13 @@ class ReadOnlyMiddleware(Middleware):
 
         if is_write:
             logger.warning("read_only_blocked tool=%s", tool_name)
-            raise McpError(
-                ErrorData(
-                    code=-32601,
-                    message=(
-                        f"Tool '{tool_name}' is not available in "
-                        "read-only mode. Write operations are "
-                        "disabled on this server."
-                    ),
-                )
+            raise MCPError(
+                code=-32601,
+                message=(
+                    f"Tool '{tool_name}' is not available in "
+                    "read-only mode. Write operations are "
+                    "disabled on this server."
+                ),
             )
         return await call_next(context)
 
@@ -250,7 +247,7 @@ class TokenPassthroughMiddleware(Middleware):
         call_next: CallNext[mt.CallToolRequestParams, ToolResult],
     ) -> ToolResult:
         if self._missing_credential():
-            raise McpError(ErrorData(code=-32001, message=self._error_message()))
+            raise MCPError(code=-32001, message=self._error_message())
         return await call_next(context)
 
     @override
@@ -260,7 +257,7 @@ class TokenPassthroughMiddleware(Middleware):
         call_next: CallNext[Any, Any],
     ) -> Any:
         if self._missing_credential():
-            raise McpError(ErrorData(code=-32001, message=self._error_message()))
+            raise MCPError(code=-32001, message=self._error_message())
         return await call_next(context)
 
 
@@ -274,7 +271,7 @@ class InfrahubConnectionMiddleware(Middleware):
 
     Converts ``ServerNotReachableError``, ``ServerNotResponsiveError``,
     ``AuthenticationError``, ``ConnectionError``, and ``HttpxConnectError``
-    into actionable ``McpError`` messages instead of leaking raw stack traces
+    into actionable ``MCPError`` messages instead of leaking raw stack traces
     to the client.
     """
 
@@ -299,30 +296,26 @@ class InfrahubConnectionMiddleware(Middleware):
         try:
             return await call_next(context)
         except ServerNotReachableError as exc:
-            raise McpError(
-                ErrorData(code=-32002, message=f"Infrahub is unreachable at {exc}. Check that the instance is running.")
+            raise MCPError(
+                code=-32002, message=f"Infrahub is unreachable at {exc}. Check that the instance is running."
             ) from exc
         except ServerNotResponsiveError as exc:
-            raise McpError(ErrorData(code=-32002, message=f"Infrahub is not responding: {exc}")) from exc
+            raise MCPError(code=-32002, message=f"Infrahub is not responding: {exc}") from exc
         except AuthenticationError as exc:
-            raise McpError(
-                ErrorData(
-                    code=-32001,
-                    message=(
-                        f"The Infrahub MCP server returned a 401 Unauthorized error — {exc}. "
-                        "Check your credentials (API token, username/password, or passthrough header)."
-                    ),
-                )
+            raise MCPError(
+                code=-32001,
+                message=(
+                    f"The Infrahub MCP server returned a 401 Unauthorized error — {exc}. "
+                    "Check your credentials (API token, username/password, or passthrough header)."
+                ),
             ) from exc
         except (ConnectionError, HttpxConnectError) as exc:
-            raise McpError(
-                ErrorData(
-                    code=-32002,
-                    message=(
-                        f"Cannot connect to Infrahub: {exc}. "
-                        "Check that INFRAHUB_ADDRESS is correct and the instance is reachable."
-                    ),
-                )
+            raise MCPError(
+                code=-32002,
+                message=(
+                    f"Cannot connect to Infrahub: {exc}. "
+                    "Check that INFRAHUB_ADDRESS is correct and the instance is reachable."
+                ),
             ) from exc
 
 
@@ -514,7 +507,7 @@ class SafeRetryMiddleware(RetryMiddleware):
     """Retry middleware that only retries safe tool calls.
 
     Extends FastMCP's ``RetryMiddleware`` with an ``on_call_tool`` override
-    that checks ``ToolAnnotations.idempotentHint`` or ``readOnlyHint`` before
+    that checks ``ToolAnnotations.idempotent_hint`` or ``read_only_hint`` before
     retrying.  Non-safe tool calls (e.g. ``node_upsert`` without an id) are
     passed through without retries to avoid duplicate side effects.
 
@@ -535,7 +528,7 @@ class SafeRetryMiddleware(RetryMiddleware):
 
         is_safe_to_retry = False
         if tool is not None and tool.annotations is not None:
-            is_safe_to_retry = bool(tool.annotations.idempotentHint or tool.annotations.readOnlyHint)
+            is_safe_to_retry = bool(tool.annotations.idempotent_hint or tool.annotations.read_only_hint)
 
         if not is_safe_to_retry:
             # Skip retry logic — call through directly

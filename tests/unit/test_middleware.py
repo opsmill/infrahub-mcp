@@ -17,7 +17,7 @@ from fastmcp.server.middleware.error_handling import RetryMiddleware
 from fastmcp.server.middleware.middleware import MiddlewareContext
 from fastmcp.tools.base import ToolResult
 from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
-from mcp import McpError
+from mcp import MCPError
 from mcp.types import TextContent
 
 import infrahub_mcp.middleware as middleware_module
@@ -68,7 +68,7 @@ def _make_resource_context(
     uri: str,
 ) -> MiddlewareContext[mt.ReadResourceRequestParams]:
     """Create a MiddlewareContext for reading a resource."""
-    params = mt.ReadResourceRequestParams(uri=mt.AnyUrl(uri))
+    params = mt.ReadResourceRequestParams(uri=uri)
     return MiddlewareContext(
         message=params,
         method="resources/read",
@@ -190,7 +190,7 @@ class TestReadOnlyMiddleware:
             msg = "should not reach here"
             raise AssertionError(msg)
 
-        with pytest.raises(McpError, match="read-only mode"):
+        with pytest.raises(MCPError, match="read-only mode"):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
@@ -219,7 +219,7 @@ class TestReadOnlyMiddleware:
             msg = "should not reach here"
             raise AssertionError(msg)
 
-        with pytest.raises(McpError):
+        with pytest.raises(MCPError):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
@@ -232,7 +232,7 @@ class TestReadOnlyMiddleware:
             msg = "should not reach here"
             raise AssertionError(msg)
 
-        with pytest.raises(McpError, match="read-only mode"):
+        with pytest.raises(MCPError, match="read-only mode"):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
@@ -971,10 +971,10 @@ class TestSafeRetryMiddlewareRouting:
 
     @pytest.mark.anyio
     async def test_read_only_tool_is_retried(self) -> None:
-        """Tools with readOnlyHint=True should be delegated to parent retry logic."""
+        """Tools with read_only_hint=True should be delegated to parent retry logic."""
         tool = _FakeTool(
             "get_schema",
-            annotations=mt.ToolAnnotations(readOnlyHint=True),
+            annotations=mt.ToolAnnotations(read_only_hint=True),
         )
         ctx = _make_retry_tool_context("get_schema", tool)
         mw = SafeRetryMiddleware(max_retries=2, base_delay=0)
@@ -993,10 +993,10 @@ class TestSafeRetryMiddlewareRouting:
 
     @pytest.mark.anyio
     async def test_idempotent_tool_is_retried(self) -> None:
-        """Tools with idempotentHint=True should be delegated to parent retry logic."""
+        """Tools with idempotent_hint=True should be delegated to parent retry logic."""
         tool = _FakeTool(
             "some_idempotent_tool",
-            annotations=mt.ToolAnnotations(idempotentHint=True),
+            annotations=mt.ToolAnnotations(idempotent_hint=True),
         )
         ctx = _make_retry_tool_context("some_idempotent_tool", tool)
         mw = SafeRetryMiddleware(max_retries=2, base_delay=0)
@@ -1010,7 +1010,7 @@ class TestSafeRetryMiddlewareRouting:
         """Mutating tools (not read-only, not idempotent) bypass retry logic."""
         tool = _FakeTool(
             "node_upsert",
-            annotations=mt.ToolAnnotations(readOnlyHint=False, idempotentHint=False, destructiveHint=False),
+            annotations=mt.ToolAnnotations(read_only_hint=False, idempotent_hint=False, destructive_hint=False),
         )
         ctx = _make_retry_tool_context("node_upsert", tool)
         mw = SafeRetryMiddleware(max_retries=2, base_delay=0)
@@ -1060,7 +1060,7 @@ class TestTokenPassthroughMiddleware:
             msg = "should not reach here"
             raise AssertionError(msg)
 
-        with pytest.raises(McpError, match="Authentication required"):
+        with pytest.raises(MCPError, match="Authentication required"):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
@@ -1072,7 +1072,7 @@ class TestTokenPassthroughMiddleware:
             msg = "should not reach here"
             raise AssertionError(msg)
 
-        with pytest.raises(McpError, match="Authentication required"):
+        with pytest.raises(MCPError, match="Authentication required"):
             await middleware.on_read_resource(ctx, call_next)
 
     @pytest.mark.anyio
@@ -1152,7 +1152,7 @@ class TestInfrahubConnectionMiddleware:
         async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             raise ServerNotReachableError(address="http://infrahub:8000")
 
-        with pytest.raises(McpError, match="Infrahub is unreachable"):
+        with pytest.raises(MCPError, match="Infrahub is unreachable"):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
@@ -1163,7 +1163,7 @@ class TestInfrahubConnectionMiddleware:
         async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
             raise ServerNotReachableError(address="http://infrahub:8000")
 
-        with pytest.raises(McpError, match="Infrahub is unreachable"):
+        with pytest.raises(MCPError, match="Infrahub is unreachable"):
             await middleware.on_read_resource(ctx, call_next)
 
     @pytest.mark.anyio
@@ -1174,7 +1174,7 @@ class TestInfrahubConnectionMiddleware:
         async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             raise ServerNotResponsiveError(url="http://infrahub:8000/api/schema")
 
-        with pytest.raises(McpError, match="Infrahub is not responding"):
+        with pytest.raises(MCPError, match="Infrahub is not responding"):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
@@ -1186,7 +1186,7 @@ class TestInfrahubConnectionMiddleware:
             msg = "Invalid API token"
             raise AuthenticationError(msg)
 
-        with pytest.raises(McpError, match="401 Unauthorized"):
+        with pytest.raises(MCPError, match="401 Unauthorized"):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
@@ -1200,7 +1200,7 @@ class TestInfrahubConnectionMiddleware:
             msg = "Connection refused"
             raise httpx.ConnectError(msg)
 
-        with pytest.raises(McpError, match="Cannot connect to Infrahub"):
+        with pytest.raises(MCPError, match="Cannot connect to Infrahub"):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio

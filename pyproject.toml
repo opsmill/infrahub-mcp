@@ -126,7 +126,7 @@ max-line-length = 150
     "PLC2701", # Private name imports (testing internal helpers)
     "PLR2004", # Magic values in comparisons (expected in assertions)
     "PLR6301", # Method could be static (standard test-class pattern)
-    "RUF076",  # autouse fixtures are an intentional test-isolation pattern
+    "pytest-fixture-autouse",  # autouse fixtures are an intentional test-isolation pattern
 ]
 "src/infrahub_mcp/tools/write.py" = [
     "PLW0717", # too-many-statements-in-try-clause — write flows wrap full SDK operations intentionally

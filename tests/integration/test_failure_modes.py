@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from fastmcp.exceptions import ToolError
-from mcp import McpError
+from mcp import MCPError
 
 from tests.integration._util import tool_text
 
@@ -25,7 +25,7 @@ pytestmark = [pytest.mark.integration]
 
 async def test_malformed_input_rejected_before_sdk_call(mcp_client: Client) -> None:
     # `get_nodes` requires `kind`; omitting it must be rejected by schema enforcement (F2).
-    with pytest.raises((ToolError, McpError)):
+    with pytest.raises((ToolError, MCPError)):
         await mcp_client.call_tool("get_nodes", {})
 
 
