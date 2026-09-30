@@ -1,0 +1,24 @@
+changelog/+review-version-sync.fixed.md
+  s_7b740b0a09bab8::t_89f6fd38bb38c1 1
+.github/workflows/release-publish.yml
+  s_7b740b0a09bab8::t_89f6fd38bb38c1 52-54,64-70
+.github/workflows/version-sync.yml
+  s_7b740b0a09bab8::t_8f7cf878f2f50c 84-86
+  s_7b740b0a09bab8::t_89f6fd38bb38c1 14,66-68,70,78-83,87-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "72c012a46497297aede3410c52b20b092b6be007",
+  "prompts": {},
+  "sessions": {
+    "s_7b740b0a09bab8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f3cf-b8e2-7472-8987-ae8cafa06948",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
