@@ -1,0 +1,21 @@
+docs/sidebars.ts
+  s_7b740b0a09bab8::t_3f814b411d121a 66
+docs/docs/release-notes/release-1_2_0.mdx
+  s_7b740b0a09bab8::t_3f814b411d121a 1-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1871f01dd695b45908cdb0dab7f261702c702466",
+  "prompts": {},
+  "sessions": {
+    "s_7b740b0a09bab8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f3cf-b8e2-7472-8987-ae8cafa06948",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
