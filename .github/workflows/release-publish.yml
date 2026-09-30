@@ -49,10 +49,9 @@ jobs:
           fi
 
           # An untagged version is not on its own an authorisation to release:
-          # anything able to write to `stable` — a direct version edit, the
-          # version-sync safety net — would otherwise cut a tag and a GitHub
-          # Release of its own accord. Publishing also requires this commit to
-          # be the merge of a release pull request.
+          # a direct version edit or version-sync pull request would otherwise
+          # cut a tag and a GitHub Release of its own accord. Publishing also
+          # requires this commit to be the merge of a release pull request.
           RELEASE_PR=$(
             gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
               --jq '[.[]
@@ -62,7 +61,13 @@ jobs:
           )
 
           if [ -z "${RELEASE_PR}" ]; then
-            echo "${GITHUB_SHA} is not the merge of a release/v* pull request — nothing to publish."
+            MSG="v${VERSION} is not tagged, but an untagged version in"
+            MSG="${MSG} pyproject.toml does not authorise a release."
+            MSG="${MSG} ${GITHUB_SHA} is not the merge of a release/v*"
+            MSG="${MSG} pull request, so no tag or GitHub Release was created."
+            MSG="${MSG} Prepare the release with the Auto bump version workflow"
+            MSG="${MSG} and merge its reviewed release pull request."
+            echo "::notice::${MSG}"
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
