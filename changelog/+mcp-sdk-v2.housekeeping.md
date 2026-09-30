@@ -1,0 +1,1 @@
+Adapt to MCP Python SDK 2.x and ruff 0.16.7: raise `MCPError(code=, message=)` instead of the removed `McpError(ErrorData(...))`, use the snake_case `ToolAnnotations` fields, and ignore the now code-less `pytest-fixture-autouse` ruff rule by name.

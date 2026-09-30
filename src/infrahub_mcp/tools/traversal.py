@@ -86,7 +86,7 @@ async def _find_reachable_impl(  # noqa: PLR0913, PLR0917
     )
 
 
-@mcp.tool(tags={"traversal", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"traversal", "retrieve"}, annotations=ToolAnnotations(read_only_hint=True))
 async def find_paths(  # noqa: PLR0913, PLR0917
     ctx: Context,
     source: Annotated[
@@ -132,7 +132,7 @@ async def find_paths(  # noqa: PLR0913, PLR0917
     return await _find_paths_impl(ctx, source, destination, branch, max_depth, kind_filter, relationship_filter)
 
 
-@mcp.tool(tags={"traversal", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"traversal", "retrieve"}, annotations=ToolAnnotations(read_only_hint=True))
 async def find_reachable(  # noqa: PLR0913, PLR0917
     ctx: Context,
     source: Annotated[str, Field(description="Source node: a UUID or kind-qualified HFID.")],

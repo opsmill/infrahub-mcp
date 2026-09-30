@@ -15,7 +15,7 @@ from infrahub_mcp.utils import _log_and_raise_error, get_client, get_config
 mcp: FastMCP = FastMCP(name="Infrahub Schema")
 
 
-@mcp.tool(tags={"schema", "retrieve"}, annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(tags={"schema", "retrieve"}, annotations=ToolAnnotations(read_only_hint=True))
 async def get_schema(
     ctx: Context,
     kind: Annotated[
