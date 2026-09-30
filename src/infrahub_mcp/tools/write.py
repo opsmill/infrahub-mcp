@@ -130,7 +130,7 @@ def _assert_no_privileged_mutations(query: str) -> None:
 
 @mcp.tool(
     tags={"nodes", "write"},
-    annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False, destructiveHint=False),
+    annotations=ToolAnnotations(read_only_hint=False, idempotent_hint=False, destructive_hint=False),
 )
 async def node_upsert(  # pylint: disable=too-many-locals
     ctx: Context,
@@ -261,7 +261,7 @@ async def node_upsert(  # pylint: disable=too-many-locals
 
 @mcp.tool(
     tags={"nodes", "write"},
-    annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False, destructiveHint=True),
+    annotations=ToolAnnotations(read_only_hint=False, idempotent_hint=False, destructive_hint=True),
 )
 async def node_delete(
     ctx: Context,
@@ -339,7 +339,7 @@ async def node_delete(
 
 @mcp.tool(
     tags={"branches", "write"},
-    annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False, destructiveHint=False),
+    annotations=ToolAnnotations(read_only_hint=False, idempotent_hint=False, destructive_hint=False),
 )
 async def propose_changes(
     ctx: Context,
@@ -419,7 +419,7 @@ async def propose_changes(
 
 @mcp.tool(
     tags={"graphql", "write"},
-    annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False, destructiveHint=True),
+    annotations=ToolAnnotations(read_only_hint=False, idempotent_hint=False, destructive_hint=True),
 )
 async def mutate_graphql(
     ctx: Context,
@@ -473,7 +473,7 @@ async def mutate_graphql(
 
 @mcp.tool(
     tags={"session", "write"},
-    annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False, destructiveHint=False),
+    annotations=ToolAnnotations(read_only_hint=False, idempotent_hint=False, destructive_hint=False),
 )
 async def reset_session_branch(
     ctx: Context,

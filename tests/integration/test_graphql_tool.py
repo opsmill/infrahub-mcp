@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from fastmcp.exceptions import ToolError
-from mcp import McpError
+from mcp import MCPError
 
 from tests.integration._util import tool_text
 
@@ -28,5 +28,5 @@ async def test_query_graphql_reads_seeded_data(mcp_client: Client) -> None:
 
 async def test_query_graphql_rejects_mutation(mcp_client: Client) -> None:
     # The read-only GraphQL tool rejects mutations via AST inspection (OperationType.MUTATION).
-    with pytest.raises((ToolError, McpError)):
+    with pytest.raises((ToolError, MCPError)):
         await mcp_client.call_tool("query_graphql", {"query": _MUTATION})

@@ -5,7 +5,8 @@ description = "MCP server to interact with Infrahub"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "fastmcp>=3.2.0",
+    "fastmcp>=4.0.0",
+    "mcp>=2.0",
     "infrahub-sdk>=1.22.0",
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.6,<3",
@@ -27,7 +28,7 @@ dev = [
     "ruff>=0.15.11",
     "pylint>=4.0.5",
     "yamllint>=1.37.1",
-    "infrahub-testcontainers>=1.10.0",
+    "infrahub-testcontainers>=1.11.3,<2",
     "towncrier>=25.8.0",
     "pre-commit>=4.6.1",
 ]
@@ -126,7 +127,7 @@ max-line-length = 150
     "PLC2701", # Private name imports (testing internal helpers)
     "PLR2004", # Magic values in comparisons (expected in assertions)
     "PLR6301", # Method could be static (standard test-class pattern)
-    "RUF076",  # autouse fixtures are an intentional test-isolation pattern
+    "pytest-fixture-autouse",  # autouse fixtures are an intentional test-isolation pattern
 ]
 "src/infrahub_mcp/tools/write.py" = [
     "PLW0717", # too-many-statements-in-try-clause — write flows wrap full SDK operations intentionally

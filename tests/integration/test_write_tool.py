@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from fastmcp.exceptions import ToolError
-from mcp import McpError
+from mcp import MCPError
 
 if TYPE_CHECKING:
     from fastmcp import Client
@@ -39,7 +39,7 @@ async def test_write_tool_blocked_in_read_only(mcp_client_readonly: Client) -> N
 
     # With read_only=true, write tools are unmounted and ReadOnlyMiddleware blocks the
     # call — either way the in-process client raises rather than mutating data.
-    with pytest.raises((ToolError, McpError)):
+    with pytest.raises((ToolError, MCPError)):
         await mcp_client_readonly.call_tool(
             "node_upsert",
             {"kind": kind, "data": {"name": "epsilon", "color": "black"}},
