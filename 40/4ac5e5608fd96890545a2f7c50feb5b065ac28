@@ -1,0 +1,32 @@
+tests/unit/test_release_body.py
+  s_7b740b0a09bab8::t_d6ea1fe7448bf0 1-59,61-74,76-90
+  s_7b740b0a09bab8::t_6c19f0f13754a0 60,75
+.github/workflows/release-publish.yml
+  s_7b740b0a09bab8::t_d6ea1fe7448bf0 6-8,80,87-99
+  s_7b740b0a09bab8::t_f68a5c92dd097d 100
+changelog/+release-body-from-notes.fixed.md
+  s_7b740b0a09bab8::t_d6ea1fe7448bf0 1
+.gitignore
+  s_7b740b0a09bab8::t_4921fcfa0c8e25 37-40
+scripts/release_body.py
+  s_7b740b0a09bab8::t_e0d8483bf8f0e7 40-41
+  s_7b740b0a09bab8::t_6c19f0f13754a0 33
+  s_7b740b0a09bab8::t_d6ea1fe7448bf0 1-21,23-32,34-37,39,42-67
+  s_7b740b0a09bab8::t_5e0084ed8e81f4 22,38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "404ac5e5608fd96890545a2f7c50feb5b065ac28",
+  "prompts": {},
+  "sessions": {
+    "s_7b740b0a09bab8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f3cf-b8e2-7472-8987-ae8cafa06948",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
