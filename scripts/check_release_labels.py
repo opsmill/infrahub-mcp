@@ -30,12 +30,14 @@ def main() -> int:
     """Validate that a normal pull request has exactly one release label."""
     args = build_parser().parse_args()
 
-    release_version = args.head_ref.removeprefix("release/")
+    # Author, head repository and branch identify a generated release PR; the
+    # title is matched by prefix only, so a maintainer editing it (re-running
+    # this check on `edited`) does not drop the exemption.
     if (
         args.author_login == RELEASE_PR_AUTHOR
         and args.head_repository == args.repository
         and args.head_ref.startswith("release/v")
-        and args.title == f"{RELEASE_PR_PREFIX} {release_version}"
+        and args.title.startswith(RELEASE_PR_PREFIX)
     ):
         sys.stdout.write("Skipping label check for generated release pull request.\n")
         return 0

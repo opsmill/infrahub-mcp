@@ -11,6 +11,7 @@ ROOT = Path(__file__).parents[1]
 CONFIG_PATH = ROOT / ".github" / "version-drafter.yml"
 LABELS_PATH = ROOT / ".github" / "labels.yml"
 CHECKER_PATH = ROOT / "scripts" / "check_release_labels.py"
+WORKFLOWS_PATH = ROOT / ".github" / "workflows"
 
 CANONICAL_CONFIG = """---
 # Only explicit release-intent labels drive semantic version bumps.
@@ -90,3 +91,30 @@ def test_release_label_contract() -> None:
     )
     assert release_pr.returncode == 0, release_pr.stderr
     assert "generated release pull request" in release_pr.stdout
+
+    edited_release_pr = run_checker(
+        [],
+        title="chore(release): v1.2.3 [hold]",
+        head_ref="release/v1.2.3",
+        author_login="opsmill-bot",
+        head_repository="opsmill/example",
+    )
+    assert edited_release_pr.returncode == 0, edited_release_pr.stderr
+
+    bot_dependency_pr = run_checker(
+        [],
+        title="update Infrahub to version 1.11.4 against stable",
+        head_ref="stable-1.11.4",
+        author_login="opsmill-bot",
+        head_repository="opsmill/example",
+    )
+    assert bot_dependency_pr.returncode != 0
+    assert "exactly one" in bot_dependency_pr.stderr
+
+
+def test_bot_pull_requests_carry_a_bump_label() -> None:
+    """Every workflow that opens a non-release PR must label it, or the gate blocks it."""
+    for workflow in ("update-infrahub.yml", "update-infrahub-sdk.yml", "version-sync.yml"):
+        content = (WORKFLOWS_PATH / workflow).read_text()
+        assert "gh pr create" in content
+        assert '--label "changes/patch"' in content, workflow
