@@ -7,11 +7,14 @@ import subprocess  # noqa: S404
 import sys
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).parents[1]
 CONFIG_PATH = ROOT / ".github" / "version-drafter.yml"
 LABELS_PATH = ROOT / ".github" / "labels.yml"
 CHECKER_PATH = ROOT / "scripts" / "check_release_labels.py"
 WORKFLOWS_PATH = ROOT / ".github" / "workflows"
+DEPENDABOT_PATH = ROOT / ".github" / "dependabot.yml"
 
 CANONICAL_CONFIG = """---
 # Only explicit release-intent labels drive semantic version bumps.
@@ -110,6 +113,53 @@ def test_release_label_contract() -> None:
     )
     assert bot_dependency_pr.returncode != 0
     assert "exactly one" in bot_dependency_pr.stderr
+
+    for head_ref in ("release/v1.2.3rc1", "release/v1.2.3.post1"):
+        accepted_branch = run_checker(
+            [],
+            title="chore(release): v1.2.3",
+            head_ref=head_ref,
+            author_login="opsmill-bot",
+            head_repository="opsmill/example",
+        )
+        assert accepted_branch.returncode == 0, head_ref
+
+    for head_ref in ("release/vnext", "release/v1.2", "release/v1.2.3-hotfix", "release/v1.2.3/extra"):
+        rejected_branch = run_checker(
+            [],
+            title="chore(release): v1.2.3",
+            head_ref=head_ref,
+            author_login="opsmill-bot",
+            head_repository="opsmill/example",
+        )
+        assert rejected_branch.returncode != 0, head_ref
+
+    mismatched_title = run_checker(
+        [],
+        title="fix: chore(release): v1.2.3",
+        head_ref="release/v1.2.3",
+        author_login="opsmill-bot",
+        head_repository="opsmill/example",
+    )
+    assert mismatched_title.returncode != 0
+
+
+def test_gate_never_runs_pull_request_code() -> None:
+    """The gate runs from the base branch and must not check out the PR head."""
+    workflow = yaml.safe_load((WORKFLOWS_PATH / "release-label-check.yml").read_text())
+    # YAML 1.1 reads the bare `on` key as the boolean True.
+    assert list(workflow[True]) == ["pull_request_target"]
+
+    job = workflow["jobs"]["validate"]
+    assert job["permissions"] == {"contents": "read"}
+    checkout = next(step for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@"))
+    assert checkout["with"] == {"persist-credentials": False}
+
+
+def test_dependabot_pull_requests_carry_a_bump_label() -> None:
+    config = yaml.safe_load(DEPENDABOT_PATH.read_text())
+    for update in config["updates"]:
+        assert "changes/patch" in update["labels"], update["package-ecosystem"]
 
 
 def test_bot_pull_requests_carry_a_bump_label() -> None:

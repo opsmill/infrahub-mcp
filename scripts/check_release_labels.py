@@ -6,12 +6,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from typing import cast
 
 BUMP_LABELS = frozenset({"changes/major", "changes/minor", "changes/patch"})
 RELEASE_PR_PREFIX = "chore(release):"
 RELEASE_PR_AUTHOR = "opsmill-bot"
+# The `release/v<version>` branch auto-bump.yml opens: a normalised three-part
+# PEP 440 version, optionally with a pre-, post- or dev-release segment.
+RELEASE_BRANCH = re.compile(r"release/v\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?(?:\.post\d+)?(?:\.dev\d+)?")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,7 +40,7 @@ def main() -> int:
     if (
         args.author_login == RELEASE_PR_AUTHOR
         and args.head_repository == args.repository
-        and args.head_ref.startswith("release/v")
+        and RELEASE_BRANCH.fullmatch(args.head_ref)
         and args.title.startswith(RELEASE_PR_PREFIX)
     ):
         sys.stdout.write("Skipping label check for generated release pull request.\n")

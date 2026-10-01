@@ -2,8 +2,14 @@
 # yamllint disable rule:truthy
 name: Release bump label
 
+# `pull_request_target` runs this workflow and the checker as they are on the
+# base branch, so a pull request cannot weaken the gate that judges it. That is
+# safe only because no pull-request code is checked out or run: the checker
+# reads the event payload alone. Keep it that way — never add a checkout of the
+# head ref here. A consequence: the check does not run on the pull request
+# that introduces or changes it.
 on:
-  pull_request:
+  pull_request_target:
     branches:
       - stable
     types: [opened, synchronize, reopened, edited, labeled, unlabeled]
@@ -18,6 +24,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Validate release bump label
         env:
           PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
