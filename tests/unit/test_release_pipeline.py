@@ -2,7 +2,28 @@
 
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def workflow_events(workflow_text: str) -> set[str]:
+    """Return the event names a GitHub Actions workflow triggers on.
+
+    Accepts every trigger form GitHub supports: a single string (``on: push``),
+    a list (``on: [push, pull_request]``) or a mapping of events to filters.
+    PyYAML follows YAML 1.1 and loads a bare ``on`` key as boolean ``True``, so
+    both spellings are looked up.
+    """
+    workflow = yaml.safe_load(workflow_text)
+    triggers = workflow.get("on", workflow.get(True))
+    if isinstance(triggers, str):
+        return {triggers}
+    if isinstance(triggers, list):
+        return {str(event) for event in triggers}
+    if isinstance(triggers, dict):
+        return {str(event) for event in triggers}
+    return set()
 
 
 def test_release_pipeline_uses_pr_ci_and_curated_notes() -> None:
@@ -10,10 +31,11 @@ def test_release_pipeline_uses_pr_ci_and_curated_notes() -> None:
     ci_workflow = (ROOT / ".github/workflows/ci.yml").read_text()
     publish_workflow = (ROOT / ".github/workflows/release-publish.yml").read_text()
     renderer = ROOT / "scripts/release_body.py"
-    trigger_block = ci_workflow.split("concurrency:", maxsplit=1)[0]
 
     problems: list[str] = []
-    if "\n  push:" in trigger_block:
+    # ``merge_group`` is deliberately allowed: a merge queue runs it before the
+    # merge lands, so it gates the change rather than rerunning CI afterwards.
+    if "push" in workflow_events(ci_workflow):
         problems.append("general CI still runs on post-merge pushes")
     if not renderer.is_file():
         problems.append("the curated release-notes renderer is missing")
