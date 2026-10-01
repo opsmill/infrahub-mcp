@@ -114,7 +114,23 @@ jobs:
           VERSION: ${{ steps.decide.outputs.version }}
         run: |
           set -euo pipefail
+
+          # Without --latest the API marks every new release as latest, so a
+          # patch on an older line (1.1.8 after 1.2.0) would take the badge,
+          # and the `latest` image tag that follows it. Only the highest full
+          # release is marked latest.
+          RELEASED=$(gh release list --exclude-drafts --exclude-pre-releases \
+            --limit 1000 --json tagName --jq '.[].tagName')
+          HIGHEST=$(printf '%s\n%s\n' "${RELEASED}" "v${VERSION}" | sed '/^$/d; s/^v//' | sort -V | tail -n 1)
+          if [ "${HIGHEST}" = "${VERSION}" ]; then
+            IS_LATEST=true
+          else
+            IS_LATEST=false
+          fi
+          echo "Highest full release: ${HIGHEST}; v${VERSION} latest=${IS_LATEST}"
+
           gh release create "v${VERSION}" \
             --target "${GITHUB_SHA}" \
             --title "v${VERSION}" \
+            --latest="${IS_LATEST}" \
             --notes-file /tmp/release-body.md
