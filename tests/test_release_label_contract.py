@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess  # noqa: S404
 import sys
 from pathlib import Path
@@ -168,3 +169,22 @@ def test_bot_pull_requests_carry_a_bump_label() -> None:
         content = (WORKFLOWS_PATH / workflow).read_text()
         assert "gh pr create" in content
         assert '--label "changes/patch"' in content, workflow
+
+
+def test_exemption_matches_the_release_pr_generator() -> None:
+    """The exemption must accept exactly what auto-bump.yml opens, or every release PR is blocked."""
+    generator = (WORKFLOWS_PATH / "auto-bump.yml").read_text()
+    branch = re.search(r'export BRANCH="([^"$]*)\$\{VERSION\}"', generator)
+    title = re.search(r'--title "([^"$]*)\$\{VERSION\}"', generator)
+    assert branch, "auto-bump.yml no longer sets BRANCH from VERSION"
+    assert title, "auto-bump.yml no longer sets the release PR title from VERSION"
+
+    for version in ("1.2.3", "1.2.3rc1", "1.2.3.post1"):
+        generated = run_checker(
+            [],
+            title=f"{title.group(1)}{version}",
+            head_ref=f"{branch.group(1)}{version}",
+            author_login="opsmill-bot",
+            head_repository="opsmill/example",
+        )
+        assert generated.returncode == 0, (branch.group(1), version, generated.stderr)

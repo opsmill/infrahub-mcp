@@ -16,16 +16,27 @@ on:
 
 permissions: {}
 
+# Applying several labels at once fires one `labeled` event per label; without
+# this, an early run that saw only some of them can finish last and leave a
+# stale red check.
+concurrency:
+  group: label-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     name: Require one release bump label
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
       - name: Validate release bump label
         env:
           PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
