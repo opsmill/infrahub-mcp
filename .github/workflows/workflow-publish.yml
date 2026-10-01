@@ -119,12 +119,15 @@ jobs:
               CHANNEL=preview
             else
               CHANNEL=stable
-              # v1.2.0 -> v1.2; anything that is not a plain X.Y.Z gets none.
+              # v1.2.0 -> v1.2, 1.2.0 -> 1.2 (prefix kept as given); anything
+              # that is not a plain X.Y.Z gets none.
               MAJOR_MINOR=$(printf '%s' "${VERSION}" | sed -nE 's/^(v?[0-9]+\.[0-9]+)\.[0-9]+$/\1/p')
             fi
 
             LATEST_TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null || true)
-            if [ -n "${LATEST_TAG}" ] && [ "${LATEST_TAG}" = "${VERSION}" ]; then
+            # Compare without a leading `v` so a manual `1.2.0` still matches
+            # the `v1.2.0` release; the image tags keep `VERSION` as given.
+            if [ -n "${LATEST_TAG}" ] && [ "${LATEST_TAG#v}" = "${VERSION#v}" ]; then
               IS_LATEST=true
             fi
             echo "GitHub latest release: ${LATEST_TAG:-<none>}; publishing ${VERSION}; latest=${IS_LATEST}"
