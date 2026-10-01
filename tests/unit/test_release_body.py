@@ -112,3 +112,47 @@ def test_every_published_page_renders() -> None:
         body = release_body.render(page.read_text(), "0.0.0")
         assert ":::" not in body, page.name
         assert "](../" not in body, page.name
+
+
+def test_notes_path_maps_version_to_page_name() -> None:
+    assert release_body.notes_path("1.2.0") == release_body.NOTES_DIR / "release-1_2_0.mdx"
+
+
+def test_publish_workflow_uses_same_page_name() -> None:
+    workflow = SCRIPT.parents[1] / ".github" / "workflows" / "release-publish.yml"
+    assert 'release-notes/release-${VERSION//./_}.mdx"' in workflow.read_text()
+
+
+def test_main_missing_page_returns_1(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(release_body, "NOTES_DIR", tmp_path)
+    monkeypatch.setattr("sys.argv", ["release_body.py", "1.2.0"])
+    assert release_body.main() == 1
+    out, err = capsys.readouterr()
+    assert not out
+    assert f"no release-notes page at {tmp_path / 'release-1_2_0.mdx'}" in err
+
+
+def test_main_writes_rendered_body(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "release-9_9_9.mdx").write_text(PAGE)
+    monkeypatch.setattr(release_body, "NOTES_DIR", tmp_path)
+    monkeypatch.setattr("sys.argv", ["release_body.py", "9.9.9", "--previous-tag", "v9.9.8"])
+    assert release_body.main() == 0
+    out, err = capsys.readouterr()
+    assert out == release_body.render(PAGE, "9.9.9", "v9.9.8")
+    assert not err
+
+
+def test_main_malformed_page_returns_1(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "release-9_9_9.mdx").write_text("## h\n\n:::note\n\ndangling\n")
+    monkeypatch.setattr(release_body, "NOTES_DIR", tmp_path)
+    monkeypatch.setattr("sys.argv", ["release_body.py", "9.9.9"])
+    assert release_body.main() == 1
+    out, err = capsys.readouterr()
+    assert not out
+    assert "unterminated or malformed admonition" in err
