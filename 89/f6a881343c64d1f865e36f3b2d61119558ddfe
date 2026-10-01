@@ -1,0 +1,28 @@
+.github/workflows/workflow-publish.yml
+  s_30763014897b3b::t_6c4d537619d4d1 23-27
+  s_30763014897b3b::t_6edbd8835535e2 147-148
+  s_30763014897b3b::t_7d1523525dd4de 45-49
+  s_30763014897b3b::t_412c39f4df3af9 100-138,149-150
+.github/workflows/release.yml
+  s_30763014897b3b::t_bad283225f251a 58
+docs/docs/guides/docker.mdx
+  s_30763014897b3b::t_f681c90195f1df 18-29
+changelog/+docker-image-tags.changed.md
+  s_30763014897b3b::t_6fc0f255e20909 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "89f6a881343c64d1f865e36f3b2d61119558ddfe",
+  "prompts": {},
+  "sessions": {
+    "s_30763014897b3b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b9d971d-2df1-45fc-a56a-54cdc39d7778",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
