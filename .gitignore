@@ -1,5 +1,4 @@
 **/*.local.*
-.bug-analysis-*.md
 local/*
 .vscode/settings.json
 node_modules/*
