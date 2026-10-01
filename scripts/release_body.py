@@ -5,7 +5,8 @@ Reads ``docs/docs/release-notes/release-X_Y_Z.mdx`` and prints GitHub-flavored
 Markdown: everything from the first ``## `` heading on (the frontmatter and the
 metadata table are site-only), Docusaurus admonitions turned into blockquotes,
 and relative links into the docs site reduced to their text, since they do not
-resolve on GitHub. With ``--previous-tag``, a Full Changelog compare link is
+resolve on GitHub (images are left as written rather than mangled into a stray
+``!``). With ``--previous-tag``, a Full Changelog compare link is
 appended.
 
 Usage: release_body.py VERSION [--previous-tag vX.Y.Z]
@@ -23,7 +24,7 @@ NOTES_DIR = Path(__file__).resolve().parent.parent / "docs" / "docs" / "release-
 # ``:::``, so a marker never pairs with a closer past another admonition line.
 ADMONITION = re.compile(r"^:::(\w+)[ \t]*([^\n]*)\n((?:(?!:::)[^\n]*\n)*?):::[ \t]*$", re.MULTILINE)
 LEFTOVER_MARKER = re.compile(r"^:::", re.MULTILINE)
-RELATIVE_LINK = re.compile(r"\[([^\]]+)\]\((?!https?:|#|mailto:)[^)]+\)")
+RELATIVE_LINK = re.compile(r"(?<!!)\[([^\]]+)\]\((?!https?:|#|mailto:)[^)]+\)")
 
 
 def notes_path(version: str) -> Path:

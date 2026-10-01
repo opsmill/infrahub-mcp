@@ -71,6 +71,11 @@ def test_relative_links_reduced_to_text_others_kept() -> None:
     assert "[towncrier](https://towncrier.readthedocs.io/)" in body
 
 
+def test_relative_images_left_intact() -> None:
+    body = release_body.render("## h\n\n![arch](../assets/arch.png) and [cfg](../cfg.mdx)\n", "9.9.9")
+    assert "![arch](../assets/arch.png) and cfg\n" in body
+
+
 def test_compare_link_only_with_previous_tag() -> None:
     assert "Full Changelog" not in release_body.render(PAGE, "9.9.9")
     body = release_body.render(PAGE, "9.9.9", "v9.9.8")
