@@ -41,7 +41,11 @@ def notes_path(version: str) -> Path:
 
 def _blockquote(match: re.Match[str]) -> str:
     kind, title, inner = match.groups()
-    lines = [f"> **{title.strip() or kind.capitalize()}**"]
+    # Docusaurus 3 writes ``:::note[Title]``; the legacy form is ``:::note Title``.
+    title = title.strip()
+    if title.startswith("[") and title.endswith("]"):
+        title = title[1:-1].strip()
+    lines = [f"> **{title or kind.capitalize()}**"]
     inner = inner.strip("\n")
     if inner:
         lines.append(">")

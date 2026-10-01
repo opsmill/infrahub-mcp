@@ -95,6 +95,12 @@ def test_bodyless_admonitions_become_blockquotes() -> None:
     assert "> **Title**\n\n> **Note**\n\ntext\n" in body
 
 
+def test_bracketed_admonition_title_drops_delimiters() -> None:
+    body = release_body.render("## h\n\n:::warning[Breaking change]\n\nBody.\n\n:::\n\n:::tip[]\n:::\n", "9.9.9")
+    assert "> **Breaking change**\n>\n> Body.\n\n> **Tip**" in body
+    assert "[" not in body
+
+
 def test_unterminated_admonition_is_rejected() -> None:
     with pytest.raises(ValueError, match="unterminated or malformed admonition"):
         release_body.render("## h\n\n:::note\n\ndangling note\n", "9.9.9")
