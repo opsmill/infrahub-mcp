@@ -1,0 +1,21 @@
+.github/file-filters.yml
+  s_4a3a2f7f709ced::t_a8ad254cb39858 34-43
+.github/workflows/ci.yml
+  s_4a3a2f7f709ced::t_a8ad254cb39858 30,229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6195af5de0be55061b4649e414879819dc98e289",
+  "prompts": {},
+  "sessions": {
+    "s_4a3a2f7f709ced": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "05a60350-09a7-4e06-84ca-b162c7168f82",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
