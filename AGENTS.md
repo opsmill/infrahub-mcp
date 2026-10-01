@@ -63,8 +63,8 @@ Every normal pull request must also carry exactly one release-intent label:
 `changes/major`, `changes/minor`, or `changes/patch`. These labels alone
 determine the automatic version bump. Generated `chore(release):` pull requests
 are exempt because they apply, rather than introduce, that release intent.
-Workflows that open pull requests (`gh pr create`, Dependabot) must label them
-`changes/patch`. The gate runs under `pull_request_target` from the base
+Workflows that open any other pull request (`gh pr create`, Dependabot) must
+label it `changes/patch`. The gate runs under `pull_request_target` from the base
 branch, so it never runs on the pull request that changes it.
 
 Releases are not cut by hand, and merging to `stable` does not prepare one: dispatch the **Auto bump version** workflow from Actions with `stable` selected, which opens a `chore(release): vX.Y.Z` pull request carrying the version bump and the assembled changelog. Merging that pull request tags the release and publishes it with that changelog as the body. Never build the changelog or bump versions directly on `stable`.

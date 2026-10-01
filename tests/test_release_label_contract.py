@@ -7,8 +7,6 @@ import subprocess  # noqa: S404
 import sys
 from pathlib import Path
 
-import yaml
-
 ROOT = Path(__file__).parents[1]
 CONFIG_PATH = ROOT / ".github" / "version-drafter.yml"
 LABELS_PATH = ROOT / ".github" / "labels.yml"
@@ -146,20 +144,19 @@ def test_release_label_contract() -> None:
 
 def test_gate_never_runs_pull_request_code() -> None:
     """The gate runs from the base branch and must not check out the PR head."""
-    workflow = yaml.safe_load((WORKFLOWS_PATH / "release-label-check.yml").read_text())
-    # YAML 1.1 reads the bare `on` key as the boolean True.
-    assert list(workflow[True]) == ["pull_request_target"]
-
-    job = workflow["jobs"]["validate"]
-    assert job["permissions"] == {"contents": "read"}
-    checkout = next(step for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@"))
-    assert checkout["with"] == {"persist-credentials": False}
+    lines = [line.strip() for line in (WORKFLOWS_PATH / "release-label-check.yml").read_text().splitlines()]
+    assert "pull_request_target:" in lines
+    assert "pull_request:" not in lines
+    assert "persist-credentials: false" in lines
+    assert not [line for line in lines if line.startswith("ref:")]
+    assert [line for line in lines if line.startswith(("contents:", "pull-requests:", "actions:", "id-token:"))] == [
+        "contents: read"
+    ]
 
 
 def test_dependabot_pull_requests_carry_a_bump_label() -> None:
-    config = yaml.safe_load(DEPENDABOT_PATH.read_text())
-    for update in config["updates"]:
-        assert "changes/patch" in update["labels"], update["package-ecosystem"]
+    config = DEPENDABOT_PATH.read_text()
+    assert config.count('- "changes/patch"') == config.count("package-ecosystem:")
 
 
 def test_bot_pull_requests_carry_a_bump_label() -> None:
