@@ -149,6 +149,9 @@ def test_gate_never_runs_pull_request_code() -> None:
     assert "pull_request_target:" in lines
     assert "pull_request:" not in lines
     assert "persist-credentials: false" in lines
+    # Superseded runs from a burst of `labeled` events must not leave a stale red check.
+    assert "group: label-gate-${{ github.event.pull_request.number }}" in lines
+    assert "cancel-in-progress: true" in lines
     assert not [line for line in lines if line.startswith("ref:")]
     assert [line for line in lines if line.startswith(("contents:", "pull-requests:", "actions:", "id-token:"))] == [
         "contents: read"
