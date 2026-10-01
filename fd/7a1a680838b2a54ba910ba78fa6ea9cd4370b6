@@ -1,0 +1,23 @@
+.github/workflows/release-publish.yml
+  s_4a3a2f7f709ced::t_c84b6bde2c1b6b 92-100
+tests/unit/test_release_body.py
+  s_4a3a2f7f709ced::t_0b5b3ecea55baf 87-102
+scripts/release_body.py
+  s_4a3a2f7f709ced::t_64ae1c95f44b3f 22-25,35-39,50-54,73-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "fd7a1a680838b2a54ba910ba78fa6ea9cd4370b6",
+  "prompts": {},
+  "sessions": {
+    "s_4a3a2f7f709ced": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "05a60350-09a7-4e06-84ca-b162c7168f82",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
