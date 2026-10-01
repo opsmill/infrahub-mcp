@@ -155,8 +155,11 @@ def test_gate_never_runs_pull_request_code() -> None:
 
 
 def test_dependabot_pull_requests_carry_a_bump_label() -> None:
-    config = DEPENDABOT_PATH.read_text()
-    assert config.count('- "changes/patch"') == config.count("package-ecosystem:")
+    updates = DEPENDABOT_PATH.read_text().split("\n  - package-ecosystem:")[1:]
+    assert updates
+    for update in updates:
+        labels = [line.strip() for line in update.splitlines()]
+        assert '- "changes/patch"' in labels, update.splitlines()[0]
 
 
 def test_bot_pull_requests_carry_a_bump_label() -> None:
