@@ -89,14 +89,16 @@ jobs:
             # The new tag does not exist yet, so the nearest v* tag is the
             # previous release.
             PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match 'v*' HEAD 2>/dev/null || true)
-            python3 scripts/release_body.py "${VERSION}" \
-              ${PREVIOUS_TAG:+--previous-tag "${PREVIOUS_TAG}"} > /tmp/release-body.md
-            echo "Release body (from ${NOTES_PAGE}):"
-            cat /tmp/release-body.md
-            exit 0
+            if python3 scripts/release_body.py "${VERSION}" \
+              ${PREVIOUS_TAG:+--previous-tag "${PREVIOUS_TAG}"} > /tmp/release-body.md; then
+              echo "Release body (from ${NOTES_PAGE}):"
+              cat /tmp/release-body.md
+              exit 0
+            fi
+            echo "::warning::Could not render ${NOTES_PAGE} (see above); publishing the changelog section instead."
+          else
+            echo "::warning::No ${NOTES_PAGE}; publishing the changelog section instead."
           fi
-
-          echo "::warning::No ${NOTES_PAGE}; publishing the changelog section instead."
 
           # Everything from the first release heading after the towncrier
           # marker up to (but excluding) the next one — i.e. the section this

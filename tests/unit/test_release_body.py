@@ -84,6 +84,22 @@ def test_page_without_heading_is_rejected() -> None:
         release_body.render("---\ntitle: x\n---\n\nno heading\n", "9.9.9")
 
 
+def test_bodyless_admonitions_become_blockquotes() -> None:
+    body = release_body.render("## h\n\n:::tip Title\n:::\n\n:::note\n:::\n\ntext\n", "9.9.9")
+    assert ":::" not in body
+    assert "> **Title**\n\n> **Note**\n\ntext\n" in body
+
+
+def test_unterminated_admonition_is_rejected() -> None:
+    with pytest.raises(ValueError, match="unterminated or malformed admonition"):
+        release_body.render("## h\n\n:::note\n\ndangling note\n", "9.9.9")
+
+
+def test_marker_does_not_pair_past_another_admonition() -> None:
+    with pytest.raises(ValueError, match="unterminated or malformed admonition"):
+        release_body.render("## h\n\n:::note\n\ndangling\n\n:::tip\n\nok\n\n:::\n", "9.9.9")
+
+
 def test_every_published_page_renders() -> None:
     pages = sorted(release_body.NOTES_DIR.glob("release-*.mdx"))
     assert pages

@@ -19,7 +19,10 @@ from pathlib import Path
 REPO = "opsmill/infrahub-mcp"
 NOTES_DIR = Path(__file__).resolve().parent.parent / "docs" / "docs" / "release-notes"
 
-ADMONITION = re.compile(r"^:::(\w+)[ \t]*([^\n]*)\n(.*?)\n:::[ \t]*$", re.DOTALL | re.MULTILINE)
+# The body is any run of lines (possibly none) that do not themselves start with
+# ``:::``, so a marker never pairs with a closer past another admonition line.
+ADMONITION = re.compile(r"^:::(\w+)[ \t]*([^\n]*)\n((?:(?!:::)[^\n]*\n)*?):::[ \t]*$", re.MULTILINE)
+LEFTOVER_MARKER = re.compile(r"^:::", re.MULTILINE)
 RELATIVE_LINK = re.compile(r"\[([^\]]+)\]\((?!https?:|#|mailto:)[^)]+\)")
 
 
@@ -29,8 +32,11 @@ def notes_path(version: str) -> Path:
 
 def _blockquote(match: re.Match[str]) -> str:
     kind, title, inner = match.groups()
-    lines = [f"> **{title.strip() or kind.capitalize()}**", ">"]
-    lines += [f"> {line}" if line.strip() else ">" for line in inner.strip("\n").split("\n")]
+    lines = [f"> **{title.strip() or kind.capitalize()}**"]
+    inner = inner.strip("\n")
+    if inner:
+        lines.append(">")
+        lines += [f"> {line}" if line.strip() else ">" for line in inner.split("\n")]
     return "\n".join(lines)
 
 
@@ -41,6 +47,11 @@ def render(mdx: str, version: str, previous_tag: str | None = None) -> str:
         raise ValueError(message)
     body = mdx[start.start() :]
     body = ADMONITION.sub(_blockquote, body)
+    leftover = LEFTOVER_MARKER.search(body)
+    if leftover is not None:
+        line = body[leftover.start() :].split("\n", 1)[0]
+        message = f"unterminated or malformed admonition: {line!r}"
+        raise ValueError(message)
     body = RELATIVE_LINK.sub(r"\1", body)
     body = body.rstrip() + "\n"
     if previous_tag:
@@ -59,7 +70,12 @@ def main() -> int:
     if not path.is_file():
         print(f"no release-notes page at {path}", file=sys.stderr)
         return 1
-    sys.stdout.write(render(path.read_text(), args.version, args.previous_tag))
+    try:
+        body = render(path.read_text(), args.version, args.previous_tag)
+    except ValueError as exc:
+        print(f"{path}: {exc}", file=sys.stderr)
+        return 1
+    sys.stdout.write(body)
     return 0
 
 
