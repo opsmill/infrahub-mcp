@@ -100,6 +100,7 @@ jobs:
             --head "${BRANCH}" \
             --title "chore: sync version to ${VERSION}" \
             --label "ci/skip-changelog" \
+            --label "changes/patch" \
             --body "$(cat <<EOF
           Keep the generated version metadata aligned with \`pyproject.toml\`.
 
