@@ -105,6 +105,24 @@ def test_marker_does_not_pair_past_another_admonition() -> None:
         release_body.render("## h\n\n:::note\n\ndangling\n\n:::tip\n\nok\n\n:::\n", "9.9.9")
 
 
+def test_fenced_code_is_left_verbatim() -> None:
+    code = "```markdown\n:::note\nnot an admonition\n\n[cfg](../cfg.mdx)\n```\n"
+    tilde = "~~~~\n:::\n~~~\nstill code\n~~~~\n"
+    body = release_body.render(f"## h\n\n{code}\n{tilde}\nafter [cfg](../cfg.mdx)\n", "9.9.9")
+    assert f"## h\n\n{code}\n{tilde}\nafter cfg\n" == body
+
+
+def test_unterminated_fence_runs_to_end() -> None:
+    body = release_body.render("## h\n\n```\n:::note\n", "9.9.9")
+    assert body == "## h\n\n```\n:::note\n"
+
+
+def test_admonition_containing_fence_converts() -> None:
+    page = "## h\n\n:::tip Example\n\nRun:\n\n```text\n:::\n\nvalue\n```\n\n:::\n"
+    body = release_body.render(page, "9.9.9")
+    assert body == "## h\n\n> **Example**\n>\n> Run:\n>\n> ```text\n> :::\n>\n> value\n> ```\n"
+
+
 def test_every_published_page_renders() -> None:
     pages = sorted(release_body.NOTES_DIR.glob("release-*.mdx"))
     assert pages
