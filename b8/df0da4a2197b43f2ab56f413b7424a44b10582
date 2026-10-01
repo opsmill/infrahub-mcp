@@ -1,0 +1,22 @@
+scripts/release_body.py
+  s_f1ce2e63f142ed::t_42673559959239 9-11,29-35,52-76,79-82,88,96
+  s_f1ce2e63f142ed::t_d4de98aff0d1b9 77-78
+tests/unit/test_release_body.py
+  s_f1ce2e63f142ed::t_b71356c2b68dd5 108-125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b8df0da4a2197b43f2ab56f413b7424a44b10582",
+  "prompts": {},
+  "sessions": {
+    "s_f1ce2e63f142ed": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73893118-105d-4e53-a385-da84b549a17b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
