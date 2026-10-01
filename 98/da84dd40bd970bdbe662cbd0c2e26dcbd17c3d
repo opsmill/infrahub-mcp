@@ -1,0 +1,22 @@
+.github/workflows/release-label-check.yml
+  s_7e8bc0f59e77ac::t_757db19f22d0e5 19-25,29-30,37-39
+tests/test_release_label_contract.py
+  s_7e8bc0f59e77ac::t_fce63a73c6b6c7 6
+  s_7e8bc0f59e77ac::t_7c449a21b1fcea 172-190
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "98da84dd40bd970bdbe662cbd0c2e26dcbd17c3d",
+  "prompts": {},
+  "sessions": {
+    "s_7e8bc0f59e77ac": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e8f58ef6-d8cb-4c10-9bd9-5e5f499aa838",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
