@@ -1,0 +1,23 @@
+changelog/+update-infrahub-bounded-pin.housekeeping.md
+  s_36e92389ef1ae2::t_ddc53dd1e4aa87 1
+.github/workflows/update-infrahub.yml
+  s_36e92389ef1ae2::t_a00d118138027e 71-74
+  s_36e92389ef1ae2::t_3f7a0c90a500e8 64-67,69-70,75-77
+  s_36e92389ef1ae2::t_6c9dd474929be0 68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ccdff0026e230a0cff3c1ac1512c2bb033227216",
+  "prompts": {},
+  "sessions": {
+    "s_36e92389ef1ae2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec212761-554e-4a62-98d3-5b4d144a03e5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
