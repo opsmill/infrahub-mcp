@@ -26,17 +26,17 @@ def workflow_events(workflow_text: str) -> set[str]:
     return set()
 
 
-def test_release_pipeline_uses_pr_ci_and_curated_notes() -> None:
-    """Release merges should publish curated notes without rerunning general CI."""
+def test_release_pipeline_uses_branch_ci_and_curated_notes() -> None:
+    """General CI keeps running on base-branch pushes and releases publish curated notes."""
     ci_workflow = (ROOT / ".github/workflows/ci.yml").read_text()
     publish_workflow = (ROOT / ".github/workflows/release-publish.yml").read_text()
     renderer = ROOT / "scripts/release_body.py"
 
     problems: list[str] = []
-    # ``merge_group`` is deliberately allowed: a merge queue runs it before the
-    # merge lands, so it gates the change rather than rerunning CI afterwards.
-    if "push" in workflow_events(ci_workflow):
-        problems.append("general CI still runs on post-merge pushes")
+    # Pushes to ``stable`` refresh the dependency caches that pull requests can
+    # only read from their base branch.
+    if not {"pull_request", "push"} <= workflow_events(ci_workflow):
+        problems.append("general CI must run on pull requests and base-branch pushes")
     if not renderer.is_file():
         problems.append("the curated release-notes renderer is missing")
     if "scripts/release_body.py" not in publish_workflow:
