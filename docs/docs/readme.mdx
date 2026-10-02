@@ -8,11 +8,11 @@ All writes are branch-isolated and require human approval before merging — age
 
 ## What you can do with it
 
-- **Query your infrastructure data from natural language** — ask an AI assistant to find devices, interfaces, IP addresses, or any node kind defined in your Infrahub schema, with attribute filtering and partial-match search
-- **Explore your schema without leaving the conversation** — the server exposes your full schema catalog, per-kind attribute and filter maps, and the GraphQL SDL as MCP resources that agents read automatically
-- **Make changes on isolated branches** — all writes happen on an auto-created session branch (`mcp/session-YYYYMMDD-<hex>`), so the default branch is never modified directly
-- **Submit changes for human review** — when edits are ready, call `propose_changes` to open a Proposed Change (the Infrahub equivalent of a pull request) for approval before merging
-- **Run arbitrary GraphQL queries** — for advanced use cases, execute any GraphQL query or mutation directly against the Infrahub API
+- **Query your infrastructure data from natural language** — ask an AI assistant to find devices, interfaces, IP addresses, or any node kind defined in your Infrahub schema, with attribute filtering and partial-match search.
+- **Explore your schema without leaving the conversation** — the server exposes your full schema catalog, per-kind attribute and filter maps, and the GraphQL SDL as MCP resources that agents read automatically.
+- **Make changes on isolated branches** — all writes happen on an auto-created session branch (`mcp/session-YYYYMMDD-<hex>`), so the default branch is never modified directly.
+- **Submit changes for human review** — when edits are ready, call `propose_changes` to open a Proposed Change (the Infrahub equivalent of a pull request) for approval before merging.
+- **Run arbitrary GraphQL queries** — for advanced use cases, execute any GraphQL query or mutation directly against the Infrahub API.
 
 ## Who this is for
 
@@ -22,18 +22,28 @@ All writes are branch-isolated and require human approval before merging — age
 
 ## What's included
 
-- **Tools (read)** — `get_nodes` retrieves objects by kind with filters, `search_nodes` finds nodes by partial name match, `query_graphql` executes arbitrary GraphQL queries
-- **Tools (write)** — `node_upsert` creates or updates nodes, `node_delete` removes nodes, `propose_changes` opens a Proposed Change for human review — all on an auto-created session branch
-- **Resources** — `infrahub://schema` lists all available kinds, `infrahub://schema/{kind}` returns full attribute/filter details, `infrahub://graphql-schema` exposes the GraphQL SDL, `infrahub://branches` lists all branches
-- **Prompts** — a built-in `infrahub_agent` system prompt that teaches agents the branch-per-session workflow and available tools
-- **Infrastructure** — Dockerfile for container deployment, Docker Compose sidecar configuration, Streamable HTTP transport support
+- **Tools (read)** — `get_nodes` retrieves objects by kind with filters, `search_nodes` finds nodes by partial name match, `query_graphql` executes arbitrary GraphQL queries.
+- **Tools (write)** — `node_upsert` creates or updates nodes, `node_delete` removes nodes, `mutate_graphql` executes GraphQL mutations, `propose_changes` opens a Proposed Change for human review — all on an auto-created session branch.
+- **Resources** — `infrahub://schema` lists all available kinds, `infrahub://schema/{kind}` returns full attribute/filter details, `infrahub://graphql-schema` exposes the GraphQL SDL, `infrahub://branches` lists all branches.
+- **Prompts** — a built-in `infrahub_agent` system prompt that teaches agents the branch-per-session workflow and available tools.
+- **Middleware** — 17-layer production middleware stack with rate limiting, retry with exponential backoff, response caching, scope-based auth, OpenTelemetry tracing, Prometheus metrics, and read-only mode — all opt-in via environment variables.
+- **Infrastructure** — Dockerfile for container deployment, Docker Compose sidecar configuration, Streamable HTTP transport support, `/health` and `/metrics` endpoints.
 
 See the [Methods reference](./references/methods.mdx) for full details on every tool, resource, and prompt.
 
-## Guides
+## Start here
 
-- [Install and run Infrahub MCP](./guides/installation.mdx) — prerequisites, setup, and client configuration for Cursor, VS Code, Claude Desktop, and Claude Code
-- [Run with Docker / deploy alongside Infrahub](./guides/docker.mdx) — standalone container or sidecar deployment
+- [Install the server](./getting-started/installation.mdx) — from clone to running in a few minutes.
+- [Set up authentication](./getting-started/authentication.mdx) — shared API token, per-client token pass-through, or OIDC.
+- [Your first agent run](./getting-started/first-agent-run.mdx) — connect Claude Desktop and ask an infrastructure question.
+- [Make a change through an agent](./getting-started/make-a-change.mdx) — walk the session-branch and `propose_changes` flow end-to-end.
+
+## Go deeper
+
+- **Deployment** — [Docker Compose](./guides/docker-compose.mdx) sidecar next to Infrahub.
+- **Use cases** — [Troubleshooting queries](./use-cases/troubleshooting-queries.mdx), [natural language to GraphQL](./use-cases/natural-language-graphql.mdx), [cross-system correlation](./use-cases/cross-system-correlation.mdx), [compliance analysis](./use-cases/compliance-analysis.mdx), [brownfield onboarding](./use-cases/brownfield-onboarding.mdx), and [safe changes via branch isolation](./use-cases/safe-changes-branch-isolation.mdx).
+- **Integrations** — [Claude Desktop](./integrations/claude-desktop.mdx), [Claude Code](./integrations/claude-code.mdx), [Cursor](./integrations/cursor.mdx), [VS Code](./integrations/vscode.mdx), [OpenAI Agents SDK](./integrations/openai-agents-sdk.mdx), [Claude Agent SDK](./integrations/claude-agent-sdk.mdx).
+- **Reference** — [Authentication architecture](./references/authentication.mdx), [configuration](./references/configuration.mdx), [methods](./references/methods.mdx).
 
 ## About Infrahub
 

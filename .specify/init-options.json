@@ -1,0 +1,10 @@
+{
+  "ai": "claude",
+  "branch_numbering": "timestamp",
+  "force": false,
+  "ignore_agent_tools": false,
+  "no_git": false,
+  "preset": null,
+  "script": "sh",
+  "speckit_version": "0.8.1"
+}

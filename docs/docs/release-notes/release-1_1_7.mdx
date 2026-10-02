@@ -1,0 +1,81 @@
+---
+title: Release 1.1.7
+description: Trace how two infrastructure objects are connected and find what a change could reach, with two read-only graph-traversal tools backed by Infrahub 1.10.
+---
+
+<table>
+  <tbody>
+    <tr>
+      <th>Release Number</th>
+      <td>1.1.7</td>
+    </tr>
+    <tr>
+      <th>Release Type</th>
+      <td>Feature</td>
+    </tr>
+    <tr>
+      <th>Release Date</th>
+      <td>July 3rd, 2026</td>
+    </tr>
+    <tr>
+      <th>Tag</th>
+      <td>[v1.1.7](https://github.com/opsmill/infrahub-mcp/releases/tag/v1.1.7)</td>
+    </tr>
+  </tbody>
+</table>
+
+## Release summary
+
+Trace how two objects in your infrastructure are connected, or find everything of a given kind that a change could reach — without inspecting the schema and hand-building a deep, nested GraphQL query. Two read-only tools, `find_paths` and `find_reachable`, expose the server-side graph traversal added in Infrahub 1.10. Reading a schema also becomes more controllable, with peer-schema expansion you can turn on or off.
+
+### Trace how objects connect and what a change can reach
+
+Instead of studying the schema and hand-building a deep, nested GraphQL query, an agent can now ask two direct questions of the graph. Both tools build on the server-side path traversal added in Infrahub 1.10.
+
+**What changed**
+
+* `find_paths` returns the shortest path(s) between a source and a destination node, as ordered hops — answering "how are these two connected?". A `count` of `0` means no path exists within the search depth.
+* `find_reachable` returns the nodes of the kinds you name that are reachable from a source node — answering "what could a change here affect?".
+* Both accept either a UUID or the kind-qualified HFID that `get_nodes` and `search_nodes` already return (for example, `InfraDevice__atl1-edge1`), and both can be bounded by depth, node kind, or relationship.
+* Both are read-only and return compact TOON output. Against an Infrahub server older than 1.10, they fail with a clear version message instead of an opaque error.
+
+### Expand related schemas only when you need them
+
+When reading a schema, related peer schemas are expanded one level deep so an agent can see how kinds connect. That expansion is now optional, so you can keep schema responses lean when the extra detail is not needed.
+
+**What changed**
+
+* Peer-schema expansion is controlled by the new `INFRAHUB_MCP_SCHEMA_EXPAND_PEERS` setting, enabled by default so existing behavior is preserved.
+* `get_schema` accepts an `expand` argument to override that default for a single call.
+
+## Minor changes
+
+### Testing
+
+* Added an opt-in integration test suite (`tests/integration/`, run with `pytest -m integration`) that exercises the server end to end against an ephemeral Infrahub provisioned by infrahub-testcontainers. The default `uv run pytest` remains Docker-free.
+
+### Security
+
+* Resolved Python and npm dependency security alerts.
+
+## Upgrade notes
+
+* The graph-traversal tools require Infrahub 1.10 or later and `infrahub-sdk >= 1.22`, which is now the minimum supported version. On Infrahub servers older than 1.10, `find_paths` and `find_reachable` return a clear version error; every other tool is unaffected.
+
+## Full changelog
+
+### Added
+
+* Graph-traversal tools `find_paths` and `find_reachable`, exposing the server-side path traversal added in Infrahub 1.10 ([#74](https://github.com/opsmill/infrahub-mcp/pull/74)).
+* `INFRAHUB_MCP_SCHEMA_EXPAND_PEERS` setting and a per-call `expand` argument on `get_schema` to control peer-schema expansion ([#74](https://github.com/opsmill/infrahub-mcp/pull/74)).
+* Opt-in integration test suite backed by infrahub-testcontainers ([#118](https://github.com/opsmill/infrahub-mcp/pull/118)).
+
+### Changed
+
+* Raised the Infrahub SDK minimum version to `>=1.22.0` ([#74](https://github.com/opsmill/infrahub-mcp/pull/74)).
+* Grouped dependency and GitHub Actions updates ([#136](https://github.com/opsmill/infrahub-mcp/pull/136), [#131](https://github.com/opsmill/infrahub-mcp/pull/131)).
+
+### Security
+
+* Resolved Python dependency security alerts ([#133](https://github.com/opsmill/infrahub-mcp/pull/133)).
+* Resolved npm dependency security alerts in the documentation site ([#134](https://github.com/opsmill/infrahub-mcp/pull/134)).

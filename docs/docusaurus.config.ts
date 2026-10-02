@@ -6,6 +6,10 @@ const config: Config = {
   title: 'Infrahub mcp`',
   tagline: 'a service that exports metrics and service discovery information from Infrahub to monitoring systems like Prometheus and OpenTelemetry',
   favicon: 'img/favicon.ico',
+  markdown: {
+    mermaid: true,
+  },
+  themes: ['@docusaurus/theme-mermaid'],
 
   // Set the production url of your site here
   url: 'https://your-docusaurus-site.example.com',

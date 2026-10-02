@@ -1,0 +1,26 @@
+schema_version: "1.0"
+
+extension:
+  id: "retrospect"
+  name: "Spec Retrospect"
+  version: "1.0.0"
+  description: "Run a session retrospective that surfaces context-management gaps and routes them to approved follow-up actions."
+  author: "OpsMill"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.1.0"
+
+  commands: []
+
+provides:
+  commands:
+    - name: "speckit.retrospect.run"
+      file: "commands/retrospect.md"
+      description: "Run a session retrospective that surfaces context-management gaps"
+
+tags:
+  - "retrospective"
+  - "context"
+  - "documentation"
+  - "workflow"

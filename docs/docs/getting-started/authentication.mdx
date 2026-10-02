@@ -1,0 +1,213 @@
+---
+title: Set up authentication
+---
+
+This guide walks through configuring each authentication mode. For a deeper explanation of how the auth architecture works — sequence diagrams, the two-layer model, audit logs, and branch-placeholder resolution — see [Authentication architecture](../references/authentication.mdx).
+
+## Choosing a mode
+
+| Mode | When to use | Transport | Identity per request |
+| --- | --- | --- | --- |
+| `none` (default) | Local development, single-user workstations, VPN-only deployments | stdio or HTTP | Shared `INFRAHUB_API_TOKEN` |
+| `token-passthrough` | Multi-tenant HTTP deployments where each user should act as themselves in Infrahub | HTTP only | Client sends own Infrahub API token |
+| `oidc` | Enterprise SSO (Google, Okta, Entra, Keycloak) with centralized identity and optional scope-based write gating | HTTP only | OIDC token validated per request |
+
+Username/password authentication is not supported — use OIDC when you need external identity.
+
+## No authentication (default)
+
+No configuration needed beyond Infrahub connection variables:
+
+```bash
+export INFRAHUB_ADDRESS=https://infrahub.example.com
+export INFRAHUB_API_TOKEN=your-token
+infrahub-mcp --transport streamable-http
+```
+
+All clients share the same Infrahub credentials. Use this for local development or behind a VPN.
+
+## Token passthrough
+
+Each client sends their own Infrahub API token. No shared server-side credentials required.
+
+```bash
+export INFRAHUB_ADDRESS=https://infrahub.example.com
+export INFRAHUB_MCP_AUTH_MODE=token-passthrough
+
+# No INFRAHUB_API_TOKEN needed — credentials come from the client
+infrahub-mcp --transport streamable-http
+```
+
+Clients include their token in the request header:
+
+```text
+Authorization: Bearer <infrahub-api-token>
+```
+
+To use a different header (for example, `X-Infrahub-Token`), set:
+
+```bash
+export INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER=X-Infrahub-Token
+```
+
+:::note
+Token passthrough requires Streamable HTTP transport. The server rejects `--transport stdio` at startup since stdio has no HTTP headers.
+:::
+
+For per-client `.mcp.json` configuration examples, see [Streamable HTTP with authentication](../guides/installation.mdx#streamable-http-with-authentication).
+
+## Basic passthrough
+
+Same fail-closed passthrough model as token passthrough, but clients send Infrahub username and password via the standard HTTP `Basic` scheme:
+
+```bash
+export INFRAHUB_ADDRESS=https://infrahub.example.com
+export INFRAHUB_MCP_AUTH_MODE=basic-passthrough
+
+# No INFRAHUB_USERNAME/INFRAHUB_PASSWORD needed — credentials come from the client
+infrahub-mcp --transport streamable-http
+```
+
+Clients include their credentials in the request header:
+
+```text
+Authorization: Basic <base64(username:password)>
+```
+
+The server decodes the header per request, constructs a fresh `InfrahubClient` with those credentials, and resets the per-request context after the call so credentials are never shared between requests.
+
+:::note
+Basic passthrough requires Streamable HTTP transport, same as token passthrough.
+:::
+
+To encode your credentials for the `Authorization` header:
+
+```bash
+echo -n "username:password" | base64
+# dXNlcm5hbWU6cGFzc3dvcmQ=
+```
+
+For per-client `.mcp.json` configuration examples, see [Streamable HTTP with authentication](../guides/installation.mdx#streamable-http-with-authentication).
+
+## OIDC
+
+<!-- vale Infrahub.sentence-case = NO -->
+
+### Step 1: Register an OAuth client
+
+<!-- vale Infrahub.sentence-case = YES -->
+
+In your Identity Provider, create an OAuth/OIDC client application:
+
+- **Application type**: Web application
+- **Redirect URI**: `<your-mcp-base-url>/oauth/callback` (FastMCP handles this automatically)
+- **Scopes**: At minimum, `openid`, `email`, and `profile`. Add a custom scope (for example, `write` or `infrahub:write`) if you want to gate write access.
+
+Record the **client ID**, **client secret** (if not using PKCE), and the **OIDC discovery URL**.
+
+### Step 2: Configure the MCP server
+
+```bash
+export INFRAHUB_MCP_AUTH_MODE=oidc
+export INFRAHUB_MCP_OIDC_CONFIG_URL=https://accounts.google.com/.well-known/openid-configuration
+export INFRAHUB_MCP_OIDC_CLIENT_ID=my-mcp-client
+export INFRAHUB_MCP_OIDC_BASE_URL=https://mcp.example.com
+
+# Optional — omit for PKCE flow (recommended for public clients)
+export INFRAHUB_MCP_OIDC_CLIENT_SECRET=my-secret
+```
+
+The server validates that all required OIDC fields are set at startup and fails fast with a clear error if anything is missing.
+
+### Step 3: Configure write scopes (optional)
+
+By default, any authenticated user can call both read and write tools. To restrict write access to users with a specific scope in their token:
+
+```bash
+# Only users whose token contains "infrahub:write" can call write tools
+export INFRAHUB_MCP_AUTH_SCOPES_WRITE=infrahub:write
+```
+
+When configured, tools tagged `write` (`node_upsert`, `node_delete`, `propose_changes`, `mutate_graphql`) are:
+
+1. **Hidden from discovery** — users without the required scope never see write tools in `tools/list`.
+2. **Blocked at call time** — even if a client hardcodes a tool name, the call is rejected.
+
+Users without the write scope effectively get a read-only experience without needing `INFRAHUB_MCP_READ_ONLY=true`.
+
+<!-- vale Infrahub.sentence-case = NO -->
+
+### Step 4: Verify
+
+<!-- vale Infrahub.sentence-case = YES -->
+
+Start the server and confirm the OIDC configuration in the logs:
+
+```text
+INFO  oidc_auth enabled=true config_url=https://accounts.google.com/... client_id=my-mcp-client
+INFO  auth_middleware enabled=true auth_mode=oidc write_scopes=['infrahub:write']
+```
+
+## Provider examples
+
+<!-- vale Infrahub.spelling = NO -->
+<!-- vale Infrahub.sentence-case = NO -->
+
+### Google
+
+```bash
+INFRAHUB_MCP_AUTH_MODE=oidc
+INFRAHUB_MCP_OIDC_CONFIG_URL=https://accounts.google.com/.well-known/openid-configuration
+INFRAHUB_MCP_OIDC_CLIENT_ID=123456789.apps.googleusercontent.com
+INFRAHUB_MCP_OIDC_CLIENT_SECRET=GOCSPX-...
+INFRAHUB_MCP_OIDC_BASE_URL=https://mcp.example.com
+```
+
+### Okta
+
+```bash
+INFRAHUB_MCP_AUTH_MODE=oidc
+INFRAHUB_MCP_OIDC_CONFIG_URL=https://your-org.okta.com/.well-known/openid-configuration
+INFRAHUB_MCP_OIDC_CLIENT_ID=0oa...
+INFRAHUB_MCP_OIDC_BASE_URL=https://mcp.example.com
+INFRAHUB_MCP_AUTH_SCOPES_WRITE=infrahub:write
+```
+
+### Microsoft Entra
+
+```bash
+INFRAHUB_MCP_AUTH_MODE=oidc
+INFRAHUB_MCP_OIDC_CONFIG_URL=https://login.microsoftonline.com/{tenant-id}/v2.0/.well-known/openid-configuration
+INFRAHUB_MCP_OIDC_CLIENT_ID=your-app-id
+INFRAHUB_MCP_OIDC_BASE_URL=https://mcp.example.com
+INFRAHUB_MCP_OIDC_AUDIENCE=api://your-app-id
+```
+
+### Keycloak
+
+```bash
+INFRAHUB_MCP_AUTH_MODE=oidc
+INFRAHUB_MCP_OIDC_CONFIG_URL=https://keycloak.example.com/realms/infrahub/.well-known/openid-configuration
+INFRAHUB_MCP_OIDC_CLIENT_ID=infrahub-mcp
+INFRAHUB_MCP_OIDC_BASE_URL=https://mcp.example.com
+INFRAHUB_MCP_AUTH_SCOPES_WRITE=write
+```
+
+<!-- vale Infrahub.spelling = YES -->
+<!-- vale Infrahub.sentence-case = YES -->
+
+## Configuration reference
+
+For the complete list of environment variables, see the [Configuration reference](../references/configuration.mdx#authentication-and-authorization). For an architectural deep-dive on each mode, see [Authentication architecture](../references/authentication.mdx).
+
+| Variable                                | Required   | Default         | Description                                                                    |
+| --------------------------------------- | ---------- | --------------- | ------------------------------------------------------------------------------ |
+| `INFRAHUB_MCP_AUTH_MODE`                | No         | `none`          | Authentication mode (`none`, `oidc`, `token-passthrough`, `basic-passthrough`) |
+| `INFRAHUB_MCP_OIDC_CONFIG_URL`          | Yes (oidc) |                 | OIDC discovery endpoint URL                                                    |
+| `INFRAHUB_MCP_OIDC_CLIENT_ID`           | Yes (oidc) |                 | OAuth client ID registered with the IdP                                        |
+| `INFRAHUB_MCP_OIDC_CLIENT_SECRET`       | No         |                 | OAuth client secret (omit for PKCE flow)                                       |
+| `INFRAHUB_MCP_OIDC_BASE_URL`            | Yes (oidc) |                 | Public URL where the MCP server is accessible                                  |
+| `INFRAHUB_MCP_OIDC_AUDIENCE`            | No         |                 | Token audience claim                                                           |
+| `INFRAHUB_MCP_OIDC_USER_CLAIM`          | No         | `email`         | JWT claim used for user identity                                               |
+| `INFRAHUB_MCP_AUTH_SCOPES_WRITE`        | No         | `write`         | Scopes required for write operations (comma-separated)                         |
+| `INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER` | No         | `Authorization` | HTTP header carrying the Infrahub API token (token-passthrough mode)           |

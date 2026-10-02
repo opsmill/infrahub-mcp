@@ -1,0 +1,61 @@
+---
+# yamllint disable rule:truthy rule:line-length
+name: MCP Discovery
+
+on:
+  workflow_call:
+  pull_request:
+    paths:
+      - "src/infrahub_mcp/**"
+      - "CAPABILITIES.md"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-capabilities:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Install mcp-discovery CLI
+        # yamllint disable rule:line-length
+        env:
+          MCP_DISCOVERY_VERSION: "0.2.5"
+          MCP_DISCOVERY_SHA256: "ede19b0e8a6d960ddb3cf0abd7d33e791ad94aecfe65d94c33c6011bd5291ba9"
+        run: |
+          # Extract to a tmp dir so stray bundled files (LICENSE, README,
+          # etc.) never land in the working tree.
+          TMPDIR=$(mktemp -d)
+          curl -sL "https://github.com/rust-mcp-stack/mcp-discovery/releases/download/v${MCP_DISCOVERY_VERSION}/mcp-discovery-x86_64-unknown-linux-gnu.tar.xz" \
+            -o "${TMPDIR}/mcp-discovery.tar.xz"
+          echo "${MCP_DISCOVERY_SHA256}  ${TMPDIR}/mcp-discovery.tar.xz" | sha256sum -c
+          tar -xJf "${TMPDIR}/mcp-discovery.tar.xz" -C "${TMPDIR}" --strip-components=1
+          sudo mv "${TMPDIR}/mcp-discovery" /usr/local/bin/
+          rm -rf "${TMPDIR}"
+        # yamllint enable rule:line-length
+
+      - name: Generate CAPABILITIES.md
+        run: >-
+          mcp-discovery create
+          --filename capabilities-check.md
+          --template md
+          --
+          env INFRAHUB_ADDRESS=http://localhost:8080 INFRAHUB_API_TOKEN=dummy
+          uv run fastmcp run src/infrahub_mcp/server.py:mcp
+
+      - name: Validate CAPABILITIES.md is up to date
+        run: |
+          if ! diff -q CAPABILITIES.md capabilities-check.md > /dev/null 2>&1; then
+            echo "::error::CAPABILITIES.md is out of date. Run 'bash scripts/update-capabilities.sh' and commit."
+            diff CAPABILITIES.md capabilities-check.md || true
+            exit 1
+          fi

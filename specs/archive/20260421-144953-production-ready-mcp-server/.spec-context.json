@@ -1,0 +1,34 @@
+{
+  "transitions": [
+    {
+      "step": "plan",
+      "substep": null,
+      "from": null,
+      "by": "extension",
+      "at": "2026-04-21T22:07:45.497Z"
+    },
+    {
+      "step": "tasks",
+      "substep": null,
+      "from": {
+        "step": "plan",
+        "substep": null
+      },
+      "by": "extension",
+      "at": "2026-04-21T22:07:46.898Z"
+    }
+  ],
+  "currentStep": "tasks",
+  "stepHistory": {
+    "plan": {
+      "startedAt": "2026-04-21T22:07:45.497Z",
+      "completedAt": "2026-04-21T22:07:46.898Z"
+    },
+    "tasks": {
+      "startedAt": "2026-04-21T22:07:46.898Z",
+      "completedAt": null
+    }
+  },
+  "status": "active",
+  "specName": "144953 Production Ready Mcp Server"
+}

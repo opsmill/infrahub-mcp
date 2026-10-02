@@ -12,21 +12,29 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least-privilege default; jobs elevate only what they need.
+permissions:
+  contents: read
+
 env:
-  VALE_VERSION: "3.7.1"
+  VALE_VERSION: "3.13.0"
 
 jobs:
   files-changed:
     name: Detect which file has changed
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read  # paths-filter reads changed files via the API on pull_request
     outputs:
+      mcp: ${{ steps.changes.outputs.mcp_all }}
       documentation: ${{ steps.changes.outputs.documentation_all }}
       python: ${{ steps.changes.outputs.python_all }}
       yaml: ${{ steps.changes.outputs.yaml_all }}
     steps:
       - name: "Check out repository code"
-        uses: "actions/checkout@v6"
+        uses: "actions/checkout@v7"
       - name: Check for file changes
         uses: opsmill/paths-filter@v3.0.2
         id: changes
@@ -34,39 +42,102 @@ jobs:
           token: ${{ github.token }}
           filters: .github/file-filters.yml
 
-  # python-lint:
-  #   if: needs.files-changed.outputs.python == 'true'
-  #   needs: ["files-changed"]
-  #   runs-on: "ubuntu-latest"
-  #   strategy:
-  #     matrix:
-  #       python-version:
-  #         - "3.12"
-  #   timeout-minutes: 5
-  #   steps:
-  #     - name: "Check out repository code"
-  #       uses: "actions/checkout@v6"
+  prepare-environment:
+    runs-on: "ubuntu-latest"
+    timeout-minutes: 5
+    outputs:
+      PYTHON_VERSION: ${{ steps.versions.outputs.PYTHON_VERSION }}
+      UV_VERSION: ${{ steps.versions.outputs.UV_VERSION }}
+    steps:
+      - name: "Check out repository code"
+        uses: "actions/checkout@v7"
+      - name: "Set versions"
+        id: versions
+        run: |
+          echo "PYTHON_VERSION=3.13" >> "$GITHUB_OUTPUT"
+          echo "UV_VERSION=0.7" >> "$GITHUB_OUTPUT"
 
-  #     - name: "Set up Python ${{ matrix.python-version }}"
-  #       uses: "actions/setup-python@v5"
-  #       with:
-  #         python-version: ${{ matrix.python-version }}
-
-
-  yaml-lint:
-    if: needs.files-changed.outputs.yaml == 'true'
-    needs: ["files-changed"]
+  python-lint:
+    if: |
+      needs.files-changed.outputs.python == 'true'
+    needs:
+      - files-changed
+      - prepare-environment
     runs-on: "ubuntu-latest"
     timeout-minutes: 5
     steps:
       - name: "Check out repository code"
-        uses: "actions/checkout@v6"
+        uses: "actions/checkout@v7"
         with:
           submodules: true
-      - name: "Setup environment"
-        run: "pip install yamllint==1.35.1"
+      - name: Set up Python
+        id: python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ needs.prepare-environment.outputs.PYTHON_VERSION }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ needs.prepare-environment.outputs.UV_VERSION }}
+      - name: Install dependencies
+        run: "uv sync --all-groups"
+      - name: "Linting: ruff check"
+        run: "uv run ruff check ."
+      - name: "Linting: ruff format"
+        run: "uv run ruff format --check --diff  ."
+      - name: "Linting: ty check"
+        run: "uv run ty check ."
+
+  validate-docker-compose-env-vars:
+    if: |
+      always() && !cancelled() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      needs.files-changed.outputs.mcp == 'true'
+    needs: ["prepare-environment", "files-changed", "yaml-lint", "python-lint"]
+    runs-on: "ubuntu-latest"
+    timeout-minutes: 5
+    steps:
+      - name: "Check out repository code"
+        uses: "actions/checkout@v7"
+        with:
+          submodules: true
+      - name: Set up Python
+        id: python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ needs.prepare-environment.outputs.PYTHON_VERSION }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ needs.prepare-environment.outputs.UV_VERSION }}
+      - name: Install dependencies
+        run: "uv sync --all-groups"
+      - name: Validate docker-compose env vars
+        run: uv run invoke validate-dockercomposeenv
+      - name: Validate server.json env vars
+        run: uv run invoke validate-serverjson
+
+  yaml-lint:
+    if: needs.files-changed.outputs.yaml == 'true'
+    needs: ["files-changed", "prepare-environment"]
+    runs-on: "ubuntu-latest"
+    timeout-minutes: 5
+    steps:
+      - name: "Check out repository code"
+        uses: "actions/checkout@v7"
+        with:
+          submodules: true
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ needs.prepare-environment.outputs.PYTHON_VERSION }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ needs.prepare-environment.outputs.UV_VERSION }}
       - name: "Linting: yamllint"
-        run: "yamllint -s ."
+        run: "uv run yamllint -s ."
 
   documentation:
     defaults:
@@ -77,38 +148,48 @@ jobs:
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
       needs.files-changed.outputs.documentation == 'true'
-    needs: ["files-changed", "yaml-lint"] # , "python-lint"]
+    needs: ["files-changed", "prepare-environment", "yaml-lint", "python-lint"]
     runs-on: "ubuntu-22.04"
     timeout-minutes: 5
     steps:
       - name: "Check out repository code"
-        uses: "actions/checkout@v6"
+        uses: "actions/checkout@v7"
         with:
           submodules: true
-      - name: Install NodeJS
-        uses: actions/setup-node@v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
         with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: docs/package-lock.json
+          version: 11.6.0
+      - name: Install NodeJS
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22  # pnpm 11 requires Node >= 22.13
+          cache: 'pnpm'
+          cache-dependency-path: docs/pnpm-lock.yaml
       - name: "Install dependencies"
-        run: npm install
-      - name: "Setup Python environment"
-        run: "pip install invoke toml"
+        run: pnpm install --frozen-lockfile
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ needs.prepare-environment.outputs.PYTHON_VERSION }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ needs.prepare-environment.outputs.UV_VERSION }}
       - name: "Build docs website"
-        run: "invoke docs"
+        run: "uv run invoke docs"
 
   validate-documentation-style:
     if: |
       always() && !cancelled() &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled')
-    needs: ["files-changed", "yaml-lint"] # , "python-lint"]
+    needs: ["files-changed", "yaml-lint", "python-lint"]
     runs-on: "ubuntu-22.04"
     timeout-minutes: 5
     steps:
       - name: "Check out repository code"
-        uses: "actions/checkout@v6"
+        uses: "actions/checkout@v7"
         with:
           submodules: true
 
@@ -122,3 +203,52 @@ jobs:
           VALE_VERSION: ${{ env.VALE_VERSION }}
       - name: "Validate documentation style"
         run: ./vale $(find ./docs -type f \( -name "*.mdx" -o -name "*.md" \) )
+
+  markdown-lint:
+    if: needs.files-changed.outputs.documentation == 'true'
+    needs: ["files-changed", "prepare-environment"]
+    runs-on: "ubuntu-latest"
+    timeout-minutes: 5
+    steps:
+      - name: "Check out repository code"
+        uses: "actions/checkout@v7"
+        with:
+          submodules: true
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ needs.prepare-environment.outputs.PYTHON_VERSION }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ needs.prepare-environment.outputs.UV_VERSION }}
+      # Scoped to docs/ to match the `rumdl check docs/docs/` convention in AGENTS.md.
+      # rumdl also runs on all changed markdown via pre-commit; repo-wide enforcement is
+      # deferred (pre-existing findings in .agents/ and specs/).
+      - name: "Linting: rumdl"
+        run: "uv run rumdl check docs/"
+
+  python-unit-tests:
+    if: needs.files-changed.outputs.python == 'true'
+    needs: ["files-changed", "prepare-environment"]
+    runs-on: "ubuntu-latest"
+    timeout-minutes: 10
+    steps:
+      - name: "Check out repository code"
+        uses: "actions/checkout@v7"
+        with:
+          submodules: true
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ needs.prepare-environment.outputs.PYTHON_VERSION }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ needs.prepare-environment.outputs.UV_VERSION }}
+      - name: Install dependencies
+        run: "uv sync --all-groups"
+      # Default addopts exclude the `integration` marker, so this is a Docker-free unit run.
+      # The Docker-gated integration suite (`uv run pytest -m integration`) is opt-in.
+      - name: "Run unit tests"
+        run: "uv run pytest"

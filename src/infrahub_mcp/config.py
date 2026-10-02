@@ -1,0 +1,279 @@
+"""Server configuration loaded from environment variables via pydantic-settings."""
+
+from __future__ import annotations
+
+import logging
+import os
+import string
+from pathlib import Path
+from typing import Literal
+
+from pydantic import AliasChoices, Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from infrahub_mcp.constants import (
+    _ALLOWED_PLACEHOLDERS,
+    AUTH_MODE_OIDC,
+)
+
+logger = logging.getLogger(__name__)
+
+# A .env file supplies only these four Infrahub SDK connection variables. The
+# allowlist is explicit rather than an INFRAHUB_ prefix match because the SDK also
+# reads INFRAHUB_PROXY, INFRAHUB_TLS_INSECURE and friends from the environment: a
+# foreign project's .env must not be able to reroute credential-bearing traffic
+# through a proxy or disable certificate verification. INFRAHUB_MCP_* server
+# settings are excluded for a different reason — ServerConfig is read once at
+# import, before priming runs, so they would never take effect; they must come
+# from the real environment or the .mcp.json "env" block.
+_DOTENV_ALLOWED_KEYS = frozenset(
+    {
+        "INFRAHUB_ADDRESS",
+        "INFRAHUB_API_TOKEN",
+        "INFRAHUB_USERNAME",
+        "INFRAHUB_PASSWORD",
+    }
+)
+_DOTENV_IGNORED_PREFIX = "INFRAHUB_MCP_"
+
+AuthMode = Literal["none", "oidc", "token-passthrough", "basic-passthrough"]
+
+_VALID_LOG_LEVELS = {"debug", "info", "warning", "error"}
+_BRANCH_PATTERN_HELP = "Allowed placeholders are {date}, {hex}, {user}."
+
+
+class ServerConfig(BaseSettings):
+    """Immutable server configuration loaded from ``INFRAHUB_MCP_*`` environment variables.
+
+    Each field is validated at construction time — instantiation fails fast
+    with a clear message when an environment variable is malformed or a
+    required combination is missing (e.g., OIDC mode without a config URL).
+
+    Attributes:
+        read_only: When True, write tools are hidden and GraphQL mutations are blocked.
+        branch_pattern: Naming pattern for session branches. Supports ``{date}``, ``{hex}``,
+            and ``{user}`` placeholders. If no placeholders are present it is treated as a
+            fixed branch name. Defaults to ``mcp/session-{date}-{hex}``.
+        max_branch_retries: Max collision retries for branch name generation (1-20).
+        log_level: Logging verbosity (``debug``, ``info``, ``warning``, ``error``).
+        rate_limit_rps: Max sustained requests per second (0 disables).
+        rate_limit_burst: Token-bucket burst capacity (0 = auto, 2x ``rate_limit_rps``).
+        retry_max_attempts: Max retry attempts for transient failures (0 disables).
+        retry_base_delay: Initial delay between retries, in seconds.
+        cache_enabled: Enable response caching for schema/list operations.
+        cache_list_ttl: TTL in seconds for list operations (tools, resources, prompts).
+        cache_read_ttl: TTL in seconds for read-resource and cacheable tool calls.
+        otel_enabled: Enable OpenTelemetry tracing spans.
+        prometheus_enabled: Expose Prometheus-format metrics at ``/metrics``.
+        dereference_schemas: Dereference ``$ref`` in JSON schemas for client compatibility.
+        schema_expand_peers: When True, schema detail responses inline one level of related
+            peer schemas; when False, relationships are returned as flat peer references.
+        ping_interval_ms: Ping interval in milliseconds for HTTP sessions (0 disables,
+            max 300 000).
+        auth_scopes_write: OAuth scopes required for write operations (comma-separated).
+            Defaults to ``write``.
+        auth_mode: Authentication mode (``none``, ``oidc``, ``token-passthrough``, or
+            ``basic-passthrough``).
+        oidc_config_url: OIDC discovery URL (required when ``auth_mode=oidc``).
+        oidc_client_id: OAuth client ID (required when ``auth_mode=oidc``).
+        oidc_client_secret: OAuth client secret (optional — omit for PKCE).
+        oidc_base_url: Public URL where the MCP server is reachable (required when
+            ``auth_mode=oidc``).
+        oidc_audience: Token audience claim (optional).
+        oidc_user_claim: JWT claim used for user identity (defaults to ``email``).
+        token_passthrough_header: HTTP header carrying the per-request credential
+            (Bearer token or Basic user:pass) when ``auth_mode`` is ``token-passthrough``
+            or ``basic-passthrough``.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="INFRAHUB_MCP_",
+        case_sensitive=False,
+        frozen=True,
+        extra="ignore",
+        populate_by_name=True,
+    )
+
+    read_only: bool = False
+    branch_pattern: str = "mcp/session-{date}-{hex}"
+    max_branch_retries: int = Field(default=5, ge=1, le=20)
+    log_level: str = Field(
+        default="info",
+        validation_alias=AliasChoices("log_level", "INFRAHUB_MCP_LOG_LEVEL"),
+    )
+    rate_limit_rps: float = Field(default=0.0, ge=0.0, le=10_000.0, allow_inf_nan=False)
+    rate_limit_burst: int = Field(default=0, ge=0)
+    retry_max_attempts: int = Field(default=0, ge=0)
+    retry_base_delay: float = Field(default=1.0, gt=0.0, allow_inf_nan=False)
+    cache_enabled: bool = False
+    cache_list_ttl: int = Field(default=300, ge=1)
+    cache_read_ttl: int = Field(default=3600, ge=1)
+    otel_enabled: bool = False
+    prometheus_enabled: bool = False
+    dereference_schemas: bool = False
+    schema_expand_peers: bool = True
+    ping_interval_ms: int = Field(default=0, ge=0, le=300_000)
+    auth_scopes_write: str = "write"
+    auth_mode: AuthMode = "none"
+    oidc_config_url: str = ""
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""
+    oidc_base_url: str = ""
+    oidc_audience: str = ""
+    oidc_user_claim: str = "email"
+    token_passthrough_header: str = "Authorization"  # noqa: S105
+
+    @property
+    def log_level_debug(self) -> bool:
+        """True when ``INFRAHUB_MCP_LOG_LEVEL=debug``."""
+        return self.log_level.lower() == "debug"  # pylint: disable=no-member
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _validate_log_level(cls, raw: object) -> str:
+        value = str(raw).strip().lower()
+        if value not in _VALID_LOG_LEVELS:
+            msg = f"INFRAHUB_MCP_LOG_LEVEL must be one of {sorted(_VALID_LOG_LEVELS)}, got {value!r}."
+            raise ValueError(msg)
+        return value
+
+    @field_validator("auth_mode", mode="before")
+    @classmethod
+    def _normalize_auth_mode(cls, raw: object) -> str:
+        """Strip + lowercase the raw env value; Literal validation handles unknown values."""
+        return str(raw).strip().lower()
+
+    @field_validator("branch_pattern")
+    @classmethod
+    def _validate_branch_pattern(cls, pattern: str) -> str:
+        try:
+            parsed = list(string.Formatter().parse(pattern))
+        except (ValueError, IndexError) as exc:
+            msg = f"INFRAHUB_MCP_BRANCH_PATTERN has invalid syntax: {pattern!r}. {_BRANCH_PATTERN_HELP} Error: {exc}"
+            raise ValueError(msg) from exc
+
+        fields: list[str] = []
+        for _, field_name, format_spec, conversion in parsed:
+            if field_name is None:
+                continue
+            if format_spec or conversion is not None:
+                msg = (
+                    f"INFRAHUB_MCP_BRANCH_PATTERN must not use format specifiers or conversions: "
+                    f"{pattern!r}. {_BRANCH_PATTERN_HELP} (no :spec, !conversion)"
+                )
+                raise ValueError(msg)
+            fields.append(field_name)
+
+        bad = sorted(set(fields) - _ALLOWED_PLACEHOLDERS)
+        if bad:
+            msg = (
+                f"INFRAHUB_MCP_BRANCH_PATTERN contains unsupported placeholders: {pattern!r}. "
+                f"Unknown: {bad}. {_BRANCH_PATTERN_HELP}"
+            )
+            raise ValueError(msg)
+        return pattern
+
+
+def _validate_auth_requirements(config: ServerConfig) -> None:
+    """Enforce cross-field auth requirements that depend on external env vars.
+
+    Not a pydantic model validator so that unit tests can construct
+    ``ServerConfig(auth_mode="oidc")`` without having to stub every
+    required OIDC field — the env-driven requirement lives at the
+    :func:`load_config` boundary, not inside the model.
+    """
+    if config.auth_mode == AUTH_MODE_OIDC:
+        missing = [
+            name
+            for name, value in (
+                ("INFRAHUB_MCP_OIDC_CONFIG_URL", config.oidc_config_url),
+                ("INFRAHUB_MCP_OIDC_CLIENT_ID", config.oidc_client_id),
+                ("INFRAHUB_MCP_OIDC_BASE_URL", config.oidc_base_url),
+            )
+            if not value.strip()
+        ]
+        if missing:
+            msg = (
+                f"OIDC auth mode requires these environment variables: {', '.join(missing)}. "
+                "See https://docs.opsmill.com for configuration details."
+            )
+            raise ValueError(msg)
+
+
+def env_get(name: str) -> str | None:
+    """Read an environment variable the way the Infrahub SDK does — case-insensitively.
+
+    The SDK's settings model resolves ``infrahub_api_token`` and ``INFRAHUB_API_TOKEN``
+    alike, so a lowercase spelling reaches ``InfrahubClient()`` even though nothing here
+    reads it. Every guard and client factory in this package must see the same
+    credentials the SDK will, so they all go through this helper.
+    """
+    value = os.environ.get(name)
+    if value is not None:
+        return value
+    lowered = name.lower()
+    return next((item for key, item in os.environ.items() if key.lower() == lowered), None)
+
+
+def _prime_env_from_dotenv() -> None:
+    """Copy the four ``_DOTENV_ALLOWED_KEYS`` connection variables from a ``.env`` file.
+
+    Called once at server startup (from the lifespan), never at import time, so
+    importing the package neither reads the filesystem nor mutates the process
+    environment. Real environment variables always win over the file; keys are
+    matched case-insensitively (mirroring ``case_sensitive=False`` on the settings
+    models) and always written back uppercase, the canonical spelling the readers
+    in ``server.py`` and ``utils.py`` try first via :func:`env_get`.
+
+    Path resolution via ``INFRAHUB_MCP_ENV_FILE`` (``~`` is expanded):
+
+    - unset: default to ``./.env``; a missing file is a silent no-op.
+    - empty string: loading is disabled.
+    - set to a path: that file is loaded, with a warning when it does not exist.
+    """
+    from dotenv import dotenv_values  # noqa: PLC0415
+
+    configured = os.environ.get("INFRAHUB_MCP_ENV_FILE")
+    if configured is not None and not configured:
+        return  # explicitly disabled via an empty value
+    path = Path(configured or ".env").expanduser()
+    if configured is not None and not path.is_file():
+        logger.warning("INFRAHUB_MCP_ENV_FILE=%r is not a readable file; no .env values loaded.", str(path))
+        return
+
+    try:
+        # interpolate=False: credentials are opaque strings, so a "${" inside a
+        # password must be taken literally rather than expanded to nothing.
+        values = dotenv_values(path, interpolate=False)
+    except (OSError, UnicodeDecodeError) as exc:
+        logger.warning("Could not read .env file %r: %s", str(path), exc)
+        return
+
+    existing = {key.lower() for key in os.environ}
+    ignored_mcp_keys: list[str] = []
+    for key, value in values.items():
+        key_upper = key.upper()
+        if key_upper.startswith(_DOTENV_IGNORED_PREFIX):
+            ignored_mcp_keys.append(key_upper)
+            continue
+        if value is None or key_upper not in _DOTENV_ALLOWED_KEYS:
+            continue
+        if key.lower() in existing:
+            continue
+        os.environ[key_upper] = value
+        existing.add(key.lower())
+
+    if ignored_mcp_keys:
+        logger.warning(
+            "Ignoring %s in %r: INFRAHUB_MCP_* server settings are not loaded from .env. "
+            'Set them in the real environment or the .mcp.json "env" block.',
+            ", ".join(sorted(set(ignored_mcp_keys))),
+            str(path),
+        )
+
+
+def load_config() -> ServerConfig:
+    """Load and validate server configuration from environment variables."""
+    config = ServerConfig()
+    _validate_auth_requirements(config)
+    return config

@@ -1,0 +1,82 @@
+---
+title: Release 1.0.0
+description: The first stable release — query Infrahub and propose changes for review from any MCP-compatible client.
+---
+
+<table>
+  <tbody>
+    <tr>
+      <th>Release Number</th>
+      <td>1.0.0</td>
+    </tr>
+    <tr>
+      <th>Release Type</th>
+      <td>Feature</td>
+    </tr>
+    <tr>
+      <th>Release Date</th>
+      <td>March 26th, 2026</td>
+    </tr>
+    <tr>
+      <th>Tag</th>
+      <td>[v1.0.0](https://github.com/opsmill/infrahub-mcp/releases/tag/v1.0.0)</td>
+    </tr>
+  </tbody>
+</table>
+
+## Release summary
+
+Your AI agents can now gather Infrahub context directly through the MCP server instead of switching between GraphQL queries, the UI, and documentation. This allows AI tools to better understand relationships between objects and safely propose changes for review.
+
+### Query Infrahub data from MCP-compatible clients
+
+Infrahub data is now available to AI agents through the MCP server, making it possible to retrieve objects, search relationships, and execute GraphQL queries from MCP-compatible clients.
+
+**What changed**
+
+* Retrieve infrastructure objects by kind using `get_nodes`, with support for attribute and relationship filters, partial matching, attribute selection, and limit/offset paging to narrow large datasets.
+* Search for infrastructure objects by partial name using `search_nodes`, making it easier to locate objects when only part of an identifier is known.
+* Run GraphQL read queries using `query_graphql` for cases that require more complex data retrieval. Mutations are rejected; write mutations go through `mutate_graphql` on the session branch.
+* Retrieve schema using `get_schema` when working with MCP clients that do not support resources.
+* Check which branch a write will target using `get_session_info`, which reports the active session branch (or `none` before the first write).
+
+### Help AI understand Infrahub relationships and schema
+
+Schema and branch information are now exposed as MCP resources, allowing AI agents to discover available kinds, attributes, relationships, and branches directly from Infrahub.
+
+**What changed**
+
+* Explore available kinds using `infrahub://schema`, allowing AI agents to discover the Infrahub data model dynamically.
+* Explore attributes, relationships, and filters for a specific kind using `infrahub://schema/{kind}`, making it possible to build queries from the live schema.
+* Access the GraphQL SDL through `infrahub://graphql-schema` when working directly with GraphQL-aware clients.
+* Access branch names, descriptions, and default branch information through `infrahub://branches` to understand the current branch context.
+
+### Review and merge changes created with AI using existing Infrahub workflows
+
+Changes created with AI are kept separate from the default branch and can be explicitly submitted as a Proposed Change, allowing them to follow the same review and merge process used elsewhere in Infrahub.
+
+**What changed**
+
+* Create a session branch automatically on the first write so changes remain isolated from the default branch.
+* Generate branch names using `INFRAHUB_MCP_BRANCH_PATTERN` to keep branch creation consistent across sessions.
+* Retry branch creation automatically when naming collisions occur.
+* Open a Proposed Change explicitly with `propose_changes`, which records the source and destination branches so reviewers can see exactly where changes will be merged.
+
+## Upgrade notes
+
+### Reading schema and branches
+
+Schema and branch information are available as MCP resources (`infrahub://schema`, `infrahub://branches`).
+
+Use `get_schema` when working with MCP clients that do not support resources.
+
+## Full changelog
+
+### Added
+
+* Branch support for GraphQL queries ([#32](https://github.com/opsmill/infrahub-mcp/pull/32)).
+
+### Changed
+
+* Exposed schema and branches as MCP resources and adopted a branch-per-session write model ([#35](https://github.com/opsmill/infrahub-mcp/pull/35)).
+* Migrated integration tests to the Anthropic SDK.

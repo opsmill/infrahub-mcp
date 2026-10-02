@@ -1,0 +1,96 @@
+---
+title: Troubleshooting data queries
+---
+
+When an agent answers "I couldn't find that device" — it's almost always a data-query problem, not a data problem. This recipe walks through the diagnostic flow for "why is my query returning nothing?"
+
+## Scenario
+
+A network engineer asks their assistant:
+
+> What interfaces are on `leaf-01`?
+
+The agent replies "no device named `leaf-01` found," but the engineer can see it in the Infrahub UI. Something is wrong with the query, not the data.
+
+## The diagnostic flow
+
+### 1. Confirm the kind exists
+
+Ask the agent to read `infrahub://schema` (or call `get_schema()` with no arguments). This returns the catalog of all non-internal schema kinds.
+
+Expected output includes entries like `DcimDevice`, `InfraDevice`, or whatever your schema defines. If `leaf-01` belongs to a kind the agent didn't try, you've already found the bug.
+
+### 2. Inspect the kind's filters
+
+Read `infrahub://schema/{kind}` (or call `get_schema(kind="DcimDevice")`) to see:
+
+- Every attribute (with its type).
+- Every relationship.
+- The exact filter keys accepted by `get_nodes`.
+
+The filter keys follow a strict naming convention:
+
+| Filter type | Example |
+| --- | --- |
+| Attribute equality | `name__value` |
+| Attribute partial match | `name__value` + `partial_match=True` |
+| Relationship attribute | `site__name__value` |
+| Relationship ID | `site__id` |
+
+A common mistake: filtering on `name` instead of `name__value`. The latter is correct.
+
+### 3. Try partial match for human-entered names
+
+`leaf-01` might actually be stored as `leaf-01.example.com` or `LEAF-01`. Use `search_nodes`, which is a convenience wrapper around `get_nodes` with `partial_match=True`:
+
+```text
+search_nodes(query="leaf-01", kind="DcimDevice", limit=10)
+```
+
+This returns up to 10 display labels containing the substring. If it returns one match, you have your canonical name.
+
+### 4. Traverse relationships
+
+If the engineer actually wants *interfaces on leaf-01*, the agent can use `get_nodes` with `prefetch_relationships` to pull the device and its interfaces in one call:
+
+```text
+get_nodes(
+    kind="DcimDevice",
+    filters={"name__value": "leaf-01"},
+    prefetch_relationships=True,
+    include_attributes=True,
+)
+```
+
+Or in one GraphQL call via `query_graphql`:
+
+```graphql
+query {
+  DcimDevice(name__value: "leaf-01") {
+    edges {
+      node {
+        interfaces {
+          edges {
+            node { name { value } }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+## Common filter pitfalls
+
+| Pitfall | Fix |
+| --- | --- |
+| `filters={"name": "leaf-01"}` returns nothing | Use `name__value`, not `name` |
+| Case mismatch (`LEAF-01` vs `leaf-01`) | Add `partial_match=True` or use `search_nodes` |
+| Filtering a relationship as a string | Use the nested `relation__attribute__value` syntax |
+| No results because of the default limit | Pass `limit=-1` to `get_nodes` for all results |
+| Wrong branch | Pass `branch=` explicitly or confirm the default via `infrahub://branches` |
+
+## Related reading
+
+- [Methods reference](../references/methods.mdx) — the full tool and resource list.
+- [Natural-language to GraphQL](./natural-language-graphql.mdx) — when filters aren't expressive enough.

@@ -1,0 +1,25 @@
+# Minimal Infrahub schema for MCP integration tests (FR-011 deterministic baseline).
+# Kept intentionally small — just enough surface to exercise the MCP tools/resources.
+# Kind resolves to "TestingWidget".
+---
+version: "1.0"
+nodes:
+  - name: Widget
+    namespace: Testing
+    label: Widget
+    description: Test-only node used by the MCP integration suite.
+    default_filter: name__value
+    display_labels:
+      - name__value
+    human_friendly_id:
+      - name__value
+    attributes:
+      - name: name
+        kind: Text
+        unique: true
+      - name: color
+        kind: Text
+        optional: true
+      - name: quantity
+        kind: Number
+        optional: true

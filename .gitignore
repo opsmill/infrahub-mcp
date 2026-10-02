@@ -8,7 +8,18 @@ node_modules/*
 **/.ruff_cache
 docs/build
 
+# Python
 __pycache__
+*.py[cod]
+.venv/
+venv/
+
+# IDE
+.idea/
+
+# Secrets
+*.pem
+*.key
 
 # Env
 .direnv/
@@ -18,3 +29,9 @@ __pycache__
 
 .deepeval/
 .mcp.json
+.claude
+**/worktrees
+.token-savior-cache.json
+
+# Speckit local feature pointer
+.specify/feature.json

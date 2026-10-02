@@ -1,0 +1,86 @@
+---
+title: Make a change through an agent
+---
+
+This walkthrough takes you through the full write path: ask an agent to update something in Infrahub, watch it auto-create an isolated session branch, and open a Proposed Change for human review. No data on your default branch is modified until a human approves the merge.
+
+## Prerequisites
+
+- The [First agent run](./first-agent-run.mdx) walkthrough is complete (server reachable, client connected, read-only calls working).
+- `INFRAHUB_MCP_READ_ONLY` is not set (or is `false`) — writes are enabled.
+- Your Infrahub API token has permission to create branches and proposed changes.
+
+## How it works
+
+Every write starts by auto-creating a **session branch** on the first mutation. The default naming pattern is:
+
+```text
+mcp/session-YYYYMMDD-<hex>
+```
+
+All subsequent writes in the same MCP session go to the same branch. When the agent calls `propose_changes`, Infrahub opens a `CoreProposedChange` (a pull-request equivalent) from the session branch back to the default branch. A human reviews, approves, and merges — only then does the change land.
+
+You can customize the pattern via `INFRAHUB_MCP_BRANCH_PATTERN`. Supported placeholders:
+
+| Placeholder | Resolves to |
+| --- | --- |
+| `{date}` | Current date in `YYYYMMDD` format |
+| `{hex}` | Short random hex suffix for uniqueness |
+| `{user}` | Authenticated user identity (OIDC mode only — see [Authentication architecture](../references/authentication.mdx#branch-placeholder)) |
+
+If the generated branch already exists (rare, with `{hex}`), the server retries up to `INFRAHUB_MCP_MAX_BRANCH_RETRIES` times (default 5).
+
+## 1. Ask the agent to make a change
+
+In your MCP client, prompt something like:
+
+> Update the description of the device named `leaf-01` to `"Rack 3A, upgraded 2026-04"`.
+
+The agent should:
+
+1. **Discover the schema** — read `infrahub://schema` and then `infrahub://schema/{kind}` for the relevant device kind to confirm the attribute name.
+2. **Look up the node** — call `search_nodes(query="leaf-01", kind="...")` or `get_nodes` with a `name__value` filter to resolve the UUID or human-friendly ID.
+3. **Create the session branch** — happens implicitly on the first write. You'll see it in the `infrahub://branches` resource.
+4. **Call `node_upsert`** with `id` or `hfid` to update the `description` attribute.
+5. **Confirm the write** — report the branch name and node ID.
+
+## 2. Open a Proposed Change for review
+
+Follow up with:
+
+> Open a proposed change titled "Update leaf-01 description" so the team can review.
+
+The agent calls `propose_changes(title=..., description=..., destination_branch=...)`. The response includes the `CoreProposedChange` ID and the source/destination branches. The session branch stays active, so you can keep making related changes and they'll all show up in the same proposed change.
+
+## 3. Review in Infrahub
+
+Open the Infrahub UI and navigate to **Proposed Changes**. The change you just opened will show:
+
+- The diff between the session branch and the default branch.
+- The agent that created the branch (in audit logs, if OIDC is enabled).
+- Any check results, if you have [Infrahub checks](https://docs.infrahub.app/topics/proposed-change) configured.
+
+Approve and merge when ready. Until a human approves, the default branch is untouched.
+
+## Guardrails at a glance
+
+- **Branch isolation** — every write lives on an ephemeral session branch; the default branch is never modified directly.
+- **Read-only kill switch** — setting `INFRAHUB_MCP_READ_ONLY=true` hides all write tools from discovery and rejects calls that hardcode them.
+- **Scope gating (OIDC only)** — set `INFRAHUB_MCP_AUTH_SCOPES_WRITE=infrahub:write` to require a specific OAuth scope for write tools.
+- **Audit logs** — every tool call is logged with a request ID, tool name, branch, and (under OIDC) the authenticated user.
+- **Human approval** — `propose_changes` is the only way changes reach the default branch. Agents cannot merge.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `node_upsert` fails with "kind not found" | Schema name mismatch (case, namespace) | Ask the agent to read `infrahub://schema` first and copy the exact kind name. |
+| Agent tries to update a relationship and fails | `node_upsert` accepts scalar attributes only | Use `mutate_graphql` with a GraphQL mutation for relationship changes. |
+| `propose_changes` returns an error about no changes | Session branch is empty | Make at least one successful `node_upsert` / `node_delete` / `mutate_graphql` call before proposing. |
+| Write tools are hidden from the agent | Server is in read-only mode, or user lacks the write scope | Check `INFRAHUB_MCP_READ_ONLY` and `INFRAHUB_MCP_AUTH_SCOPES_WRITE` on the server. |
+
+## Next steps
+
+- [Safe changes via branch isolation](../use-cases/safe-changes-branch-isolation.mdx) — deeper look at the branch-per-session model.
+- [Brownfield network onboarding](../use-cases/brownfield-onboarding.mdx) — use the write path to bulk-import existing state.
+- [Methods reference](../references/methods.mdx) — every tool, resource, and prompt the server exposes.

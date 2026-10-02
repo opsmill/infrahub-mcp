@@ -1,0 +1,101 @@
+---
+title: Brownfield network onboarding
+---
+
+Onboarding an existing ("brownfield") network into Infrahub is a long tail of small writes: one device per rack, one interface per device, one cable per interface. Agents shine here — they can read source-of-truth data from CSV exports, SNMP, LLDP neighbours, or NetBox, and turn it into idempotent Infrahub upserts on a session branch you can review all at once.
+
+## Scenario
+
+A team is migrating from a spreadsheet-based inventory to Infrahub. They have a CSV with ~500 devices. They want an agent to import them safely, with a single Proposed Change at the end that a senior engineer reviews.
+
+## The plan
+
+1. Confirm the Infrahub schema covers every field in the CSV.
+2. Do a dry-run import on a session branch (no merge).
+3. Review the diff, iterate on any mapping issues.
+4. Open a Proposed Change and hand it off for human review.
+5. Merge once approved.
+
+## 1. Align the CSV to the schema
+
+Before any writes, the agent reads `infrahub://schema` and then `infrahub://schema/{kind}` for each kind it plans to populate. It maps CSV columns to Infrahub attributes and flags anything that doesn't align:
+
+| CSV column | Kind | Attribute | Notes |
+| --- | --- | --- | --- |
+| `hostname` | `DcimDevice` | `name` | Also used as HFID segment |
+| `role` | `DcimDevice` | `role` | Dropdown — check allowed values |
+| `site_code` | `DcimDevice` | `site` (relation) | Resolve by `LocationSite.name__value` |
+
+If the schema is missing a field, that's the first write to make — via the Infrahub UI or a schema-extension proposed change — before the bulk import.
+
+## 2. Use human-friendly IDs for idempotency
+
+Brownfield imports run multiple times as mappings get fixed. Use **human-friendly IDs (HFIDs)** rather than UUIDs so re-running the import updates existing nodes instead of creating duplicates:
+
+```text
+node_upsert(
+    kind="DcimDevice",
+    hfid=["spine-01"],
+    data={
+        "name": "spine-01",
+        "role": "spine",
+        "serial": "JPE12345",
+    },
+)
+```
+
+If a `DcimDevice` with `name=spine-01` already exists on the session branch, `node_upsert` updates it. If not, it's created. Either way, running the same command twice has the same effect.
+
+`node_upsert` accepts **scalar attributes only**. For relationships (assigning a device to a site, wiring interfaces to circuits), use `mutate_graphql` with a targeted mutation.
+
+## 3. Watch the session branch accumulate
+
+All writes in the session go to the auto-created `mcp/session-YYYYMMDD-<hex>` branch. The default branch stays clean. You can pause mid-import, read the branches resource, and confirm what's been written:
+
+```text
+resource: infrahub://branches
+```
+
+If the agent catches a mapping issue at row 200, it can course-correct — re-run the earlier writes with corrected data, and the HFID-keyed upserts deduplicate transparently.
+
+## 4. Batch size and rate limiting
+
+For a 500-device import, you'll want two operational controls:
+
+- `INFRAHUB_MCP_RATE_LIMIT_RPS=10` — cap agent throughput so it doesn't saturate Infrahub.
+- `INFRAHUB_MCP_RETRY_MAX_ATTEMPTS=3` and `INFRAHUB_MCP_RETRY_BASE_DELAY=1.0` — retry transient failures with exponential backoff.
+
+See the [Configuration reference](../references/configuration.mdx#rate-limiting) for the full list.
+
+## 5. Propose the change
+
+Once the session branch has the full import:
+
+```text
+propose_changes(
+    title="Brownfield import: 512 devices from legacy inventory",
+    description="Automated import of devices.csv exported 2026-04-17. See attached diff.",
+)
+```
+
+A senior engineer reviews the diff in Infrahub, runs any repository-defined checks, and merges. The default branch only changes once a human approves.
+
+## 6. Iterate
+
+The session branch remains active after `propose_changes`. If review turns up issues, the agent can:
+
+- Keep writing to the same branch — new changes show up in the same proposed change.
+- Or close the proposed change, start fresh on a new session, and redo the import.
+
+## Patterns worth keeping
+
+- **HFID-keyed upserts** are the cornerstone of brownfield work: they let you re-run imports without duplicates.
+- **Scalar vs. relationship writes**: `node_upsert` for scalars, `mutate_graphql` for relationships.
+- **One proposed change per logical batch**: one for devices, another for interfaces, another for cabling — reviewers can reason about each independently.
+- **Dry-run with `INFRAHUB_MCP_READ_ONLY=true` first**: have the agent generate the *plan* as text, not writes, so you can sanity-check the mapping before enabling writes.
+
+## Related reading
+
+- [Safe changes via branch isolation](./safe-changes-branch-isolation.mdx) — the branch-per-session model in depth.
+- [Make a change through an agent](../getting-started/make-a-change.mdx) — the same workflow for a single change.
+- [Methods reference — node_upsert](../references/methods.mdx) — full `node_upsert` contract.

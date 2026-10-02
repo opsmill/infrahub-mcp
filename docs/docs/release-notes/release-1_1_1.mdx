@@ -1,0 +1,101 @@
+---
+title: Release 1.1.1
+description: Run the MCP server as a shared service with pass-through authentication, read-only mode, and observability.
+---
+
+<table>
+  <tbody>
+    <tr>
+      <th>Release Number</th>
+      <td>1.1.1</td>
+    </tr>
+    <tr>
+      <th>Release Type</th>
+      <td>Feature</td>
+    </tr>
+    <tr>
+      <th>Release Date</th>
+      <td>May 4th, 2026</td>
+    </tr>
+    <tr>
+      <th>Tag</th>
+      <td>[v1.1.1](https://github.com/opsmill/infrahub-mcp/releases/tag/v1.1.1)</td>
+    </tr>
+  </tbody>
+</table>
+
+## Release summary
+
+Run the MCP server as a shared service instead of a local process while preserving individual identities, controlling write access, and monitoring server health through dedicated operational endpoints. This makes it practical to deploy a single MCP server for an organization instead of asking each person to install and run their own.
+
+### Access Infrahub using individual identities
+
+Authentication can now be passed through to Infrahub so permissions and audit history remain associated with the person making the request instead of a shared service account.
+
+**What changed**
+
+* Configure authentication using `none`, `oidc`, `token-passthrough`, or `basic-passthrough`.
+* Pass user tokens through `INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER` when using token-based authentication.
+* Pass Infrahub credentials through HTTP basic authentication.
+* Apply passthrough authentication to HTTP transports.
+* Reject unauthenticated requests in passthrough and OIDC modes.
+
+### Share Infrahub data without enabling writes
+
+Infrahub data can now be exposed in read-only mode, making it possible to investigate, report on, and correlate data across systems without changing state.
+
+**What changed**
+
+* Remove write-tagged tools by setting `INFRAHUB_MCP_READ_ONLY=true`.
+* Block GraphQL mutations when read-only mode is enabled.
+
+### Monitor the MCP server like any other service
+
+Health endpoints, metrics, and middleware are now available so the MCP server can be operated and observed like any other service.
+
+**What changed**
+
+* Collect request IDs, Prometheus metrics, OpenTelemetry traces, structured logs, retries, response caching, and rate limiting through middleware.
+* Access `/health` for readiness checks.
+* Access `/metrics` for Prometheus or JSON-based monitoring.
+* Record audit logs for write operations.
+
+## Upgrade notes
+
+### Configure authentication before exposing the server over HTTP
+
+If multiple people use a shared deployment, configure `INFRAHUB_MCP_AUTH_MODE` along with token passthrough or OIDC settings before exposing the server.
+
+`stdio` deployments continue to use environment variable credentials.
+
+## Minor changes
+
+### Documentation
+
+* Upgraded the documentation build to Docusaurus 3.10.0.
+
+### Release pipeline
+
+* Added automated, categorized release drafts.
+
+### Security
+
+* Updated dependencies, including `cryptography`, `authlib`, and `python-multipart`.
+
+## Full changelog
+
+### Added
+
+* Production middleware stack: authentication, rate limiting, observability, read-only mode, and `/health` and `/metrics` endpoints ([#62](https://github.com/opsmill/infrahub-mcp/pull/62)).
+
+### Changed
+
+* Documentation upgraded to Docusaurus 3.10.0 ([#65](https://github.com/opsmill/infrahub-mcp/pull/65)).
+
+### Fixed
+
+* Removed a broken release-drafter workflow ([#69](https://github.com/opsmill/infrahub-mcp/pull/69)).
+
+## Notes
+
+* `v1.1.0` was prepared internally but never published; this work ships in `v1.1.1`.

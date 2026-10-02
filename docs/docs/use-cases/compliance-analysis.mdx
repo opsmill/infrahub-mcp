@@ -1,0 +1,109 @@
+---
+title: Compliance analysis
+---
+
+Agents are a natural fit for ad-hoc compliance questions: "do all edge routers have dual uplinks to different spines?", "are all production VLANs documented?", "which devices are missing an owner?". This recipe shows how to run those checks as read-only agent workflows against Infrahub.
+
+## Scenario
+
+A network architect asks:
+
+> Every device tagged `role=edge` must have at least two uplink interfaces, and those uplinks must connect to different spine devices. Find any violations.
+
+## Recommended setup
+
+Compliance checks are read-only by definition. Run the MCP server with writes disabled so no accidental mutation slips through:
+
+```bash
+export INFRAHUB_MCP_READ_ONLY=true
+```
+
+Under read-only mode, the write tools (`node_upsert`, `node_delete`, `propose_changes`, `mutate_graphql`) are hidden from discovery and rejected if hard-coded — the agent literally cannot write.
+
+If you want compliance checks to run as a specific identity (for audit logs), also enable [OIDC](../references/authentication.mdx#oidc--identity--scopes-via-external-idp) and give the compliance user read-only scopes.
+
+## The flow
+
+### 1. Enumerate the population
+
+```graphql
+query EdgeDevices {
+  DcimDevice(role__value: "edge") {
+    count
+    edges {
+      node {
+        name { value }
+        id
+      }
+    }
+  }
+}
+```
+
+`query_graphql` returns the full list. For very large populations, iterate in batches via `get_nodes(kind=..., limit=N)`.
+
+### 2. For each device, walk its uplinks
+
+The agent could make one GraphQL call that returns everything (uplinks + remote device per uplink) and then analyze client-side:
+
+```graphql
+query EdgeUplinks {
+  DcimDevice(role__value: "edge") {
+    edges {
+      node {
+        name { value }
+        interfaces(role__value: "uplink") {
+          edges {
+            node {
+              name { value }
+              connected_endpoint {
+                node {
+                  device {
+                    node {
+                      name { value }
+                      role { value }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### 3. Score each device against the rule
+
+Per device:
+
+- Count interfaces with `role=uplink` → must be ≥ 2.
+- Map each uplink to its remote device → the set must have ≥ 2 distinct spines.
+
+A violation is any device that fails either condition. The agent returns a structured report:
+
+| Device | Uplinks | Unique remote spines | Status |
+| --- | --- | --- | --- |
+| edge-01 | 2 | 2 | pass |
+| edge-02 | 1 | 1 | **fail: single uplink** |
+| edge-03 | 2 | 1 | **fail: both uplinks to same spine** |
+
+### 4. Persist the report (optional)
+
+The agent can write the report to a file, post it to Slack, or attach it to a GitHub issue — whatever tools it already has. The Infrahub MCP server stays strictly read-only; remediation happens through a separate human-driven workflow.
+
+## Tips for compliance agents
+
+- **Cache read-only resources**: enable `INFRAHUB_MCP_CACHE_ENABLED=true` to cut schema-lookup chatter.
+- **Use GraphQL fragments**: when the same check runs repeatedly, define the query once and parameterize it.
+- **Run on a frozen branch**: pass `branch="compliance-snapshot-2026-04-17"` to make the check reproducible even as the default branch drifts.
+- **Rate-limit in production**: set `INFRAHUB_MCP_RATE_LIMIT_RPS` to cap the load an agent can put on Infrahub.
+- **Keep a spot-check human loop**: have the agent post its findings for a human reviewer before filing tickets or opening PRs.
+
+## Related reading
+
+- [Natural-language to GraphQL](./natural-language-graphql.mdx) — for writing the underlying queries.
+- [Safe changes via branch isolation](./safe-changes-branch-isolation.mdx) — if your compliance flow needs to *fix* violations.
+- [Configuration reference — Observability](../references/configuration.mdx#observability) — scrape metrics into Grafana for compliance dashboards.

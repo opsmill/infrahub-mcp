@@ -1,0 +1,609 @@
+"""Tests for server configuration loading."""
+
+from __future__ import annotations
+
+import os
+from typing import TYPE_CHECKING
+from unittest.mock import patch
+
+import pytest
+from pydantic import ValidationError
+
+from infrahub_mcp.config import ServerConfig, _prime_env_from_dotenv, load_config
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+class TestServerConfig:
+    def test_defaults(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            config = ServerConfig()
+        assert config.read_only is False
+        assert config.branch_pattern == "mcp/session-{date}-{hex}"
+        assert config.max_branch_retries == 5
+        assert config.log_level_debug is False
+        assert config.rate_limit_rps == pytest.approx(0.0)
+        assert config.rate_limit_burst == 0
+        assert config.retry_max_attempts == 0
+        assert config.retry_base_delay == pytest.approx(1.0)
+        assert config.cache_enabled is False
+        assert config.cache_list_ttl == 300
+        assert config.cache_read_ttl == 3600
+        assert config.otel_enabled is False
+        assert config.prometheus_enabled is False
+        assert config.dereference_schemas is False
+        assert config.schema_expand_peers is True
+        assert config.ping_interval_ms == 0
+        assert config.auth_scopes_write == "write"
+        assert config.auth_mode == "none"
+        assert not config.oidc_config_url
+        assert not config.oidc_client_id
+        assert not config.oidc_client_secret
+        assert not config.oidc_base_url
+        assert not config.oidc_audience
+        assert config.oidc_user_claim == "email"
+        assert config.token_passthrough_header == "Authorization"  # noqa: S105
+
+    def test_frozen(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            config = ServerConfig()
+        with pytest.raises(ValidationError):
+            config.read_only = True  # type: ignore[misc]
+
+
+class TestLoadConfig:  # noqa: PLR0904
+    def test_defaults_no_env(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            config = load_config()
+        assert config.read_only is False
+        assert config.branch_pattern == "mcp/session-{date}-{hex}"
+        assert config.max_branch_retries == 5
+        assert config.log_level_debug is False
+
+    def test_read_only_true(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_READ_ONLY": "true"}, clear=True):
+            config = load_config()
+        assert config.read_only is True
+
+    def test_read_only_yes(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_READ_ONLY": "YES"}, clear=True):
+            config = load_config()
+        assert config.read_only is True
+
+    def test_read_only_one(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_READ_ONLY": "1"}, clear=True):
+            config = load_config()
+        assert config.read_only is True
+
+    def test_read_only_false(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_READ_ONLY": "false"}, clear=True):
+            config = load_config()
+        assert config.read_only is False
+
+    def test_schema_expand_peers_default(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            config = load_config()
+        assert config.schema_expand_peers is True
+
+    def test_schema_expand_peers_false(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_SCHEMA_EXPAND_PEERS": "false"}, clear=True):
+            config = load_config()
+        assert config.schema_expand_peers is False
+
+    def test_schema_expand_peers_zero(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_SCHEMA_EXPAND_PEERS": "0"}, clear=True):
+            config = load_config()
+        assert config.schema_expand_peers is False
+
+    def test_schema_expand_peers_yes(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_SCHEMA_EXPAND_PEERS": "YES"}, clear=True):
+            config = load_config()
+        assert config.schema_expand_peers is True
+
+    def test_branch_pattern_custom(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_BRANCH_PATTERN": "mcp/{user}-{date}"}, clear=True):
+            config = load_config()
+        assert config.branch_pattern == "mcp/{user}-{date}"
+
+    def test_branch_pattern_fixed(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_BRANCH_PATTERN": "staging"}, clear=True):
+            config = load_config()
+        assert config.branch_pattern == "staging"
+
+    def test_max_branch_retries_custom(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_MAX_BRANCH_RETRIES": "10"}, clear=True):
+            config = load_config()
+        assert config.max_branch_retries == 10
+
+    def test_max_branch_retries_invalid_string(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_MAX_BRANCH_RETRIES": "abc"}, clear=True):
+            with pytest.raises(ValidationError, match="valid integer"):
+                load_config()
+
+    def test_max_branch_retries_too_low(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_MAX_BRANCH_RETRIES": "0"}, clear=True):
+            with pytest.raises(ValidationError, match="greater than or equal to 1"):
+                load_config()
+
+    def test_max_branch_retries_too_high(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_MAX_BRANCH_RETRIES": "100"}, clear=True):
+            with pytest.raises(ValidationError, match="less than or equal to 20"):
+                load_config()
+
+    def test_log_level_debug(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_LOG_LEVEL": "debug"}, clear=True):
+            config = load_config()
+        assert config.log_level_debug is True
+
+    def test_log_level_default(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_LOG_LEVEL": "info"}, clear=True):
+            config = load_config()
+        assert config.log_level_debug is False
+
+    def test_log_level_invalid(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_LOG_LEVEL": "verbose"}, clear=True):
+            with pytest.raises(ValidationError, match="INFRAHUB_MCP_LOG_LEVEL must be one of"):
+                load_config()
+
+    # --- Rate limiting ---
+
+    def test_rate_limit_rps(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_RATE_LIMIT_RPS": "50"}, clear=True):
+            config = load_config()
+        assert config.rate_limit_rps == pytest.approx(50.0)
+
+    def test_rate_limit_rps_invalid(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_RATE_LIMIT_RPS": "abc"}, clear=True):
+            with pytest.raises(ValidationError, match="valid number"):
+                load_config()
+
+    def test_rate_limit_rps_negative(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_RATE_LIMIT_RPS": "-1"}, clear=True):
+            with pytest.raises(ValidationError, match="greater than or equal to 0"):
+                load_config()
+
+    def test_rate_limit_burst(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_RATE_LIMIT_BURST": "100"}, clear=True):
+            config = load_config()
+        assert config.rate_limit_burst == 100
+
+    def test_rate_limit_burst_negative(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_RATE_LIMIT_BURST": "-5"}, clear=True):
+            with pytest.raises(ValidationError, match="greater than or equal to 0"):
+                load_config()
+
+    # --- Retry ---
+
+    def test_retry_max_attempts(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_RETRY_MAX_ATTEMPTS": "3"}, clear=True):
+            config = load_config()
+        assert config.retry_max_attempts == 3
+
+    def test_retry_max_attempts_negative(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_RETRY_MAX_ATTEMPTS": "-1"}, clear=True):
+            with pytest.raises(ValidationError, match="greater than or equal to 0"):
+                load_config()
+
+    def test_retry_base_delay(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_RETRY_BASE_DELAY": "0.5"}, clear=True):
+            config = load_config()
+        assert config.retry_base_delay == pytest.approx(0.5)
+
+    def test_retry_base_delay_zero(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_RETRY_BASE_DELAY": "0"}, clear=True):
+            with pytest.raises(ValidationError, match="greater than 0"):
+                load_config()
+
+    # --- Cache ---
+
+    def test_cache_enabled(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_CACHE_ENABLED": "true"}, clear=True):
+            config = load_config()
+        assert config.cache_enabled is True
+
+    def test_cache_ttls(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"INFRAHUB_MCP_CACHE_LIST_TTL": "60", "INFRAHUB_MCP_CACHE_READ_TTL": "120"},
+            clear=True,
+        ):
+            config = load_config()
+        assert config.cache_list_ttl == 60
+        assert config.cache_read_ttl == 120
+
+    # --- Observability ---
+
+    def test_otel_enabled(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_OTEL_ENABLED": "true"}, clear=True):
+            config = load_config()
+        assert config.otel_enabled is True
+
+    def test_prometheus_enabled(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_PROMETHEUS_ENABLED": "true"}, clear=True):
+            config = load_config()
+        assert config.prometheus_enabled is True
+
+    # --- Schema dereference ---
+
+    def test_dereference_schemas(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_DEREFERENCE_SCHEMAS": "1"}, clear=True):
+            config = load_config()
+        assert config.dereference_schemas is True
+
+    # --- Ping ---
+
+    def test_ping_interval(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_PING_INTERVAL_MS": "5000"}, clear=True):
+            config = load_config()
+        assert config.ping_interval_ms == 5000
+
+    def test_ping_interval_too_high(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_PING_INTERVAL_MS": "999999"}, clear=True):
+            with pytest.raises(ValidationError, match="less than or equal to 300000"):
+                load_config()
+
+    def test_ping_interval_negative(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_PING_INTERVAL_MS": "-1"}, clear=True):
+            with pytest.raises(ValidationError, match="greater than or equal to 0"):
+                load_config()
+
+    # --- Auth ---
+
+    def test_auth_scopes_write(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_AUTH_SCOPES_WRITE": "write,admin"}, clear=True):
+            config = load_config()
+        assert config.auth_scopes_write == "write,admin"
+
+    # --- Full config ---
+
+    def test_all_env_vars(self) -> None:
+        env = {
+            "INFRAHUB_MCP_READ_ONLY": "true",
+            "INFRAHUB_MCP_BRANCH_PATTERN": "test/{hex}",
+            "INFRAHUB_MCP_MAX_BRANCH_RETRIES": "3",
+            "INFRAHUB_MCP_LOG_LEVEL": "debug",
+            "INFRAHUB_MCP_RATE_LIMIT_RPS": "10",
+            "INFRAHUB_MCP_RATE_LIMIT_BURST": "20",
+            "INFRAHUB_MCP_RETRY_MAX_ATTEMPTS": "3",
+            "INFRAHUB_MCP_RETRY_BASE_DELAY": "0.5",
+            "INFRAHUB_MCP_CACHE_ENABLED": "true",
+            "INFRAHUB_MCP_CACHE_LIST_TTL": "60",
+            "INFRAHUB_MCP_CACHE_READ_TTL": "120",
+            "INFRAHUB_MCP_OTEL_ENABLED": "true",
+            "INFRAHUB_MCP_PROMETHEUS_ENABLED": "true",
+            "INFRAHUB_MCP_DEREFERENCE_SCHEMAS": "true",
+            "INFRAHUB_MCP_PING_INTERVAL_MS": "5000",
+            "INFRAHUB_MCP_AUTH_SCOPES_WRITE": "write",
+            "INFRAHUB_MCP_AUTH_MODE": "oidc",
+            "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://idp.example.com/.well-known/openid-configuration",
+            "INFRAHUB_MCP_OIDC_CLIENT_ID": "my-client",
+            "INFRAHUB_MCP_OIDC_CLIENT_SECRET": "s3cret",
+            "INFRAHUB_MCP_OIDC_BASE_URL": "https://mcp.example.com",
+            "INFRAHUB_MCP_OIDC_AUDIENCE": "infrahub",
+            "INFRAHUB_MCP_OIDC_USER_CLAIM": "sub",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = load_config()
+
+        assert config.read_only is True
+        assert config.branch_pattern == "test/{hex}"
+        assert config.max_branch_retries == 3
+        assert config.log_level_debug is True
+        assert config.rate_limit_rps == pytest.approx(10.0)
+        assert config.rate_limit_burst == 20
+        assert config.retry_max_attempts == 3
+        assert config.retry_base_delay == pytest.approx(0.5)
+        assert config.cache_enabled is True
+        assert config.cache_list_ttl == 60
+        assert config.cache_read_ttl == 120
+        assert config.otel_enabled is True
+        assert config.prometheus_enabled is True
+        assert config.dereference_schemas is True
+        assert config.ping_interval_ms == 5000
+        assert config.auth_scopes_write == "write"
+        assert config.auth_mode == "oidc"
+        assert config.oidc_config_url == "https://idp.example.com/.well-known/openid-configuration"
+        assert config.oidc_client_id == "my-client"
+        assert config.oidc_client_secret == "s3cret"  # noqa: S105
+        assert config.oidc_base_url == "https://mcp.example.com"
+        assert config.oidc_audience == "infrahub"
+        assert config.oidc_user_claim == "sub"
+
+
+class TestAuthModeConfig:
+    def test_auth_mode_default_none(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            config = load_config()
+        assert config.auth_mode == "none"
+
+    def test_auth_mode_none_explicit(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_AUTH_MODE": "none"}, clear=True):
+            config = load_config()
+        assert config.auth_mode == "none"
+
+    def test_auth_mode_oidc_valid(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "oidc",
+            "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://accounts.google.com/.well-known/openid-configuration",
+            "INFRAHUB_MCP_OIDC_CLIENT_ID": "my-client-id",
+            "INFRAHUB_MCP_OIDC_BASE_URL": "https://mcp.example.com",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = load_config()
+        assert config.auth_mode == "oidc"
+        assert config.oidc_config_url == "https://accounts.google.com/.well-known/openid-configuration"
+        assert config.oidc_client_id == "my-client-id"
+        assert config.oidc_base_url == "https://mcp.example.com"
+
+    def test_auth_mode_oidc_case_insensitive(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "OIDC",
+            "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://example.com/.well-known/openid-configuration",
+            "INFRAHUB_MCP_OIDC_CLIENT_ID": "id",
+            "INFRAHUB_MCP_OIDC_BASE_URL": "https://mcp.example.com",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = load_config()
+        assert config.auth_mode == "oidc"
+
+    def test_auth_mode_invalid_value(self) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_AUTH_MODE": "saml"}, clear=True):
+            with pytest.raises(ValidationError, match="Input should be 'none', 'oidc'"):
+                load_config()
+
+    def test_auth_mode_oidc_missing_config_url(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "oidc",
+            "INFRAHUB_MCP_OIDC_CLIENT_ID": "id",
+            "INFRAHUB_MCP_OIDC_BASE_URL": "https://mcp.example.com",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            with pytest.raises(ValueError, match="INFRAHUB_MCP_OIDC_CONFIG_URL"):
+                load_config()
+
+    def test_auth_mode_oidc_missing_client_id(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "oidc",
+            "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://example.com/.well-known/openid-configuration",
+            "INFRAHUB_MCP_OIDC_BASE_URL": "https://mcp.example.com",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            with pytest.raises(ValueError, match="INFRAHUB_MCP_OIDC_CLIENT_ID"):
+                load_config()
+
+    def test_auth_mode_oidc_missing_base_url(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "oidc",
+            "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://example.com/.well-known/openid-configuration",
+            "INFRAHUB_MCP_OIDC_CLIENT_ID": "id",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            with pytest.raises(ValueError, match="INFRAHUB_MCP_OIDC_BASE_URL"):
+                load_config()
+
+    def test_auth_mode_oidc_optional_fields(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "oidc",
+            "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://example.com/.well-known/openid-configuration",
+            "INFRAHUB_MCP_OIDC_CLIENT_ID": "id",
+            "INFRAHUB_MCP_OIDC_BASE_URL": "https://mcp.example.com",
+            "INFRAHUB_MCP_OIDC_CLIENT_SECRET": "secret",
+            "INFRAHUB_MCP_OIDC_AUDIENCE": "my-audience",
+            "INFRAHUB_MCP_OIDC_USER_CLAIM": "preferred_username",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = load_config()
+        assert config.oidc_client_secret == "secret"  # noqa: S105
+        assert config.oidc_audience == "my-audience"
+        assert config.oidc_user_claim == "preferred_username"
+
+    def test_auth_mode_token_passthrough_valid(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "token-passthrough",
+            "INFRAHUB_ADDRESS": "http://localhost:8000",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = load_config()
+        assert config.auth_mode == "token-passthrough"
+
+    def test_auth_mode_token_passthrough_custom_header(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "token-passthrough",
+            "INFRAHUB_ADDRESS": "http://localhost:8000",
+            "INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER": "X-Infrahub-Token",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = load_config()
+        assert config.token_passthrough_header == "X-Infrahub-Token"  # noqa: S105
+
+    def test_auth_mode_token_passthrough_without_address_loads(self) -> None:
+        """Passthrough modes defer the INFRAHUB_ADDRESS check to request time."""
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "token-passthrough",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = load_config()
+        assert config.auth_mode == "token-passthrough"
+
+    def test_auth_mode_none_ignores_oidc_fields(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "none",
+            "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://example.com/.well-known/openid-configuration",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = load_config()
+        assert config.auth_mode == "none"
+        assert config.oidc_config_url == "https://example.com/.well-known/openid-configuration"
+
+
+class TestDotenv:
+    def test_populates_missing_var(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        (tmp_path / ".env").write_text("INFRAHUB_API_TOKEN=from-dotenv\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            _prime_env_from_dotenv()
+            assert os.environ["INFRAHUB_API_TOKEN"] == "from-dotenv"  # noqa: S105
+
+    def test_real_env_wins(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        (tmp_path / ".env").write_text("INFRAHUB_API_TOKEN=from-dotenv\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {"INFRAHUB_API_TOKEN": "from-env"}, clear=True):
+            _prime_env_from_dotenv()
+            assert os.environ["INFRAHUB_API_TOKEN"] == "from-env"  # noqa: S105
+
+    def test_real_env_wins_case_insensitively(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # ServerConfig uses case_sensitive=False, so a lowercase real env var must
+        # not be shadowed by an uppercase .env entry that resolves to the same key.
+        (tmp_path / ".env").write_text("INFRAHUB_API_TOKEN=from-dotenv\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {"infrahub_api_token": "from-env-lower"}, clear=True):
+            _prime_env_from_dotenv()
+            assert "INFRAHUB_API_TOKEN" not in os.environ
+            assert os.environ["infrahub_api_token"] == "from-env-lower"  # noqa: SIM112, S105
+
+    def test_custom_path_honored(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        custom = tmp_path / "secrets.env"
+        custom.write_text("INFRAHUB_API_TOKEN=from-custom\n")
+        monkeypatch.chdir(tmp_path)  # ensure no ./.env is picked up instead
+        with patch.dict(os.environ, {"INFRAHUB_MCP_ENV_FILE": str(custom)}, clear=True):
+            _prime_env_from_dotenv()
+            assert os.environ["INFRAHUB_API_TOKEN"] == "from-custom"  # noqa: S105
+
+    def test_missing_file_is_noop(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)  # empty dir, no .env
+        with patch.dict(os.environ, {}, clear=True):
+            _prime_env_from_dotenv()
+            assert "INFRAHUB_API_TOKEN" not in os.environ
+
+    def test_ignores_non_infrahub_keys(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # A foreign project .env must not inject unrelated vars (LOG_LEVEL, proxies, secrets).
+        (tmp_path / ".env").write_text("LOG_LEVEL=warn\nHTTPS_PROXY=http://x\nINFRAHUB_API_TOKEN=t\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            _prime_env_from_dotenv()
+            assert os.environ["INFRAHUB_API_TOKEN"] == "t"  # noqa: S105
+            assert "LOG_LEVEL" not in os.environ
+            assert "HTTPS_PROXY" not in os.environ
+
+    def test_ignores_sdk_transport_keys(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The SDK reads these from the environment too. A foreign project's .env must not be
+        # able to reroute credential-bearing traffic or disable certificate verification.
+        (tmp_path / ".env").write_text(
+            "INFRAHUB_PROXY=http://attacker:3128\n"
+            "INFRAHUB_PROXY_MOUNTS_HTTPS=http://attacker:3128\n"
+            "INFRAHUB_TLS_INSECURE=true\n"
+            "INFRAHUB_TLS_CA_FILE=/tmp/attacker.pem\n"
+            "INFRAHUB_DEFAULT_BRANCH=attacker\n"
+            "INFRAHUB_API_TOKEN=t\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            _prime_env_from_dotenv()
+            assert os.environ["INFRAHUB_API_TOKEN"] == "t"  # noqa: S105
+            for key in (
+                "INFRAHUB_PROXY",
+                "INFRAHUB_PROXY_MOUNTS_HTTPS",
+                "INFRAHUB_TLS_INSECURE",
+                "INFRAHUB_TLS_CA_FILE",
+                "INFRAHUB_DEFAULT_BRANCH",
+            ):
+                assert key not in os.environ
+
+    def test_lowercase_keys_normalized_to_uppercase(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The settings models are case-insensitive, but server.py and utils.py read
+        # os.environ by exact name — a lowercase .env key must still reach them.
+        (tmp_path / ".env").write_text("infrahub_address=http://infrahub\ninfrahub_api_token=from-dotenv\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            _prime_env_from_dotenv()
+            assert os.environ["INFRAHUB_ADDRESS"] == "http://infrahub"
+            assert os.environ["INFRAHUB_API_TOKEN"] == "from-dotenv"  # noqa: S105
+            assert "infrahub_api_token" not in os.environ
+
+    def test_values_are_not_interpolated(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Credentials are opaque strings: a "${...}" inside one must survive verbatim
+        # rather than being expanded away into a silently wrong secret.
+        (tmp_path / ".env").write_text("INFRAHUB_USERNAME=admin\nINFRAHUB_PASSWORD=pa${s}word\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            _prime_env_from_dotenv()
+            assert os.environ["INFRAHUB_PASSWORD"] == "pa${s}word"  # noqa: S105
+
+    def test_tilde_in_custom_path_expanded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # A .mcp.json "env" block performs no shell expansion, so "~" arrives literally.
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / "secrets.env").write_text("INFRAHUB_API_TOKEN=from-home\n")
+        monkeypatch.chdir(tmp_path)
+        env = {"INFRAHUB_MCP_ENV_FILE": "~/secrets.env", "HOME": str(home), "USERPROFILE": str(home)}
+        with patch.dict(os.environ, env, clear=True):
+            _prime_env_from_dotenv()
+            assert os.environ["INFRAHUB_API_TOKEN"] == "from-home"  # noqa: S105
+
+    def test_ignores_mcp_settings(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # INFRAHUB_MCP_* server settings are NOT sourced from .env: ServerConfig is built
+        # at import before priming, so loading them would set values that never take effect.
+        (tmp_path / ".env").write_text(
+            "INFRAHUB_MCP_READ_ONLY=true\nINFRAHUB_MCP_AUTH_MODE=token-passthrough\nINFRAHUB_API_TOKEN=t\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            _prime_env_from_dotenv()
+            assert os.environ["INFRAHUB_API_TOKEN"] == "t"  # noqa: S105
+            assert "INFRAHUB_MCP_READ_ONLY" not in os.environ
+            assert "INFRAHUB_MCP_AUTH_MODE" not in os.environ
+
+    def test_warns_about_ignored_mcp_settings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # Dropping INFRAHUB_MCP_READ_ONLY silently would leave the user believing
+        # write tools are disabled when they are not.
+        (tmp_path / ".env").write_text("INFRAHUB_MCP_READ_ONLY=true\nINFRAHUB_API_TOKEN=t\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True), caplog.at_level("WARNING"):
+            _prime_env_from_dotenv()
+        assert "INFRAHUB_MCP_READ_ONLY" in caplog.text
+
+    def test_case_variant_within_file_applies_once(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Case-variant duplicates in the file must not both land in the environment.
+        (tmp_path / ".env").write_text("INFRAHUB_API_TOKEN=first\ninfrahub_api_token=second\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            _prime_env_from_dotenv()
+            assert os.environ["INFRAHUB_API_TOKEN"] == "first"  # noqa: S105
+            assert "infrahub_api_token" not in os.environ
+
+    def test_empty_path_disables_loading(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        (tmp_path / ".env").write_text("INFRAHUB_API_TOKEN=from-dotenv\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {"INFRAHUB_MCP_ENV_FILE": ""}, clear=True):
+            _prime_env_from_dotenv()
+            assert "INFRAHUB_API_TOKEN" not in os.environ
+
+    def test_explicit_missing_path_warns(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        missing = str(tmp_path / "nope.env")
+        with patch.dict(os.environ, {"INFRAHUB_MCP_ENV_FILE": missing}, clear=True), caplog.at_level("WARNING"):
+            _prime_env_from_dotenv()
+        assert "INFRAHUB_API_TOKEN" not in os.environ
+        assert "nope.env" in caplog.text
+
+    def test_unreadable_file_is_noop(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # A non-UTF-8 .env must not crash startup.
+        (tmp_path / ".env").write_bytes(b"\xff\xfeINFRAHUB_API_TOKEN=x\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            _prime_env_from_dotenv()  # must not raise
+            assert "INFRAHUB_API_TOKEN" not in os.environ
+
+    def test_load_config_does_not_read_dotenv(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Priming happens at server startup, not in load_config(), so importing/loading
+        # config never reads a CWD .env or mutates the environment.
+        (tmp_path / ".env").write_text("INFRAHUB_API_TOKEN=from-dotenv\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            load_config()
+            assert "INFRAHUB_API_TOKEN" not in os.environ

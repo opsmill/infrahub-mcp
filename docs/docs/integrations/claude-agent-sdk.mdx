@@ -1,0 +1,111 @@
+---
+title: Claude Agent SDK
+---
+
+The [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview) is Anthropic's framework for building custom agents on top of the Claude API. It has native MCP support, so connecting to the Infrahub MCP server is a short wiring exercise.
+
+## Prerequisites
+
+- Python 3.13+ and an Anthropic API key.
+- The Infrahub MCP server running on HTTP (see [Docker Compose](../guides/docker-compose.mdx)).
+- `pip install claude-agent-sdk`.
+
+## Minimal read-only agent
+
+```python
+import anyio
+from claude_agent_sdk import (
+    ClaudeAgentOptions,
+    ClaudeSDKClient,
+    create_sdk_mcp_server,
+)
+
+
+async def main() -> None:
+    options = ClaudeAgentOptions(
+        mcp_servers={
+            "infrahub": {
+                "type": "http",
+                "url": "http://localhost:8001/mcp",
+                "headers": {
+                    # Token pass-through: each user forwards their own Infrahub token
+                    "Authorization": "Bearer your-infrahub-api-token",
+                },
+            },
+        },
+        system_prompt=(
+            "You are an infrastructure analyst with access to the Infrahub MCP server. "
+            "Always read infrahub://schema before guessing kind names. Prefer read-only "
+            "tools. For any mutation, call propose_changes at the end."
+        ),
+    )
+
+    async with ClaudeSDKClient(options=options) as client:
+        await client.query(
+            "List every schema kind whose name starts with Dcim, then use get_nodes "
+            "(limit 3) to sample three of them."
+        )
+        async for message in client.receive_response():
+            print(message)
+
+
+if __name__ == "__main__":
+    anyio.run(main)
+```
+
+The SDK discovers `tools/list`, `resources/list`, and `prompts/list` automatically and exposes them to Claude as structured tools.
+
+## Using the bundled `infrahub_agent` prompt
+
+Instead of writing a system prompt, fetch the server's own `infrahub_agent` prompt:
+
+```python
+async with ClaudeSDKClient(options=options) as client:
+    prompt = await client.get_prompt("mcp__infrahub__infrahub_agent")
+    await client.query(
+        f"{prompt}\n\nList the five most populated device roles.",
+    )
+```
+
+The prompt adapts to read-only mode at registration time — if `INFRAHUB_MCP_READ_ONLY=true` on the server, the prompt omits the write workflow entirely.
+
+## Multi-tenant: per-user tokens
+
+For a service that serves many users, rebuild `ClaudeAgentOptions` per request with the user's token:
+
+```python
+async def handle_user_request(user_token: str, question: str) -> str:
+    options = ClaudeAgentOptions(
+        mcp_servers={
+            "infrahub": {
+                "type": "http",
+                "url": "http://mcp.internal:8001/mcp",
+                "headers": {"Authorization": f"Bearer {user_token}"},
+            },
+        },
+        system_prompt="Answer using Infrahub MCP tools.",
+    )
+
+    async with ClaudeSDKClient(options=options) as client:
+        await client.query(question)
+        result_parts: list[str] = []
+        async for message in client.receive_response():
+            if hasattr(message, "content"):
+                result_parts.append(str(message.content))
+        return "\n".join(result_parts)
+```
+
+Set `INFRAHUB_MCP_AUTH_MODE=token-passthrough` on the server (see [Authentication setup](../getting-started/authentication.mdx#token-passthrough)).
+
+## Production considerations
+
+- **Write guardrails** — set `INFRAHUB_MCP_AUTH_SCOPES_WRITE=infrahub:write` under OIDC so users need an explicit scope to mutate Infrahub.
+- **Audit** — the SDK captures tool-call traces; the server logs every call with request IDs. Correlate both for forensics.
+- **Timeouts** — tune `INFRAHUB_TIMEOUT` for slow Infrahub installations so the agent gets a clear error instead of hanging.
+- **Caching** — enable `INFRAHUB_MCP_CACHE_ENABLED=true` to cache schema lookups; this is a big win for agents that iterate.
+
+## Related reading
+
+- [Safe changes via branch isolation](../use-cases/safe-changes-branch-isolation.mdx)
+- [Authentication setup](../getting-started/authentication.mdx)
+- [Methods reference](../references/methods.mdx)
