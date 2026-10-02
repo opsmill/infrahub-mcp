@@ -1,0 +1,21 @@
+.github/workflows/ci.yml
+  s_36e92389ef1ae2::t_ddc3f3209b12d8 6-9
+tests/unit/test_release_pipeline.py
+  s_36e92389ef1ae2::t_f8358a1b645b12 29-30,36-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1da51b77796efcf477c1a89f4c6376918509af7b",
+  "prompts": {},
+  "sessions": {
+    "s_36e92389ef1ae2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec212761-554e-4a62-98d3-5b4d144a03e5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
