@@ -26,8 +26,8 @@ NOTES_DIR = Path(__file__).resolve().parent.parent / "docs" / "docs" / "release-
 ADMONITION = re.compile(r"^:::(\w+)[ \t]*([^\n]*)\n((?:(?!:::)[^\n]*\n)*?):::[ \t]*$", re.MULTILINE)
 LEFTOVER_MARKER = re.compile(r"^:::", re.MULTILINE)
 # An inline code span is matched first and kept as written, so a link inside
-# backticks is never rewritten.
-RELATIVE_LINK = re.compile(r"(`+)[^\n]*?\1|(?<!!)\[([^\]]+)\]\((?!https?:|#|mailto:)[^)]+\)")
+# backticks is never rewritten. A span may wrap lines but not cross a blank one.
+RELATIVE_LINK = re.compile(r"(`+)(?:[^\n]|\n(?![ \t]*\n))*?\1|(?<!!)\[([^\]]+)\]\((?!https?:|#|mailto:)[^)]+\)")
 # Fenced code blocks are swapped for one-line placeholders before the rewrites
 # above run, then restored (carrying any ``> `` prefix an admonition added), so
 # a fence inside an admonition still converts with it. A fence may sit inside a

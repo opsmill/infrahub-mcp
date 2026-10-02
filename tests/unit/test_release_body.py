@@ -135,6 +135,13 @@ def test_inline_code_links_left_verbatim() -> None:
     assert body == "## h\n\nWrite `[x](./y)` or ``[a](../b)``, not cfg.\n"
 
 
+def test_wrapped_inline_code_links_left_verbatim() -> None:
+    body = release_body.render(
+        "## h\n\nWrite `see\n[x](./y)` here.\n\nA `stray tick\n\nthen [cfg](../cfg.mdx).\n", "9.9.9"
+    )
+    assert body == "## h\n\nWrite `see\n[x](./y)` here.\n\nA `stray tick\n\nthen cfg.\n"
+
+
 def test_nested_fences_left_verbatim() -> None:
     page = "## h\n\n- Step:\n\n    ```md\n    [cfg](../cfg.mdx)\n    ```\n\n> ```md\n> [cfg](../cfg.mdx)\n> ```\n"
     assert release_body.render(page, "9.9.9") == page
