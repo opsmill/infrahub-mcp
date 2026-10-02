@@ -174,7 +174,7 @@ Metrics exposed:
 - `infrahub_mcp_schema_cache_miss_total` — cold schema fetches (no cache entry existed)
 - `infrahub_mcp_schema_cache_hash_match_total` — `/api/schema/summary` confirmed cache currency past the skip-window (no full re-fetch needed)
 - `infrahub_mcp_schema_cache_hash_diff_total` — upstream schema hash differed; full re-fetch performed
-- `infrahub_mcp_schema_cache_revalidate_failure_total` — transient revalidation/re-fetch failure (cache served stale)
+- `infrahub_mcp_schema_cache_revalidate_failure_total` — transient revalidation/re-fetch failure. The stale entry is served unless the read fails closed (circuit broken, or a passthrough caller whose own credential check failed)
 - `infrahub_mcp_schema_cache_circuit_break_total` — schema cache entry newly marked unsafe (consecutive-failure or absolute-staleness threshold crossed). Counts breaker trips, not reads rejected while tripped
 
 Schema cache counters are aggregate (no per-branch labels) to avoid Prometheus cardinality blow-up from session-branch auto-creation. Per-branch detail appears in `WARN`/`ERROR` log lines for revalidation failures and circuit-break activations so operators can correlate metric movements with specific branches via log search.
