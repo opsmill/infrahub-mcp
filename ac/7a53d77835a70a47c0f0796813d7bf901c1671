@@ -1,0 +1,37 @@
+tests/unit/test_schema_expand.py
+  s_36e92389ef1ae2::t_31b6df0b428d5e 185-227
+src/infrahub_mcp/schema_cache.py
+  s_36e92389ef1ae2::t_ed27c72edaddf7 972-978
+  s_36e92389ef1ae2::t_5326e9c22ca984 923-925
+  s_36e92389ef1ae2::t_92b2e9602e881d 1654-1656,1659-1661,1665-1676
+  s_36e92389ef1ae2::t_31e487a3f3520c 944-946
+  s_36e92389ef1ae2::t_db4a38d5c6a517 1725
+  s_36e92389ef1ae2::t_1ab02efe649a95 1337-1339
+  s_36e92389ef1ae2::t_361e5ff577016a 126
+  s_36e92389ef1ae2::t_fc32cc26837631 1609-1616
+  s_36e92389ef1ae2::t_7ad8a4ca60e9f7 518-519,532,536-564
+  s_36e92389ef1ae2::t_8f5a1e10a86f77 565-566,1677-1678
+tests/unit/test_schema_cache.py
+  s_36e92389ef1ae2::t_932ae4c4376a9d 15
+  s_36e92389ef1ae2::t_1a9fcadd04a4ae 3849-4005
+src/infrahub_mcp/utils.py
+  s_36e92389ef1ae2::t_4259ced1fd5bdb 100-102
+src/infrahub_mcp/schema.py
+  s_36e92389ef1ae2::t_531a87da6b5a9a 111-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ac7a53d77835a70a47c0f0796813d7bf901c1671",
+  "prompts": {},
+  "sessions": {
+    "s_36e92389ef1ae2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec212761-554e-4a62-98d3-5b4d144a03e5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
