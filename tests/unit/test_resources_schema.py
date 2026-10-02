@@ -17,7 +17,7 @@ import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 from infrahub_sdk.exceptions import BranchNotFoundError
-from mcp import McpError
+from mcp import MCPError
 
 from infrahub_mcp.resources import schema as schema_resources
 
@@ -28,7 +28,7 @@ CATALOG_URI = "infrahub://schema"
 async def _read_error(uri: str) -> str:
     """Read *uri* through the in-memory client and return the error message the client receives."""
     async with Client(schema_resources.mcp) as client:
-        with pytest.raises(McpError) as excinfo:
+        with pytest.raises(MCPError) as excinfo:
             await client.read_resource(uri)
     return str(excinfo.value)
 
