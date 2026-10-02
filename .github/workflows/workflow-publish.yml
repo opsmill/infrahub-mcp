@@ -20,6 +20,11 @@ on:
         description: Whether to publish the package to Pypi
         required: false
         default: false
+      prerelease:
+        type: boolean
+        description: Whether the release is a pre-release (tags the image `preview` instead of `stable`)
+        required: false
+        default: false
   workflow_call:
     inputs:
       runs-on:
@@ -35,6 +40,11 @@ on:
       publish:
         type: boolean
         description: Whether to publish the package to Pypi
+        required: false
+        default: false
+      prerelease:
+        type: boolean
+        description: Whether the release is a pre-release (tags the image `preview` instead of `stable`)
         required: false
         default: false
 
@@ -87,6 +97,48 @@ jobs:
         id: ref
         run: echo "ref=${{ github.sha }}" >> "$GITHUB_OUTPUT"
 
+      # Same tagging scheme as opsmill/infrahub: every published release gets
+      # its version plus a `stable` or `preview` channel tag; full releases
+      # also get `vX.Y`. `latest` only moves when this version is GitHub's
+      # latest release, so a patch on an older line does not drag it back.
+      - name: Resolve channel tags
+        id: channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          PUBLISH: ${{ inputs.publish }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          CHANNEL=""
+          MAJOR_MINOR=""
+          IS_LATEST=false
+
+          if [ "${PUBLISH}" = "true" ]; then
+            if [ "${PRERELEASE}" = "true" ]; then
+              CHANNEL=preview
+            else
+              CHANNEL=stable
+              # v1.2.0 -> v1.2, 1.2.0 -> 1.2 (prefix kept as given); anything
+              # that is not a plain X.Y.Z gets none.
+              MAJOR_MINOR=$(printf '%s' "${VERSION}" | sed -nE 's/^(v?[0-9]+\.[0-9]+)\.[0-9]+$/\1/p')
+            fi
+
+            LATEST_TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null || true)
+            # Compare without a leading `v` so a manual `1.2.0` still matches
+            # the `v1.2.0` release; the image tags keep `VERSION` as given.
+            if [ -n "${LATEST_TAG}" ] && [ "${LATEST_TAG#v}" = "${VERSION#v}" ]; then
+              IS_LATEST=true
+            fi
+            echo "GitHub latest release: ${LATEST_TAG:-<none>}; publishing ${VERSION}; latest=${IS_LATEST}"
+          fi
+
+          {
+            echo "channel=${CHANNEL}"
+            echo "major_minor=${MAJOR_MINOR}"
+            echo "latest=${IS_LATEST}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Set docker image metadata
         id: meta
         uses: docker/metadata-action@v6
@@ -95,7 +147,10 @@ jobs:
             ${{ vars.HARBOR_HOST }}/${{ github.repository }}
           tags: |
             type=raw,value=${{ inputs.version }}
-            type=raw,value=latest,enable=${{ inputs.publish == true }}
+            type=raw,value=${{ steps.channel.outputs.major_minor }}
+            type=raw,value=${{ steps.channel.outputs.channel }}
+          flavor: |
+            latest=${{ steps.channel.outputs.latest }}
           labels: |
             org.opencontainers.image.source=${{ github.repository }}
             org.opencontainers.image.version=${{ inputs.version }}
