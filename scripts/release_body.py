@@ -25,13 +25,17 @@ NOTES_DIR = Path(__file__).resolve().parent.parent / "docs" / "docs" / "release-
 # ``:::``, so a marker never pairs with a closer past another admonition line.
 ADMONITION = re.compile(r"^:::(\w+)[ \t]*([^\n]*)\n((?:(?!:::)[^\n]*\n)*?):::[ \t]*$", re.MULTILINE)
 LEFTOVER_MARKER = re.compile(r"^:::", re.MULTILINE)
-RELATIVE_LINK = re.compile(r"(?<!!)\[([^\]]+)\]\((?!https?:|#|mailto:)[^)]+\)")
+# An inline code span is matched first and kept as written, so a link inside
+# backticks is never rewritten.
+RELATIVE_LINK = re.compile(r"(`+)[^\n]*?\1|(?<!!)\[([^\]]+)\]\((?!https?:|#|mailto:)[^)]+\)")
 # Fenced code blocks are swapped for one-line placeholders before the rewrites
 # above run, then restored (carrying any ``> `` prefix an admonition added), so
-# a fence inside an admonition still converts with it. An opener's closer is a
-# run of the same character at least as long; an unterminated fence runs to the
-# end of the body.
-FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+# a fence inside an admonition still converts with it. A fence may sit inside a
+# blockquote or be indented under a list item. An opener's closer is a run of
+# the same character at least as long; an unterminated fence runs to the end of
+# the body.
+FENCE_PREFIX = r"[ \t]*(?:>[ \t]*)*"
+FENCE_OPEN = re.compile(rf"^{FENCE_PREFIX}(`{{3,}}|~{{3,}})")
 PLACEHOLDER = re.compile(r"^(.*)\x00(\d+)\x00$", re.MULTILINE)
 
 
@@ -65,7 +69,7 @@ def _protect_fences(body: str) -> tuple[str, list[list[str]]]:
             i += 1
             continue
         fence = opener.group(1)
-        closer = re.compile(rf"^ {{0,3}}{re.escape(fence[0])}{{{len(fence)},}}[ \t]*$")
+        closer = re.compile(rf"^{FENCE_PREFIX}{re.escape(fence[0])}{{{len(fence)},}}[ \t]*$")
         end = i + 1
         while end < len(lines) and not closer.match(lines[end]):
             end += 1
@@ -96,7 +100,7 @@ def render(mdx: str, version: str, previous_tag: str | None = None) -> str:
         line = body[leftover.start() :].split("\n", 1)[0]
         message = f"unterminated or malformed admonition: {line!r}"
         raise ValueError(message)
-    body = RELATIVE_LINK.sub(r"\1", body)
+    body = RELATIVE_LINK.sub(lambda m: m.group(2) if m.group(2) is not None else m.group(0), body)
     body = _restore_fences(body, fences)
     body = body.rstrip() + "\n"
     if previous_tag:

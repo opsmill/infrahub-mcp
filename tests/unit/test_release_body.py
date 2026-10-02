@@ -1,6 +1,7 @@
 """Tests for converting a release-notes page into a GitHub Release body."""
 
 import importlib.util
+import re
 from pathlib import Path
 
 import pytest
@@ -129,13 +130,26 @@ def test_admonition_containing_fence_converts() -> None:
     assert body == "## h\n\n> **Example**\n>\n> Run:\n>\n> ```text\n> :::\n>\n> value\n> ```\n"
 
 
+def test_inline_code_links_left_verbatim() -> None:
+    body = release_body.render("## h\n\nWrite `[x](./y)` or ``[a](../b)``, not [cfg](../cfg.mdx).\n", "9.9.9")
+    assert body == "## h\n\nWrite `[x](./y)` or ``[a](../b)``, not cfg.\n"
+
+
+def test_nested_fences_left_verbatim() -> None:
+    page = "## h\n\n- Step:\n\n    ```md\n    [cfg](../cfg.mdx)\n    ```\n\n> ```md\n> [cfg](../cfg.mdx)\n> ```\n"
+    assert release_body.render(page, "9.9.9") == page
+
+
 def test_every_published_page_renders() -> None:
     pages = sorted(release_body.NOTES_DIR.glob("release-*.mdx"))
     assert pages
     for page in pages:
         body = release_body.render(page.read_text(), "0.0.0")
-        assert ":::" not in body, page.name
-        assert "](../" not in body, page.name
+        # Code samples are copied verbatim, so only prose outside them must be free of markup.
+        prose, _ = release_body._protect_fences(body)  # noqa: SLF001
+        prose = re.sub(r"(`+)[^\n]*?\1", "", prose)
+        assert ":::" not in prose, page.name
+        assert "](../" not in prose, page.name
 
 
 def test_notes_path_maps_version_to_page_name() -> None:
