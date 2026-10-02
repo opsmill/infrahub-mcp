@@ -12,6 +12,7 @@ types a non-200. The file-level ``ruff: noqa: SLF001`` is therefore intentional.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, NoReturn
 from unittest.mock import DEFAULT, AsyncMock, MagicMock, patch
 from urllib.parse import urlencode
@@ -3845,3 +3846,160 @@ class TestCatalogIncludesGenerics:
         assert "InfraDevice" in catalog
         kind_obj = await get_cached_kind(mock_ctx, kind="CoreNode")
         assert kind_obj is schema.nodes["CoreNode"]
+
+
+# ---------------------------------------------------------------------------
+# Entry removal and the lock-free validation path
+# ---------------------------------------------------------------------------
+
+
+def _summary_answers(status_code: int = 200, *, main_hash: str = "H1") -> Callable[[MagicMock], None]:
+    """``configure`` hook for :func:`_patch_fresh_client_per_call`: ``/summary`` answers *status_code*."""
+
+    def configure(client: MagicMock) -> None:
+        if status_code == httpx.codes.OK:
+            client._get.return_value = _make_response(json_body={"main": main_hash})
+        else:
+            client._get.return_value = _make_response(status_code=status_code)
+
+    return configure
+
+
+class TestEntryRemoval:
+    """Every removal path tolerates a concurrent one and leaves nothing behind.
+
+    :func:`_validate_caller_outside_lock` removes a branch-gone entry without
+    the branch lock, so a lock holder probing the same branch can find the
+    entry already gone; and in the shared-client modes the lifespan client's
+    SDK cache holds a reference to every branch schema served.
+    """
+
+    @pytest.mark.anyio
+    async def test_branch_gone_under_the_lock_tolerates_an_entry_already_removed(
+        self,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        entry = _past_window_entry(_make_branch_schema(schema_hash="H1"), now=schema_cache._now())
+        # Not stored: the lock-free path removed it while this probe was in flight.
+        mock_client._get.return_value = _make_response(status_code=httpx.codes.BAD_REQUEST)
+
+        with pytest.raises(BranchNotFoundError):
+            await schema_cache._revalidate_under_lock(app_ctx=app_ctx, client=mock_client, entry=entry, metrics=None)
+
+        assert "main" not in app_ctx.schema_cache
+
+    @pytest.mark.anyio
+    async def test_branch_deleted_between_probe_and_refetch_is_branch_not_found(
+        self,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        """The refetch's 400 is the probe's branch-gone answer one call late, not a transient failure."""
+        entry = _past_window_entry(_make_branch_schema(schema_hash="H1"), now=schema_cache._now())
+        app_ctx.schema_cache["main"] = entry
+        mock_client._get.return_value = _make_response(json_body={"main": "H2"})
+        mock_client.schema._fetch.side_effect = BranchNotFoundError(identifier="main")
+
+        with pytest.raises(BranchNotFoundError):
+            await schema_cache._revalidate_under_lock(app_ctx=app_ctx, client=mock_client, entry=entry, metrics=None)
+
+        assert "main" not in app_ctx.schema_cache
+
+    @pytest.mark.anyio
+    async def test_lock_free_branch_gone_drops_the_unheld_lock(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        ctx, app_ctx = _ctx_for_auth_mode("token-passthrough")
+        app_ctx.schema_cache["main"] = _within_window_entry(
+            _make_branch_schema(schema_hash="H1"), now=schema_cache._now()
+        )
+        # Kept since the entry's last revalidation; nobody holds or waits on it now.
+        app_ctx._schema_cache_locks["main"] = asyncio.Lock()
+        _patch_fresh_client_per_call(monkeypatch, configure=_summary_answers(httpx.codes.BAD_REQUEST))
+
+        with pytest.raises(BranchNotFoundError):
+            await get_cached_branch_schema(ctx)
+
+        assert "main" not in app_ctx.schema_cache
+        assert "main" not in app_ctx._schema_cache_locks
+
+    @pytest.mark.anyio
+    async def test_eviction_releases_the_lifespan_clients_copy(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``schema_cache_max_branches`` bounds memory only if the shared client lets go too."""
+        lifespan = _make_client()
+        lifespan.schema._fetch.side_effect = lambda branch: _make_branch_schema(schema_hash=f"H-{branch}")
+        app_ctx = AppContext(client=lifespan, config=_make_config(schema_cache_max_branches=1), default_branch="main")
+        ctx = MagicMock()
+        ctx.request_context = MagicMock()
+        ctx.request_context.lifespan_context = app_ctx
+        monkeypatch.setattr(mcp_utils, "get_client", lambda _ctx: lifespan)
+
+        await get_cached_branch_schema(ctx, branch="session-1")
+        await get_cached_branch_schema(ctx, branch="session-2")
+
+        assert list(app_ctx.schema_cache) == ["session-2"]
+        assert "session-1" not in lifespan.schema.cache
+        assert "session-2" in lifespan.schema.cache
+
+
+class TestSdlFillAgainstALockFreeRefresh:
+    """A hash-match refresh stored outside the lock must not discard a concurrent SDL fill."""
+
+    @staticmethod
+    def _sdl_less_entry(schema: MagicMock) -> CachedSchemaEntry:
+        now = schema_cache._now()
+        return CachedSchemaEntry(
+            branch="main",
+            schema=schema,
+            schema_hash="H1",
+            graphql_sdl=None,
+            fetched_at_monotonic=now,
+            last_attempt_monotonic=now,
+        )
+
+    @pytest.mark.anyio
+    async def test_fill_lands_on_the_refreshed_copy_of_the_same_snapshot(
+        self,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        entry = self._sdl_less_entry(_make_branch_schema(schema_hash="H1"))
+        app_ctx.schema_cache["main"] = entry
+
+        async def sdl_get(url: str, **_: Any) -> MagicMock:  # noqa: RUF029  # async signature required by production contract
+            del url
+            app_ctx.schema_cache["main"] = replace(entry, fetched_at_monotonic=entry.fetched_at_monotonic + 1)
+            return _make_response(text="fresh-sdl")
+
+        mock_client.sdl_get.side_effect = sdl_get
+
+        sdl = await schema_cache._fill_graphql_sdl(app_ctx=app_ctx, client=mock_client, branch="main")
+
+        assert sdl == "fresh-sdl"
+        assert app_ctx.schema_cache["main"].graphql_sdl == "fresh-sdl"
+
+    @pytest.mark.anyio
+    async def test_fill_is_not_paired_with_a_replaced_snapshot(
+        self,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        entry = self._sdl_less_entry(_make_branch_schema(schema_hash="H1"))
+        app_ctx.schema_cache["main"] = entry
+        replaced = replace(entry, schema=_make_branch_schema(schema_hash="H2"), schema_hash="H2")
+
+        async def sdl_get(url: str, **_: Any) -> MagicMock:  # noqa: RUF029  # async signature required by production contract
+            del url
+            app_ctx.schema_cache["main"] = replaced
+            return _make_response(text="old-sdl")
+
+        mock_client.sdl_get.side_effect = sdl_get
+
+        await schema_cache._fill_graphql_sdl(app_ctx=app_ctx, client=mock_client, branch="main")
+
+        assert app_ctx.schema_cache["main"] is replaced

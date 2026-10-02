@@ -108,6 +108,10 @@ async def get_schema_detail(
     schema = branch_nodes.get(kind)
     if schema is None:
         schema = await get_cached_kind(ctx, kind=kind, branch=branch, client=client)
+        # The forced revalidation behind that read may have replaced the entry,
+        # and a kind added upstream rarely arrives alone: resolve the peers from
+        # the snapshot the kind came from, not the one read above.
+        branch_nodes = (await get_cached_branch_schema(ctx, branch=branch, client=client)).nodes
 
     filter_list: list[dict[str, str]] = [
         {

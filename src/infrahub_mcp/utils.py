@@ -97,8 +97,9 @@ class AppContext:  # pylint: disable=too-many-instance-attributes  # context agg
     or waits on it, so two readers of a branch never end up on two locks and
     fetch it twice, and while the branch has an entry, for that entry's
     revalidations. That last rule leaves a lock behind when an entry is
-    removed with nobody on the lock, so LRU eviction drops the evicted
-    branch's lock itself (it only ever evicts unheld branches). The map is
+    removed with nobody on the lock, so every removal — LRU eviction or a
+    branch-gone probe, through ``schema_cache._drop_entry`` — drops the
+    branch's lock itself when nobody holds or waits on it. The map is
     therefore bounded by the branches in the cache plus those with a read in
     flight, not by every branch name — caller input — ever asked for.
     """

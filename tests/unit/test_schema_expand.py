@@ -182,6 +182,49 @@ async def test_kind_detail_with_peers_resolves_one_client_and_threads_it() -> No
     assert branch_read.await_args_list[0].kwargs["client"] is get_client.return_value
 
 
+async def test_kind_found_by_forced_revalidation_reads_peers_from_its_snapshot() -> None:
+    """A kind absent from the first branch read resolves its peers from the snapshot it came from.
+
+    The forced revalidation behind ``get_cached_kind`` can replace the cache
+    entry, and a kind added upstream usually lands with changes to its peers.
+    Peers resolved from the branch schema read *before* that revalidation
+    would describe the old schema next to the new kind.
+    """
+    kind_a = _make_schema_node(
+        kind="KindA",
+        label="Kind A",
+        namespace="Test",
+        attributes=[_make_attribute("name")],
+        relationships=[_make_relationship("children", "KindB")],
+    )
+    old_peer = _make_schema_node(
+        kind="KindB", label="Kind B", namespace="Test", attributes=[_make_attribute("label")], relationships=[]
+    )
+    new_peer = _make_schema_node(
+        kind="KindB",
+        label="Kind B",
+        namespace="Test",
+        attributes=[_make_attribute("label"), _make_attribute("serial")],
+        relationships=[],
+    )
+    old_snapshot = MagicMock(name="old-snapshot")
+    old_snapshot.nodes = {"KindB": old_peer}
+    new_snapshot = MagicMock(name="new-snapshot")
+    new_snapshot.nodes = {"KindA": kind_a, "KindB": new_peer}
+
+    with (
+        patch("infrahub_mcp.schema.get_cached_branch_schema", AsyncMock(side_effect=[old_snapshot, new_snapshot])),
+        patch("infrahub_mcp.schema.get_cached_kind", AsyncMock(return_value=kind_a)),
+        patch("infrahub_mcp.utils.get_client", return_value=MagicMock(name="resolved-client")),
+    ):
+        result = await get_schema_detail(MagicMock(), kind="KindA", expand_peers=True)
+
+    filters = {f["filter"] for f in result["filters"]}
+    assert "children__serial__value" in filters
+    children = next(r for r in result["relationships"] if r["name"] == "children")
+    assert {a["name"] for a in children["peer_schema"]["attributes"]} == {"label", "serial"}
+
+
 async def test_kind_detail_uses_the_callers_client_and_resolves_none() -> None:
     caller = MagicMock(name="callers-client")
     with _patch_cached_kind(_schemas_a_b()) as (cached_kind, branch_read, get_client):

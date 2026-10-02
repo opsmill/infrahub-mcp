@@ -123,7 +123,7 @@ if TYPE_CHECKING:
 
     from fastmcp import Context
     from infrahub_sdk.client import InfrahubClient
-    from infrahub_sdk.schema import BranchSchema
+    from infrahub_sdk.schema import BranchSchema, MainSchemaTypesAPI
 
     from infrahub_mcp.config import ServerConfig
 
@@ -515,11 +515,8 @@ def _evict_lru(app_ctx: AppContext, *, keep: str | None = None) -> None:
     cap far below the concurrency — the cache is left over its bound for now
     rather than the caller being blocked; the next store tries again.
 
-    Evicting also drops the branch's lock when it is unheld, because
-    :func:`_branch_lock` only prunes a lock when its last holder leaves *and*
-    the branch has no entry: a lock whose entry disappeared from under it
-    would otherwise stay in the map for the life of the process, undoing that
-    map's own bounding rule.
+    Evicting goes through :func:`_drop_entry`, which also drops the branch's
+    unheld lock and the shared lifespan client's SDK-cache copy of it.
     """
     cap = app_ctx.config.schema_cache_max_branches
     if not cap:
@@ -532,9 +529,39 @@ def _evict_lru(app_ctx: AppContext, *, keep: str | None = None) -> None:
         )
         if victim is None:
             return
-        del app_ctx.schema_cache[victim]
-        app_ctx._schema_cache_locks.pop(victim, None)  # noqa: SLF001
+        _drop_entry(app_ctx, victim)
         logger.debug("schema_cache_evicted branch=%s max_branches=%d", victim, cap)
+
+
+def _drop_entry(app_ctx: AppContext, branch: str) -> None:
+    """Remove *branch* from the cache and from everything that would outlive its entry.
+
+    The one removal path for an entry — LRU eviction and a branch-gone answer
+    alike — and safe against a concurrent removal: ``pop`` rather than
+    ``del``, because :func:`_validate_caller_outside_lock` removes a
+    branch-gone entry without the branch lock, so a lock holder probing the
+    same branch can find it already gone.
+
+    It also drops:
+
+    - The branch's lock, when nobody holds or waits on it.
+      :func:`_branch_lock` only prunes a lock as its last holder leaves, so an
+      entry removed with nobody on the lock would otherwise leave that lock in
+      the map for the life of the process. Under the lock (holders > 0) it is
+      kept, and :func:`_branch_lock` prunes it on release.
+    - The shared lifespan client's SDK-cache copy. In the shared-client modes
+      :func:`_install_into_client` primes ``app_ctx.client.schema.cache`` with
+      every branch served, and nothing else ever removes one, so the
+      ``BranchSchema`` an eviction releases here would stay referenced there
+      and ``schema_cache_max_branches`` would bound nothing. In the
+      passthrough modes there is no lifespan client and per-request clients
+      die with their request.
+    """
+    app_ctx.schema_cache.pop(branch, None)
+    if app_ctx.client is not None:
+        app_ctx.client.schema.cache.pop(branch, None)
+    if not app_ctx._schema_cache_lock_holders.get(branch, 0):  # noqa: SLF001
+        app_ctx._schema_cache_locks.pop(branch, None)  # noqa: SLF001
 
 
 def _sweep_cold_failures(app_ctx: AppContext, *, now: float) -> None:
@@ -893,7 +920,9 @@ async def _revalidate_under_lock(
     raise the public :class:`~infrahub_sdk.exceptions.BranchNotFoundError`.
     The private ``_BranchGoneError`` never escapes this module, so a deleted
     branch fails the same way here as it does on a cold cache miss — where
-    the SDK itself raises ``BranchNotFoundError`` from ``/api/schema``.
+    the SDK itself raises ``BranchNotFoundError`` from ``/api/schema``. A
+    ``BranchNotFoundError`` from the hash-diff refetch (the branch deleted
+    between the probe and the refetch) is handled the same way.
 
     On a rejected credential (:func:`_is_auth_error`) from either call:
     raise ``AuthenticationError`` to this caller and leave the entry exactly
@@ -912,7 +941,9 @@ async def _revalidate_under_lock(
     try:
         upstream_hash = await _fetch_summary_hash(client, branch)
     except _BranchGoneError as exc:
-        del app_ctx.schema_cache[branch]
+        # ``_drop_entry`` pops: an unvalidated passthrough caller probing outside
+        # the lock may already have removed this entry while we awaited.
+        _drop_entry(app_ctx, branch)
         logger.warning("schema_cache_branch_gone branch=%s", branch)
         raise BranchNotFoundError(identifier=branch) from exc
     except Exception as exc:  # noqa: BLE001
@@ -938,6 +969,13 @@ async def _revalidate_under_lock(
     # Hash differs — full refetch.
     try:
         branch_schema, graphql_sdl = await _full_fetch(client, branch)
+    except BranchNotFoundError:
+        # Deleted between the probe and the refetch (the SDK maps the 400 from
+        # /api/schema to this). That is the probe's branch-gone answer arriving
+        # one call late, not a transient failure to serve stale through.
+        _drop_entry(app_ctx, branch)
+        logger.warning("schema_cache_branch_gone branch=%s", branch)
+        raise
     except Exception as exc:  # noqa: BLE001
         return _note_transient_failure(
             exc, app_ctx=app_ctx, entry=entry, metrics=metrics, event="schema_cache_refetch_failure"
@@ -1296,8 +1334,9 @@ async def _validate_caller_outside_lock(
     try:
         upstream_hash = await _fetch_summary_hash(client, resolved_branch)
     except _BranchGoneError as exc:
-        # ``pop``, not ``del``: another task may have evicted it while we awaited.
-        app_ctx.schema_cache.pop(resolved_branch, None)
+        # No lock is held here, so this may be the removal that leaves the
+        # branch's lock unheld: ``_drop_entry`` drops that lock too.
+        _drop_entry(app_ctx, resolved_branch)
         logger.warning("schema_cache_branch_gone branch=%s", resolved_branch)
         raise BranchNotFoundError(identifier=resolved_branch) from exc
     except Exception as exc:  # noqa: BLE001
@@ -1567,11 +1606,14 @@ async def _fill_graphql_sdl(*, app_ctx: AppContext, client: InfrahubClient, bran
     Runs under the branch's cache lock — the one :func:`_ensure_entry` takes
     for *branch* — so a burst of ``infrahub://graphql-schema`` reads behind
     a missing SDL costs one upstream fetch, and re-reads the entry first
-    because a waiter ahead in the queue may have filled it. Every writer of
-    this branch's entry holds that same lock, so the entry read here is the
-    one still stored when the fetch returns; the identity check
-    before storing makes that invariant explicit rather than assumed and
-    keeps a replaced or evicted entry from being resurrected.
+    because a waiter ahead in the queue may have filled it. Not every writer
+    holds that lock: :func:`_validate_caller_outside_lock` stores a
+    hash-match refresh of the entry without it, so the entry stored when the
+    fetch returns may be a refreshed copy of the one read here. The result is
+    therefore stored on whatever entry is current, provided it still carries
+    the same ``BranchSchema`` snapshot the SDL was fetched for; a replaced
+    snapshot (a hash-diff refetch) or an evicted entry is left alone, so
+    nothing is resurrected or paired with the wrong schema.
 
     A failure propagates to the caller — the SDL resource fails on its own —
     and is deliberately not counted toward ``consecutive_failures`` or the
@@ -1609,13 +1651,29 @@ async def _fill_graphql_sdl(*, app_ctx: AppContext, client: InfrahubClient, bran
         except Exception as exc:
             if _is_auth_error(exc):
                 _raise_auth_error(exc, branch=branch)
-            if entry is not None and app_ctx.schema_cache.get(branch) is entry:
-                _store_entry(app_ctx, replace(entry, graphql_sdl_last_failure_monotonic=_now()))
+            current = _same_snapshot(app_ctx, branch, entry)
+            if current is not None:
+                _store_entry(app_ctx, replace(current, graphql_sdl_last_failure_monotonic=_now()))
             logger.warning("schema_cache_sdl_fill_failure branch=%s exception=%r", branch, exc)
             raise
-        if entry is not None and app_ctx.schema_cache.get(branch) is entry:
-            _store_entry(app_ctx, replace(entry, graphql_sdl=sdl))
+        current = _same_snapshot(app_ctx, branch, entry)
+        if current is not None:
+            _store_entry(app_ctx, replace(current, graphql_sdl=sdl))
         return sdl
+
+
+def _same_snapshot(app_ctx: AppContext, branch: str, entry: CachedSchemaEntry | None) -> CachedSchemaEntry | None:
+    """Return *branch*'s current entry if it still holds *entry*'s ``BranchSchema`` snapshot, else ``None``.
+
+    A hash-match refresh replaces the entry object but keeps its ``schema``;
+    a hash-diff refetch, a cold re-fetch or an eviction does not.
+    """
+    if entry is None:
+        return None
+    current = app_ctx.schema_cache.get(branch)
+    if current is None or current.schema is not entry.schema:
+        return None
+    return current
 
 
 async def get_cached_graphql_sdl(
@@ -1664,7 +1722,7 @@ async def get_cached_kind(
     branch: str | None = None,
     *,
     client: InfrahubClient | None = None,
-) -> Any:
+) -> MainSchemaTypesAPI:
     """Return the schema for *kind* on *branch* with lazy refresh on miss.
 
     If the kind is missing from the cached BranchSchema, force one
