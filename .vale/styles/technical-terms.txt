@@ -67,6 +67,9 @@ repo
 resources
 REST
 retryable
+revalidate
+revalidated
+revalidates
 sanitization
 Schema
 schema's
