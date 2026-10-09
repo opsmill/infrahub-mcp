@@ -25,15 +25,19 @@ The server is built on **FastMCP** and follows its composition pattern:
 configuration are yielded as `AppContext`, available to all tools via
 FastMCP's dependency injection.
 
-### Session-branch state (per-session, weakly held)
+### Session-branch state (per caller, bounded)
 
-`AppContext` is shared across MCP sessions for the process lifetime, so the
-active session branch must **not** be a single value on it. Instead it is held
-in `WeakKeyDictionary` maps keyed by the per-session object
-(`ctx.request_context.session`, resolved by `_session_obj`): one map for the
-branch name, one for a per-session `asyncio.Lock`. This gives true per-session
-isolation (a reset/recovery in one session never touches another) and releases
-entries automatically when a session ends — no unbounded growth.
+`AppContext` is shared by all callers for the process lifetime, so the active
+session branch must **not** be a single value on it. Instead it is held in two
+`OrderedDict` maps (branch name, and a per-key `asyncio.Lock`) keyed by the
+string from `_session_key()`. From MCP protocol version 2026-07-28 each request
+gets a new session object, so the key joins a SHA-256 hash of the authenticated
+caller (`get_caller_identity()` in `auth.py`) and the `mcp-session-id` header,
+caller first so one caller's session id never reaches another caller's branch.
+With neither, the key is `process` (correct for stdio, where one process serves
+one client). The maps keep at most 1024 keys and drop the
+least recently used key first. A reset/recovery for one key never touches
+another. See [ADR 0009](../adr/0009-session-branch-key-without-mcp-sessions.md).
 
 `get_or_create_session_branch()` validates the cached branch before reuse via a
 single `client.branch.get()`: a `BranchNotFoundError` (deleted) or a
@@ -54,6 +58,7 @@ Defined in `src/infrahub_mcp/middleware.py`. Composed once at startup
 via `configure_middleware()`.
 
 **Built-in FastMCP middleware:**
+
 - `StructuredLoggingMiddleware` — structured log output
 - `DetailedTimingMiddleware` — request duration tracking
 - `ErrorHandlingMiddleware` — exception-to-MCP-error translation
@@ -66,6 +71,7 @@ via `configure_middleware()`.
 - `AuthMiddleware` — OAuth scope enforcement
 
 **Custom middleware:**
+
 - `ReadOnlyMiddleware` — blocks tools tagged `"write"` in read-only mode
 - `AuditMiddleware` — structured audit log with request IDs
 - `InfrahubErrorMiddleware` — translates SDK exceptions to MCP errors
@@ -79,7 +85,7 @@ propagate request IDs through the middleware stack.
 Tools live in `src/infrahub_mcp/tools/`, each as a sub-application:
 
 | Module | Purpose |
-|--------|---------|
+| -------- | --------- |
 | `gql.py` | Raw GraphQL queries and mutations |
 | `nodes.py` | Typed node CRUD (get, search, list) |
 | `schema.py` | Schema introspection tools |
@@ -94,7 +100,7 @@ Write tools are tagged `"write"` so `ReadOnlyMiddleware` and
 Resources in `src/infrahub_mcp/resources/`:
 
 | Module | Purpose |
-|--------|---------|
+| -------- | --------- |
 | `branches.py` | Branch listing and metadata |
 | `schema.py` | Schema definitions as MCP resources |
 
@@ -103,7 +109,7 @@ Resources in `src/infrahub_mcp/resources/`:
 Prompts in `src/infrahub_mcp/prompts/`:
 
 | Module | Purpose |
-|--------|---------|
+| -------- | --------- |
 | `prompts.py` | System prompts and workflow guides |
 
 ## Authentication Modes
@@ -111,7 +117,7 @@ Prompts in `src/infrahub_mcp/prompts/`:
 Configured via `INFRAHUB_MCP_AUTH_MODE`:
 
 | Mode | How it works |
-|------|-------------|
+| ------ | ------------- |
 | `none` | No MCP-level auth. Infrahub credentials from env vars. |
 | `oidc` | Full OAuth 2.0/OIDC flow via `OIDCProxy`. MCP-level access control. |
 | `token-passthrough` | Per-request Bearer token via HTTP header → `ContextVar`. |

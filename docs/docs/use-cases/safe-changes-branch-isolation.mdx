@@ -35,7 +35,10 @@ sequenceDiagram
 Key properties:
 
 - **The branch is auto-created on the first write** — the agent never names or creates it explicitly.
-- **All subsequent writes in the same MCP session go to the same branch**, so a multi-step change is atomic from the reviewer's perspective.
+- **All subsequent writes from the same caller go to the same branch**, so a multi-step change is atomic from the reviewer's perspective. The server groups writes by:
+  - the MCP session, when the client sends an `mcp-session-id` header
+  - otherwise, the authenticated user (OIDC user, passthrough token, or Basic credentials), so two conversations by one user share a branch
+  - otherwise, the server process. With stdio this is one client. Unauthenticated HTTP clients without a session share one branch.
 - **`propose_changes` does not close the branch** — the session stays active, so the agent can keep iterating and the new writes land in the same proposed change.
 - **Merging is human-only** — no MCP tool merges branches; that happens in the Infrahub UI or API, under whatever approval policy your organization enforces.
 

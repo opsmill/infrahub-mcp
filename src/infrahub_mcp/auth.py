@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import re
 from contextvars import ContextVar, Token
@@ -176,3 +178,33 @@ def get_user_from_token(claim: str = "email") -> str:
     except (ImportError, AttributeError, KeyError, TypeError):
         logger.debug("Failed to extract user from OIDC token", exc_info=True)
     return "anonymous"
+
+
+def get_caller_identity() -> str | None:
+    """Return a stable, hashed identity for the authenticated caller, or ``None``.
+
+    Used to keep per-caller state between tool calls when the MCP protocol has no
+    session (2026-07-28 and later). Checked in order: the OIDC principal
+    (client id, issuer, subject), the passthrough API token, then the passthrough
+    Basic credentials. The value is a SHA-256 digest so secrets are never held
+    as dictionary keys. Returns ``None`` when the request carries no credentials
+    (stdio transport or ``auth_mode=none``).
+    """
+    material: str | None = None
+    try:
+        from fastmcp.server.dependencies import get_access_token  # noqa: PLC0415
+
+        token = get_access_token()
+    except (ImportError, RuntimeError):
+        token = None
+    if token is not None:
+        issuer = (token.claims or {}).get("iss")
+        subject = (token.claims or {}).get("sub")
+        material = "oidc:" + json.dumps([token.client_id, issuer, subject], default=str)
+    elif (passthrough_token := get_passthrough_token()) is not None:
+        material = f"token:{passthrough_token}"
+    elif (credentials := get_passthrough_basic()) is not None:
+        material = "basic:" + json.dumps(list(credentials))
+    if material is None:
+        return None
+    return hashlib.sha256(material.encode()).hexdigest()
