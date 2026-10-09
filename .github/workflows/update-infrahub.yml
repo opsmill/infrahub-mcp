@@ -109,4 +109,5 @@ jobs:
             --body "This PR updates Infrahub to version ${INFRAHUB_VERSION}." \
             --base "${{ matrix.branch-name }}" \
             --head "${BRANCH_NAME}" \
-            --label "ci/skip-changelog"
+            --label "ci/skip-changelog" \
+            --label "changes/patch"

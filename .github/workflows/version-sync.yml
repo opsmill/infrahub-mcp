@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   sync-versions:
@@ -62,8 +63,11 @@ jobs:
       - name: Regenerate CAPABILITIES.md
         run: bash scripts/update-capabilities.sh
 
-      - name: Commit changes if any
+      - name: Open a pull request if changes are needed
+        env:
+          GH_TOKEN: ${{ secrets.GH_INFRAHUB_BOT_TOKEN }}
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add server.json CAPABILITIES.md pyproject.toml
@@ -71,5 +75,36 @@ jobs:
             echo "All versions already in sync"
             exit 0
           fi
-          git commit -m "chore: sync version to ${{ steps.version.outputs.version }}"
-          git push
+
+          VERSION="${{ steps.version.outputs.version }}"
+          PREFIX="chore/version-sync-${VERSION}-"
+          OPEN_PR=$(
+            gh pr list --state open --base stable --limit 200 \
+              --json number,headRefName \
+              --jq "[.[]
+                     | select(.headRefName | startswith(\"${PREFIX}\"))
+                     | .number] | first // empty"
+          )
+          if [ -n "${OPEN_PR}" ]; then
+            echo "Version-sync PR #${OPEN_PR} is already open for ${VERSION}."
+            exit 0
+          fi
+
+          BRANCH="${PREFIX}${GITHUB_RUN_ID}"
+          git switch -c "${BRANCH}"
+          git commit -m "chore: sync version to ${VERSION}"
+          git push origin "${BRANCH}"
+
+          gh pr create \
+            --base stable \
+            --head "${BRANCH}" \
+            --title "chore: sync version to ${VERSION}" \
+            --label "ci/skip-changelog" \
+            --label "changes/patch" \
+            --body "$(cat <<EOF
+          Keep the generated version metadata aligned with \`pyproject.toml\`.
+
+          This pull request replaces the former direct push to \`stable\`, so the
+          generated changes are reviewed before they land.
+          EOF
+          )"
