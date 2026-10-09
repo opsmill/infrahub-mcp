@@ -67,7 +67,7 @@ Workflows that open any other pull request (`gh pr create`, Dependabot) must
 label it `changes/patch`. The gate runs under `pull_request_target` from the base
 branch, so it never runs on the pull request that changes it.
 
-Releases are not cut by hand, and merging to `stable` does not prepare one: dispatch the **Auto bump version** workflow from Actions with `stable` selected, which opens a `chore(release): vX.Y.Z` pull request carrying the version bump and the assembled changelog. Merging that pull request tags the release and publishes it with that changelog as the body. Never build the changelog or bump versions directly on `stable`.
+Releases are not cut by hand, and merging to `stable` does not prepare one: dispatch the **Auto bump version** workflow from Actions with `stable` selected, which opens a `chore(release): vX.Y.Z` pull request carrying the version bump and the assembled changelog. Merging that pull request tags the release and publishes it with the curated release-notes page, `docs/docs/release-notes/release-X_Y_Z.mdx` (dots in the version become underscores), as the body, falling back to the assembled changelog when that page is missing or fails to render. Never build the changelog or bump versions directly on `stable`.
 
 ## MCP Objects
 
