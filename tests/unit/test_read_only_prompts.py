@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
+import subprocess  # noqa: S404 - runs the server in a child process to test startup config
 import sys
 
 import pytest
