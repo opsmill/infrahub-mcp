@@ -10,6 +10,7 @@ import json
 import os
 import subprocess  # noqa: S404 - runs the server in a child process to test startup config
 import sys
+from typing import Any
 
 import pytest
 
@@ -32,7 +33,7 @@ asyncio.run(main())
 """
 
 
-def _server_prompts(read_only: bool) -> dict[str, object]:
+def _server_prompts(read_only: bool) -> dict[str, Any]:
     env = {
         **os.environ,
         "INFRAHUB_ADDRESS": "http://infrahub.invalid",
@@ -48,6 +49,6 @@ def _server_prompts(read_only: bool) -> dict[str, object]:
 @pytest.mark.parametrize("read_only", [True, False])
 def test_make_infra_change_offered_only_with_write_tools(read_only: bool) -> None:
     result = _server_prompts(read_only)
-    assert ("make_infra_change" in result["prompts"]) is not read_only  # type: ignore[operator]
+    assert ("make_infra_change" in result["prompts"]) is not read_only
     assert result["fetchable"] is not read_only
-    assert {"answer_infra_question", "explore_schema", "infrahub_agent"} <= set(result["prompts"])  # type: ignore[arg-type]
+    assert {"answer_infra_question", "explore_schema", "infrahub_agent"} <= set(result["prompts"])
