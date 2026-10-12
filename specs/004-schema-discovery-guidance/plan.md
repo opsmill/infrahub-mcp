@@ -64,7 +64,7 @@ specs/004-schema-discovery-guidance/
 
 ```text
 src/infrahub_mcp/
-├── instructions.py          # NEW: build_instructions(*, read_only) -> str
+├── instructions.py          # NEW: build_instructions(*, read_only, resources_as_tools) -> str
 ├── server.py                # FastMCP(instructions=...); infrahub_agent uses build_instructions;
 │                            # add_transform(ResourcesAsTools(mcp)) when resources_as_tools
 ├── config.py                # NEW field resources_as_tools: bool = False
@@ -101,7 +101,7 @@ Ordered by user story. Each phase can be merged and tested on its own.
 ### Phase A: Guidance reaches every client (User Story 1, P1)
 
 1. `instructions.py` with `build_instructions`, following [contracts/server-instructions.md](./contracts/server-instructions.md). Tests first.
-2. `server.py`: pass `instructions=build_instructions(read_only=_config.read_only)` to `FastMCP(...)`. Rebuild `infrahub_agent` from the persona line plus `build_instructions(...)` plus the tool overview; remove its separate "Data formats" and "Schema discovery" sections.
+2. `server.py`: pass `instructions=build_instructions(read_only=_config.read_only, resources_as_tools=_config.resources_as_tools)` to `FastMCP(...)`. Phase A can pass `resources_as_tools=False` until Phase D adds the setting. Rebuild `infrahub_agent` from the persona line plus `build_instructions(...)` plus the tool overview; remove its separate "Data formats" and "Schema discovery" sections.
 3. Rewrite descriptions, parameters and error remediations listed in research R9. Add the GraphQL filter syntax to `query_graphql`.
 4. `test_tool_descriptions.py`: lists every tool, parameter and prompt through the in-memory client and enforces the SC-002 rule.
 5. `ReadOnlyMiddleware._KNOWN_READ_ONLY_TOOLS`: add the five names (research R8).
@@ -118,7 +118,7 @@ Covered by the "do not fetch again" line in Phase A (FR-008). Checked by the con
 ### Phase D: Resource tools setting (FR-012, FR-014)
 
 1. `config.py`: `resources_as_tools: bool = False`.
-2. `server.py`: after all `mcp.mount(...)` calls, `if _config.resources_as_tools: mcp.add_transform(ResourcesAsTools(mcp))`.
+2. `server.py`: after all `mcp.mount(...)` calls, `if _config.resources_as_tools: mcp.add_transform(ResourcesAsTools(mcp))`; pass the setting to `build_instructions` so variants 2 and 4 name the readable URIs (FR-015).
 3. `test_resources_as_tools.py` in a fresh interpreter per mode:
    - setting off: `list_resources` and `read_resource` are absent from the tool list;
    - setting on: both are listed, and `read_resource("infrahub://branches")` returns the branch list;
@@ -133,7 +133,7 @@ Covered by the "do not fetch again" line in Phase A (FR-008). Checked by the con
 2. ADR 0009: model guidance lives in server instructions and tool descriptions; prompts carry workflows; resources serve hosts.
 3. `dev/knowledge/architecture.md`: one paragraph on where model guidance lives.
 4. Changelog fragment `changelog/191.added.md`; pull request label `changes/minor`.
-5. Manual SC-001 check from [quickstart.md](./quickstart.md), result recorded in the pull request.
+5. Manual SC-001 check from [quickstart.md](./quickstart.md): 3 runs, at least 2 must pass before merge, all results recorded in the pull request.
 
 ## Dependencies and Order
 
@@ -147,7 +147,7 @@ Covered by the "do not fetch again" line in Phase A (FR-008). Checked by the con
 | The customer's gateway drops server instructions | Only descriptions reach the model | Descriptions carry the rule on their own (Phase A step 3, SC-002 test). |
 | The gateway merges tools without a prefix | `list_resources` / `read_resource` / `get_schema` collide with other servers' tools | The setting is off by default; renaming is deferred until a collision is reported (research R3). |
 | The GraphQL schema is over 500 KB | `read_resource` on `infrahub://graphql-schema` fails with the size error | Measured in Phase D; documented if it happens. |
-| Model behavior does not improve enough | SC-001 not met | Manual check before merge; the instructions text can be tuned without changing the contract rules. |
+| Model behavior does not improve enough | SC-001 not met (fewer than 2 of 3 runs pass) | The merge waits; the instructions text can be tuned without changing the contract rules. |
 
 ## Complexity Tracking
 

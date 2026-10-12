@@ -16,9 +16,9 @@ Read once at import of `server.py`, like `read_only`. Changing it requires a res
 
 | Attribute | Value |
 | --- | --- |
-| Built by | `build_instructions(*, read_only: bool) -> str` |
-| Inputs | `ServerConfig.read_only` |
-| Variants | read and write; read-only |
+| Built by | `build_instructions(*, read_only: bool, resources_as_tools: bool) -> str` |
+| Inputs | `ServerConfig.read_only`, `ServerConfig.resources_as_tools` |
+| Variants | four: read-only on or off, combined with resource tools on or off |
 | Lifetime | Built once at startup and set on `FastMCP(instructions=...)`. |
 | Used by | MCP `initialize` / `server/discover` responses; the `infrahub_agent` prompt |
 | Content rules | [contracts/server-instructions.md](./contracts/server-instructions.md) |

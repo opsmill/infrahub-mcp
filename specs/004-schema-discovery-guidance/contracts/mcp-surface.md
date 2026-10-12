@@ -21,7 +21,7 @@ Rule checked by a unit test (SC-002): no tool description, parameter description
 | `infrahub://schema` | static resource | Unchanged: kind catalog of the default branch. | - |
 | `infrahub://schema{?branch}` | new template | Kind catalog of the given branch. | FR-010 |
 | `infrahub://schema/{kind}{?branch}` | template (was `infrahub://schema/{kind}`) | Optional branch. `infrahub://schema/{kind}` without a branch still works. | FR-010 |
-| `infrahub://graphql-schema`, `infrahub://branches` | unchanged | Readable through `read_resource` when the setting is on. | FR-012 |
+| `infrahub://graphql-schema`, `infrahub://branches` | unchanged | Readable through `read_resource` when the setting is on. `infrahub://graphql-schema` stays on the default branch (out of scope, spec Assumptions). | FR-012 |
 
 Rule checked by a unit test (SC-004): for the same kind and branch, the resource and `get_schema` return the same text.
 
@@ -36,7 +36,7 @@ No prompt is exposed as a tool (FR-013).
 
 ## Server instructions
 
-New. See [server-instructions.md](./server-instructions.md).
+New, in four variants (read-only on or off, resource tools on or off). See [server-instructions.md](./server-instructions.md).
 
 ## Configuration
 

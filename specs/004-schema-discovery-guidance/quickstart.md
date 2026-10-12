@@ -38,8 +38,8 @@ Expected: the read-and-write text from [contracts/server-instructions.md](./cont
 2. Start the server with `INFRAHUB_MCP_READ_ONLY=true` over HTTP.
 3. Connect Claude through a client that passes only tools, for example the Claude API MCP connector ([documentation](https://platform.claude.com/docs/en/agents-and-tools/mcp-connector)), which needs a URL Claude can reach. Do not select any prompt.
 4. Ask: "How many <kind label> are there?"
-5. Record the tool calls. Pass: at most 3 calls, no guessed kind name, no `filters:` argument in GraphQL. Baseline before this feature: 6 calls ([issue 191](https://github.com/opsmill/infrahub-mcp/issues/191)).
-6. Record the result in the pull request.
+5. Record the tool calls. A run passes with at most 3 calls, no guessed kind name, no `filters:` argument in GraphQL. Baseline before this feature: 6 calls ([issue 191](https://github.com/opsmill/infrahub-mcp/issues/191)).
+6. Run steps 4 and 5 three times, each in a new conversation. The pull request merges only if at least 2 of the 3 runs pass. Record all three runs in the pull request.
 
 ## 4. Check branch-aware resources (SC-004)
 

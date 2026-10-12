@@ -78,7 +78,7 @@ Existing URIs keep working, so this is not a breaking change.
 
 ## R5. One source for the guidance text
 
-**Decision**: New module `src/infrahub_mcp/instructions.py` with `build_instructions(*, read_only: bool) -> str`. `server.py` passes its result to `FastMCP(instructions=...)`. The `infrahub_agent` prompt includes the same string, followed by the parts that only the prompt carries (the persona line and the tool overview).
+**Decision**: New module `src/infrahub_mcp/instructions.py` with `build_instructions(*, read_only: bool, resources_as_tools: bool) -> str`. `server.py` passes its result to `FastMCP(instructions=...)`. The `infrahub_agent` prompt includes the same string, followed by the parts that only the prompt carries (the persona line and the tool overview).
 
 **Rationale**: Spec FR-009 requires one source so the prompt and the instructions cannot drift apart. A plain function keeps to the "three similar lines over a premature abstraction" rule of the constitution (principle VII).
 
@@ -89,11 +89,13 @@ Existing URIs keep working, so this is not a breaking change.
 **Decision**: The instructions contain only:
 
 1. the schema-first rule, naming `get_schema()` and `get_schema(kind=...)`, with "never guess" and "do not fetch again if it is already in the conversation";
-2. the Infrahub GraphQL filter syntax with one example;
-3. how to read TOON;
-4. the access mode, and in read-and-write mode the session-branch workflow.
+2. which tool to use: `get_nodes` for nodes of one kind, including counts through `total_count`; `find_paths` and `find_reachable` for connectivity and impact questions (added in the clarification session of 2026-10-12);
+3. the Infrahub GraphQL filter syntax with one example;
+4. how to read TOON;
+5. when the resource tools setting is on, one line naming `infrahub://branches` and `infrahub://graphql-schema` as readable with `read_resource` (spec FR-015);
+6. the access mode, and in read-and-write mode the session-branch workflow.
 
-They stay under 2,000 characters. The exact text is in [contracts/server-instructions.md](./contracts/server-instructions.md).
+All four variants (read-only on or off, resource tools on or off) stay under 2,000 characters. The exact text is in [contracts/server-instructions.md](./contracts/server-instructions.md).
 
 **Rationale**: The MCP blog asks for instructions that cover relations between tools and constraints, not repeated tool descriptions, and for short text ([MCP blog: server instructions](https://blog.modelcontextprotocol.io/posts/2025-11-03-using-server-instructions/)). A gateway that merges several servers' instructions makes length more costly.
 
@@ -129,6 +131,6 @@ They stay under 2,000 characters. The exact text is in [contracts/server-instruc
 
 ## R10. How SC-001 is checked
 
-**Decision**: Automated tests check the text the server sends (instructions, descriptions, error messages). The reduction in tool calls (SC-001) is checked by hand with Claude through a client that passes only tools, following [quickstart.md](./quickstart.md), and the result is recorded in the pull request.
+**Decision**: Automated tests check the text the server sends (instructions, descriptions, error messages). The reduction in tool calls (SC-001) is checked by hand with Claude through a client that passes only tools, following [quickstart.md](./quickstart.md). The scenario is run 3 times; the pull request merges only if at least 2 runs pass, and all results are recorded in the pull request (spec clarification of 2026-10-12).
 
 **Rationale**: Model behavior is not deterministic and needs a live model and a live Infrahub instance. The project has no evaluation harness for model behavior today.
