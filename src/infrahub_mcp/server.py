@@ -23,6 +23,7 @@ from infrahub_mcp.constants import (
     AUTH_MODE_OIDC,
     AUTH_MODE_TOKEN_PASSTHROUGH,
 )
+from infrahub_mcp.instructions import build_instructions
 from infrahub_mcp.middleware import (
     configure_middleware,
     get_caching_middleware,
@@ -99,9 +100,12 @@ logger = logging.getLogger(__name__)
 
 _auth_provider = create_auth_provider(_config)
 
+_instructions = build_instructions(read_only=_config.read_only, resources_as_tools=_config.resources_as_tools)
+
 mcp: FastMCP = FastMCP(
     name="Infrahub MCP Server",
     version=version("infrahub-mcp"),
+    instructions=_instructions,
     lifespan=app_lifespan,
     auth=_auth_provider,
 )
@@ -197,26 +201,12 @@ def infrahub_agent() -> str:
     prompt = (
         f"You are an infrastructure specialist with {access_mode} access to "
         "Infrahub — a graph-based infrastructure data management platform.\n\n"
-        "## Data formats\n\n"
-        "Structured arrays (schema details, node attribute results) are encoded in\n"
-        "**TOON** (Token-Oriented Object Notation) to reduce token usage.\n"
-        "TOON declares field names once in a header, then lists rows of values.\n"
-        "Treat TOON exactly like a table: the header is the column spec, each indented row is one record.\n\n"
-        "## Schema discovery (always do this first)\n\n"
-        "Read the ``infrahub://schema`` resource to discover available kinds before querying.\n"
-        "If your client does not support MCP resources, call the ``get_schema`` tool instead —\n"
-        "it provides the same data.\n\n"
-        "| Resource | Tool equivalent | What it contains |\n"
-        "|---|---|---|\n"
-        "| `infrahub://schema` | `get_schema()` | All node kinds available in this instance |\n"
-        "| `infrahub://schema/{kind}` | `get_schema(kind='...')` | Full schema + filter map for a specific kind |\n"
-        "| `infrahub://graphql-schema` | *(none)* | Complete GraphQL SDL for advanced queries |\n"
-        "| `infrahub://branches` | *(none)* | All branches, including your active session branch |\n\n"
-        "Never guess kind names or filter keys — discover them first.\n\n"
+        "## How to work with this server\n\n"
+        f"{_instructions}\n\n"
         "## Available tools\n\n"
         "### Read\n"
         "- **`get_schema`** — discover available kinds and their attributes/filters. "
-        "Use when resources are not available.\n"
+        "Hosts that attach context can use the same data as the `infrahub://schema` resource.\n"
         "- **`get_nodes`** — retrieve objects of a given kind, with optional filters. "
         "Pass `include_attributes=True` for full attribute data.\n"
         "- **`search_nodes`** — find nodes by partial name match.\n"
@@ -224,9 +214,8 @@ def infrahub_agent() -> str:
         '- **`find_paths`** — shortest path(s) between two nodes ("how are these connected?"). '
         "Requires Infrahub 1.10+.\n"
         "- **`find_reachable`** — nodes of given kinds reachable from a source "
-        '("what\'s the blast radius?"). Requires Infrahub 1.10+.\n\n'
-        'For "what is connected to X" or impact analysis, prefer `find_paths`/`find_reachable` '
-        "over hand-built deep GraphQL queries."
+        '("what\'s the blast radius?"). Requires Infrahub 1.10+.\n'
+        "- **`get_session_info`** — the active session branch, if any."
     )
 
     if not _config.read_only:
@@ -241,30 +230,17 @@ def infrahub_agent() -> str:
 fresh (the next write creates a new branch), or pass a branch name to switch to it (created if it \
 matches the configured pattern).
 
-## Branch-per-session workflow
-
-All writes are branch-isolated. On your first write, a session branch is
-automatically created. The default branch is never modified directly.
+## Session branch recovery
 
 If your session branch is merged or deleted, the next write automatically recovers
 onto a fresh branch — you do not need to restart. Use `reset_session_branch` to
 switch branches deliberately.
-
-When changes are ready: call `propose_changes(title, description)` to open a proposed change for human review.
 
 ## Safety rules
 
 - Never modify the default branch directly.
 - Prefer `node_upsert` over raw GraphQL mutations for simple attribute changes.
 - Always confirm with the user before deleting nodes."""
-    else:
-        prompt += """
-
-## Read-only mode
-
-This server is running in **read-only mode**. Write operations (node creation,
-updates, deletions, and GraphQL mutations) are disabled. Only queries and
-schema discovery are available."""
 
     return prompt
 

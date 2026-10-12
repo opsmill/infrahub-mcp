@@ -38,7 +38,8 @@ def answer_infra_question(
         kind_ref = kind_hint
     else:
         step1 = (
-            "Read the resource `infrahub://schema` to browse the full catalog of available kinds. "
+            "Call `get_schema()` (or read the resource `infrahub://schema`) "
+            "to browse the full catalog of available kinds. "
             "Identify which kind best matches the question."
         )
         kind_ref = "{kind}"
@@ -55,7 +56,7 @@ Follow these steps in order:
 {step1}
 
 ### Step 2 — Read the schema detail
-Read the resource `infrahub://schema/{kind_ref}` to understand:
+Call `get_schema(kind="{kind_ref}")` (or read the resource `infrahub://schema/{kind_ref}`) to understand:
 - Available **attributes** and their types
 - Available **relationships** and their peers
 - The complete **filter map** (all valid filter keys for `get_nodes`)
@@ -100,7 +101,7 @@ def make_infra_change(
     placeholder = "{kind}"  # noqa: RUF027
     kind_ref = kind or placeholder
     catalog_hint = (
-        "" if kind else "If you are unsure which kind to target, read `infrahub://schema` first to browse the catalog."
+        "" if kind else "If you are unsure which kind to target, call `get_schema()` first to browse the catalog."
     )
 
     body = f"""Make the following infrastructure change{kind_note}{branch_note}:
@@ -110,7 +111,7 @@ def make_infra_change(
 Follow these steps in order:
 
 ### Step 1 — Understand the schema
-Read `infrahub://schema/{kind_ref}` to confirm:
+Call `get_schema(kind="{kind_ref}")` (or read `infrahub://schema/{kind_ref}`) to confirm:
 - Required vs optional attributes
 - Valid attribute names and types
 - Relationship structure
@@ -152,7 +153,7 @@ def explore_schema(
         body = f"""Explore the schema for kind **{kind}**.
 
 ### Steps
-1. Read the resource `infrahub://schema/{kind}` to get the full definition.
+1. Call `get_schema(kind="{kind}")` (or read the resource `infrahub://schema/{kind}`) to get the full definition.
 2. Summarize:
    - **Attributes**: name, type, whether optional
    - **Relationships**: name, peer kind, cardinality, whether optional
@@ -165,9 +166,9 @@ the header declares field names once, each indented row is one record."""
         body = f"""Explore the full Infrahub schema catalog.
 
 ### Steps
-1. Read the resource `infrahub://schema` to list all available kinds and their labels.
+1. Call `get_schema()` (or read the resource `infrahub://schema`) to list all available kinds and their labels.
 2. Provide a summary organized by namespace or domain.
-3. For any kind the user asks about in follow-up, read `infrahub://schema/{kind_placeholder}` \
+3. For any kind the user asks about in follow-up, call `get_schema(kind="{kind_placeholder}")` \
 for the full detail including attributes, relationships, and filters."""
 
     return [Message(body)]

@@ -238,7 +238,17 @@ class TestReadOnlyMiddleware:
     @pytest.mark.anyio
     @pytest.mark.parametrize(
         "tool_name",
-        ["get_schema", "query_graphql", "get_nodes", "search_nodes"],
+        [
+            "get_schema",
+            "query_graphql",
+            "get_nodes",
+            "search_nodes",
+            "find_paths",
+            "find_reachable",
+            "get_session_info",
+            "list_resources",
+            "read_resource",
+        ],
     )
     async def test_allows_known_read_tools_without_context(self, tool_name: str) -> None:
         """Fail-closed fallback permits all known read-only tools."""

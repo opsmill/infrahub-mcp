@@ -110,7 +110,7 @@ def _assert_no_privileged_mutations(query: str) -> None:
     try:
         document = gql_parse(query)
     except GraphQLSyntaxError as exc:
-        msg = f"Invalid GraphQL syntax: {exc}. Fix the mutation and retry; read infrahub://graphql-schema for the SDL."
+        msg = f"Invalid GraphQL syntax: {exc}. Fix the mutation and retry; call get_schema(kind=...) for field names."
         raise ToolError(msg) from exc
     for definition in document.definitions:
         operation = getattr(definition, "operation", None)
@@ -135,13 +135,13 @@ async def node_upsert(  # pylint: disable=too-many-locals
     ctx: Context,
     kind: Annotated[
         str,
-        Field(description="Kind of the node to create or update. Check infrahub://schema."),
+        Field(description="Kind of the node to create or update. Call get_schema() for valid kinds; never guess."),
     ],
     data: Annotated[
         dict[str, Any],
         Field(
             description=(
-                "Flat {attribute: value} map. See infrahub://schema/{kind} for valid names. "
+                "Flat {attribute: value} map. Call get_schema(kind=...) for valid names. "
                 "Scalar attributes only; use mutate_graphql for relationships."
             )
         ),
@@ -166,9 +166,8 @@ async def node_upsert(  # pylint: disable=too-many-locals
     The session branch is auto-created on the first write of the session
     (``mcp/session-YYYYMMDD-<hex>``). Use ``propose_changes`` to open a
     review once your changes are ready.
-    To discover available kinds and attributes, read the ``infrahub://schema``
-    resource. If your client does not support MCP resources, call the
-    ``get_schema`` tool instead.
+    Call ``get_schema()`` for the available kinds and ``get_schema(kind='...')``
+    for a kind's attribute names before calling this tool; never guess them.
 
     - **Create**: omit both ``id`` and ``hfid``.
     - **Update**: supply either ``id`` or ``hfid`` to identify the target node.
@@ -241,7 +240,7 @@ async def node_upsert(  # pylint: disable=too-many-locals
         await _log_and_raise_error(
             ctx=ctx,
             error=exc,
-            remediation=f"Check attribute names against infrahub://schema/{kind}.",
+            remediation=f"Check attribute names against get_schema(kind='{kind}').",
         )
 
     result: dict[str, Any] = {
@@ -253,7 +252,7 @@ async def node_upsert(  # pylint: disable=too-many-locals
         result["skipped_attributes"] = unknown_attrs
         result["warning"] = (
             f"Attributes {unknown_attrs} are not defined on {kind}. "
-            f"Check infrahub://schema/{kind} for valid attribute names."
+            f"Call get_schema(kind='{kind}') for valid attribute names."
         )
     return result
 
@@ -264,7 +263,9 @@ async def node_upsert(  # pylint: disable=too-many-locals
 )
 async def node_delete(
     ctx: Context,
-    kind: Annotated[str, Field(description="Kind of the node to delete. Check infrahub://schema.")],
+    kind: Annotated[
+        str, Field(description="Kind of the node to delete. Call get_schema() for valid kinds; never guess.")
+    ],
     id: Annotated[  # noqa: A002  # pylint: disable=redefined-builtin
         str | None,
         Field(default=None, description="UUID of the node to delete."),
@@ -278,9 +279,7 @@ async def node_delete(
 
     The deletion is applied to the session branch only and is not visible on the
     default branch until a proposed change is merged.
-    To discover available kinds, read the ``infrahub://schema`` resource.
-    If your client does not support MCP resources, call the ``get_schema``
-    tool instead.
+    Call ``get_schema()`` for the available kinds; never guess a kind name.
 
     Parameters:
         kind: Kind of the node.
@@ -329,7 +328,7 @@ async def node_delete(
             ctx=ctx,
             error=exc,
             remediation=(
-                f"Verify the node exists and has no relationships blocking deletion; check infrahub://schema/{kind}."
+                f"Verify the node exists and has no relationships blocking deletion; check get_schema(kind='{kind}')."
             ),
         )
 
@@ -439,9 +438,10 @@ async def mutate_graphql(
     branch deliberately, switch the session with ``reset_session_branch`` first.
     Branch- and schema-management mutations are rejected.
 
-    To discover available kinds and their attributes, read the ``infrahub://schema``
-    resource or call the ``get_schema`` tool.
-    For the full GraphQL SDL, read ``infrahub://graphql-schema``.
+    Call ``get_schema()`` for the available kinds and ``get_schema(kind='...')``
+    for a kind's attribute names before writing the mutation; never guess them.
+    Hosts that attach context can also read the full GraphQL SDL from the
+    ``infrahub://graphql-schema`` resource.
 
     Parameters:
         query: GraphQL mutation to execute on the session branch.
@@ -461,9 +461,7 @@ async def mutate_graphql(
             ctx,
             exc,
             remediation=(
-                "Call get_schema() to list valid kinds, or "
-                "get_schema(kind='...') to see attributes and filters. "
-                "Read infrahub://graphql-schema for the full GraphQL SDL."
+                "Call get_schema() to list valid kinds, or get_schema(kind='...') to see attributes and filters."
             ),
         )
 

@@ -110,7 +110,7 @@ async def _validate_filters(  # noqa: PLR0913, PLR0917
         await _log_and_raise_error(
             ctx=ctx,
             error=f"Filters contain reserved key(s): {sorted(reserved)}.",
-            remediation=(f"Remove reserved key(s) and check infrahub://schema/{kind} for valid filter names."),
+            remediation=(f"Remove reserved key(s) and call get_schema(kind='{kind}') for valid filter names."),
         )
 
     # Build the valid filter set from the schema (same logic as schema detail)
@@ -138,7 +138,7 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
     ctx: Context,
     kind: Annotated[
         str,
-        Field(description="Kind of the objects to retrieve. Check infrahub://schema for valid kinds."),
+        Field(description="Kind of the objects to retrieve. Call get_schema() for valid kinds; never guess."),
     ],
     branch: Annotated[
         str | None,
@@ -151,8 +151,9 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
             description=(
                 "Attribute/relationship filters. Keys follow the schema's "
                 'filter map (e.g. {"name__value": "atl1"} or '
-                '{"site__name__value": "atl1"}). See infrahub://schema/{kind} '
-                "for the full filter map."
+                '{"site__name__value": "atl1"}); get_schema(kind=...) lists them. '
+                "In query_graphql the same keys go directly on the kind's query "
+                '(LocationSite(name__value: "atl1")), not in a "filters" argument.'
             ),
         ),
     ] = None,
@@ -192,19 +193,17 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
     results come back as display labels (fast, token-cheap) or full attribute
     dicts (``include_attributes=True``).
 
-    To discover available kinds, read the ``infrahub://schema`` resource.
-    If your client does not support MCP resources, call the ``get_schema`` tool instead.
-    To discover available filters for a kind, read ``infrahub://schema/{kind}``
-    or call ``get_schema(kind='...')``.
+    Call ``get_schema()`` for the available kinds and ``get_schema(kind='...')``
+    for a kind's filter keys before calling this tool; never guess them.
 
     Filter keys follow the schema's filter map. Attribute filters use
     ``<attr>__value`` (e.g. ``{"name__value": "atl1"}``) and relationship
     filters chain via ``<rel>__<attr>__value`` (e.g.
-    ``{"site__name__value": "atl1"}``). See ``infrahub://schema/{kind}`` for
-    the full list of valid keys.
+    ``{"site__name__value": "atl1"}``).
 
     Use ``offset`` and ``limit`` to page through large result sets. The response
     always includes ``total_count`` and ``has_more`` so you know when to stop.
+    For a count only, pass ``limit=1`` and read ``total_count``.
 
     Args:
         kind: Kind of the objects to retrieve.
@@ -260,7 +259,7 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
         await _log_and_raise_error(
             ctx=ctx,
             error=exc,
-            remediation=f"Check the provided filters against infrahub://schema/{kind}.",
+            remediation=f"Check the provided filters against get_schema(kind='{kind}').",
         )
 
     if total_count > 0:
@@ -306,7 +305,7 @@ async def search_nodes(
     ],
     kind: Annotated[
         str,
-        Field(description="Kind to search within. Check infrahub://schema for valid kinds."),
+        Field(description="Kind to search within. Call get_schema() for valid kinds; never guess."),
     ],
     branch: Annotated[
         str | None,
@@ -333,8 +332,7 @@ async def search_nodes(
     generic-kind results that lack a ``display_label`` still return a
     human-readable identifier rather than a bare UUID.
 
-    To discover available kinds, read the ``infrahub://schema`` resource.
-    If your client does not support MCP resources, call the ``get_schema`` tool instead.
+    Call ``get_schema()`` for the available kinds; never guess a kind name.
 
     Args:
         query: Partial substring to search for (matched across all attributes).

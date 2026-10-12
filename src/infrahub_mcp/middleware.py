@@ -160,6 +160,11 @@ class ReadOnlyMiddleware(Middleware):
             "query_graphql",
             "get_nodes",
             "search_nodes",
+            "find_paths",
+            "find_reachable",
+            "get_session_info",
+            "list_resources",
+            "read_resource",
         }
     )
 
@@ -584,7 +589,7 @@ class StrictResponseLimitingMiddleware(ResponseLimitingMiddleware):
             f"over the {self.max_size}-byte limit.\n"
             "Remediation: narrow `filters`, lower `limit`, or drop "
             "`include_attributes` to reduce the payload. "
-            "Check `infrahub://schema/{kind}` for available filters."
+            "Call `get_schema(kind=...)` for available filters."
         )
 
 

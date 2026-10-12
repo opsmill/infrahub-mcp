@@ -55,33 +55,33 @@ Single project: `src/infrahub_mcp/`, `tests/unit/`, `docs/docs/`, `dev/` at the 
 
 ### Tests for User Story 1
 
-- [ ] T007 [P] [US1] Write `tests/unit/test_server_instructions.py`. For each of the four variants, start the server in a fresh interpreter (the pattern of `tests/unit/test_read_only_prompts.py` from PR 193: `subprocess.run([sys.executable, "-c", ...])` with `INFRAHUB_MCP_READ_ONLY` and `INFRAHUB_MCP_RESOURCES_AS_TOOLS` set) and check that `Client.instructions` equals `build_instructions(...)` for those settings.
-- [ ] T008 [P] [US1] Write `tests/unit/test_tool_descriptions.py`. List every tool (with its parameter descriptions) and every prompt through the in-memory FastMCP `Client`, in read-and-write mode, and check:
+- [X] T007 [P] [US1] Write `tests/unit/test_server_instructions.py`. For each of the four variants, start the server in a fresh interpreter (the pattern of `tests/unit/test_read_only_prompts.py` from PR 193: `subprocess.run([sys.executable, "-c", ...])` with `INFRAHUB_MCP_READ_ONLY` and `INFRAHUB_MCP_RESOURCES_AS_TOOLS` set) and check that `Client.instructions` equals `build_instructions(...)` for those settings.
+- [X] T008 [P] [US1] Write `tests/unit/test_tool_descriptions.py`. List every tool (with its parameter descriptions) and every prompt through the in-memory FastMCP `Client`, in read-and-write mode, and check:
   - SC-002: no description names an `infrahub://` URI unless it also names a tool;
   - FR-004: the descriptions of `get_nodes`, `search_nodes`, `query_graphql`, `node_upsert` and their `kind` and `filters` parameters name `get_schema`, and do not contain "does not support MCP resources";
   - FR-006: the `get_schema` description does not contain "Prefer reading";
   - FR-007: the `query_graphql` description contains a filter example of the form `<Kind>(<key>: ...)` and the words `no "filters" argument`;
   - FR-017: the `get_schema` description and the `get_nodes` `filters` parameter description say the keys are GraphQL arguments of the kind's query.
-- [ ] T009 [P] [US1] Add tests to `tests/unit/test_gql_remediation.py` for the `query_graphql` remediation (FR-016, SC-006). (`tests/unit/test_tools.py` runs only against a live Infrahub instance, so these offline tests get their own file.)
+- [X] T009 [P] [US1] Add tests to `tests/unit/test_gql_remediation.py` for the `query_graphql` remediation (FR-016, SC-006). (`tests/unit/test_tools.py` runs only against a live Infrahub instance, so these offline tests get their own file.)
   - a mocked `GraphQLError` whose `errors` contains `Unknown argument 'filters' on field 'Query.LocationSite'`, for the query `{ LocationSite(filters: {name__value: "x"}) { count } }`, returns a remediation containing `LocationSite(name__value:`;
   - a query with no top-level field name falls back to `DcimDevice`;
   - any other `GraphQLError` returns the existing remediation.
-- [ ] T010 [P] [US1] Update `tests/unit/test_server_prompt.py`: the `infrahub_agent` prompt contains `build_instructions(...)` for the server's settings, and no longer contains its own "Data formats" or "Schema discovery" sections.
-- [ ] T011 [P] [US1] Update `tests/unit/test_middleware.py` (`TestReadOnlyMiddleware`; `tests/unit/test_read_only.py` covers mutation detection only): `ReadOnlyMiddleware._KNOWN_READ_ONLY_TOOLS` contains `list_resources`, `read_resource`, `find_paths`, `find_reachable` and `get_session_info` (research R8, FR-014).
+- [X] T010 [P] [US1] Update `tests/unit/test_server_prompt.py`: the `infrahub_agent` prompt contains `build_instructions(...)` for the server's settings, and no longer contains its own "Data formats" or "Schema discovery" sections.
+- [X] T011 [P] [US1] Update `tests/unit/test_middleware.py` (`TestReadOnlyMiddleware`; `tests/unit/test_read_only.py` covers mutation detection only): `ReadOnlyMiddleware._KNOWN_READ_ONLY_TOOLS` contains `list_resources`, `read_resource`, `find_paths`, `find_reachable` and `get_session_info` (research R8, FR-014).
 
 ### Implementation for User Story 1
 
-- [ ] T012 [US1] In `src/infrahub_mcp/server.py`, pass `instructions=build_instructions(read_only=_config.read_only, resources_as_tools=_config.resources_as_tools)` to `FastMCP(...)` (line 102). Rebuild `infrahub_agent` (line 194) as: the persona line, then `build_instructions(...)`, then the tool overview; remove its "Data formats" and "Schema discovery" sections. T007 and T010 pass.
-- [ ] T013 [P] [US1] In `src/infrahub_mcp/tools/schema.py`, rewrite the `get_schema` description (lines 43-61): it is the step to take first; it may mention the `infrahub://schema` resource for hosts that attach it, without telling the assistant to prefer it (FR-006); the listed filter keys are also GraphQL arguments of the kind's query, not a `filters` argument (FR-017). Do not change the arguments or the output (FR-011).
-- [ ] T014 [P] [US1] In `src/infrahub_mcp/tools/nodes.py`, name `get_schema` / `get_schema(kind=...)` instead of resource URIs in: the `kind` parameter descriptions (lines 141, 309), the `filters` parameter description (line 154, also stating that in `query_graphql` the same keys go directly on the kind's query, FR-017), the `get_nodes` description (lines 195-204), the `search_nodes` description (lines 336-337) and the error remediations (lines 113, 263) (FR-004, FR-005).
-- [ ] T015 [P] [US1] In `src/infrahub_mcp/tools/gql.py`:
+- [X] T012 [US1] In `src/infrahub_mcp/server.py`, pass `instructions=build_instructions(read_only=_config.read_only, resources_as_tools=_config.resources_as_tools)` to `FastMCP(...)` (line 102). Rebuild `infrahub_agent` (line 194) as: the persona line, then `build_instructions(...)`, then the tool overview; remove its "Data formats" and "Schema discovery" sections. T007 and T010 pass.
+- [X] T013 [P] [US1] In `src/infrahub_mcp/tools/schema.py`, rewrite the `get_schema` description (lines 43-61): it is the step to take first; it may mention the `infrahub://schema` resource for hosts that attach it, without telling the assistant to prefer it (FR-006); the listed filter keys are also GraphQL arguments of the kind's query, not a `filters` argument (FR-017). Do not change the arguments or the output (FR-011).
+- [X] T014 [P] [US1] In `src/infrahub_mcp/tools/nodes.py`, name `get_schema` / `get_schema(kind=...)` instead of resource URIs in: the `kind` parameter descriptions (lines 141, 309), the `filters` parameter description (line 154, also stating that in `query_graphql` the same keys go directly on the kind's query, FR-017), the `get_nodes` description (lines 195-204), the `search_nodes` description (lines 336-337) and the error remediations (lines 113, 263) (FR-004, FR-005).
+- [X] T015 [P] [US1] In `src/infrahub_mcp/tools/gql.py`:
   - rewrite the description (lines 40-42) to name `get_schema` and state the filter syntax with one example (FR-004, FR-007);
   - in the `GraphQLError` handler (line 65), when a message in `exc.errors` contains `Unknown argument 'filters'`, return the remediation from [contracts/mcp-surface.md](./contracts/mcp-surface.md), using the first top-level field of the already parsed `document` as the kind name, or `DcimDevice` when there is none (FR-016).
   T009 passes.
-- [ ] T016 [P] [US1] In `src/infrahub_mcp/tools/write.py`, name `get_schema` instead of resource URIs in the `node_upsert` and `mutate_graphql` descriptions, parameters and errors (lines 113, 138, 144, 169-171, 244) (FR-004, FR-005).
-- [ ] T017 [P] [US1] In `src/infrahub_mcp/middleware.py`: change the response-size remediation (line 587) to name `get_schema(kind=...)`; add the five names from T011 to `_KNOWN_READ_ONLY_TOOLS` (line 157). T011 passes.
-- [ ] T018 [P] [US1] In `src/infrahub_mcp/prompts/prompts.py`, name `get_schema` / `get_schema(kind=...)` first and the resource second (lines 41, 58, 103, 113, 155, 168, 170).
-- [ ] T019 [US1] Run `uv run invoke format lint` and `uv run pytest`. T007 to T011 pass. Depends on T012 to T018.
+- [X] T016 [P] [US1] In `src/infrahub_mcp/tools/write.py`, name `get_schema` instead of resource URIs in the `node_upsert` and `mutate_graphql` descriptions, parameters and errors (lines 113, 138, 144, 169-171, 244), and the same references in `node_delete` and `mutate_graphql` (lines 255, 266, 280, 331, 441-443, 465) (FR-004, FR-005).
+- [X] T017 [P] [US1] In `src/infrahub_mcp/middleware.py`: change the response-size remediation (line 587) to name `get_schema(kind=...)`; add the five names from T011 to `_KNOWN_READ_ONLY_TOOLS` (line 157). T011 passes.
+- [X] T018 [P] [US1] In `src/infrahub_mcp/prompts/prompts.py`, name `get_schema` / `get_schema(kind=...)` first and the resource second (lines 41, 58, 103, 113, 155, 168, 170).
+- [X] T019 [US1] Run `uv run invoke format lint` and `uv run pytest`. T007 to T011 pass. Depends on T012 to T018.
 
 **Checkpoint**: User Story 1 is complete for the automated checks. It can be shipped on its own; the manual SC-001 check (T034) is in the final phase because it needs the paging fix (T001).
 

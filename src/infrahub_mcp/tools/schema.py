@@ -44,12 +44,18 @@ async def get_schema(
 
     Without a ``kind``, returns the catalog of all kinds (compact JSON).
     With a ``kind``, returns its attributes, relationships, and the full set
-    of filter keys accepted by ``get_nodes`` (TOON-encoded for token efficiency).
+    of filter keys (TOON-encoded for token efficiency).
     Each relationship inlines one level of its peer schema unless ``expand`` is
     ``False`` (or the server default disables it).
 
-    Prefer reading the ``infrahub://schema`` resource if your client supports
-    MCP resources — this tool provides the same data for clients that don't.
+    The filter keys work in two places: as keys of the ``filters`` argument of
+    ``get_nodes``, and as GraphQL arguments in ``query_graphql``, placed
+    directly on the kind's query (``LocationSite(name__value: "atl1")``), not
+    in a ``filters`` argument.
+
+    Hosts that attach context can read the same data that ``get_schema``
+    returns from the ``infrahub://schema`` and ``infrahub://schema/{kind}``
+    resources.
 
     Args:
         kind: Optional kind to get detail for. Omit to list all kinds.
