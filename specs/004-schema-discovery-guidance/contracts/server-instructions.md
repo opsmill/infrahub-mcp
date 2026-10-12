@@ -28,6 +28,7 @@ The wording below is the target. Small wording changes during implementation are
 | How to read TOON | yes | yes | FR-001 |
 | Access mode | "read and write" | "read-only" | FR-001 |
 | Session-branch workflow and `propose_changes` | yes | no | FR-003 |
+| Reads use the default branch unless `branch` is passed; `get_session_info` returns the session branch | yes | no | FR-001 |
 | Any write tool name (`node_upsert`, `node_delete`, `mutate_graphql`, `propose_changes`, `reset_session_branch`) | allowed | forbidden | FR-003, SC-003 |
 | `read_resource` line naming `infrahub://branches` and `infrahub://graphql-schema` | only when `resources_as_tools` | only when `resources_as_tools` | FR-015 |
 | `read_resource` or `list_resources` when `resources_as_tools` is false | forbidden | forbidden | FR-015 |
@@ -53,7 +54,7 @@ Filter keys (for example role__value) are the ones get_schema(kind=...) lists un
 
 Results that contain lists use TOON: a header names the fields once, then each indented row is one record.
 
-Access: read and write. The first write creates a session branch; the default branch is never changed directly. When the changes are ready, call propose_changes to open a proposed change for human review.
+Access: read and write. The first write creates a session branch; the default branch is never changed directly. Read tools use the default branch unless you pass branch; to read your own changes, pass the session branch that get_session_info returns. When the changes are ready, call propose_changes to open a proposed change for human review.
 ```
 
 ## Read-only variants (3 and 4)

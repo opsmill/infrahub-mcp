@@ -29,6 +29,8 @@ Facts that shape this specification:
 - Q: How is SC-001 checked before merge? → A: Run the scenario 3 times with Claude through a client that passes only tools; the pull request merges only if at least 2 runs pass (SC-001).
 - Q: Should `infrahub://graphql-schema` also accept a branch in this feature? → A: No, out of scope; tracked in a separate issue together with the raw HTTP call that resource uses (Assumptions).
 - Q: Should the spec cover how filter keys differ between `get_nodes` and GraphQL? → A: Yes; it is part of the instructions and descriptions this feature changes (FR-016, FR-017, SC-006).
+- Q: In read-and-write mode, should the instructions say that reads stay on the default branch and how to read the session branch? → A: Yes, one sentence: reads use the default branch unless `branch` is passed; `get_session_info` returns the session branch (FR-001).
+- Q: `get_nodes` ignores `limit` (see Assumptions). How does this feature handle it? → A: A separate bug fix merges first; this feature depends on it and keeps the `get_nodes` rule for counts (FR-001, Assumptions).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -97,7 +99,8 @@ A network engineer has an assistant add a kind on a session branch, then asks a 
   - use `find_paths` and `find_reachable` for questions about how nodes are connected or what a change affects;
   - in Infrahub GraphQL, filters are arguments of the kind's query, not a `filters` argument;
   - results use TOON format;
-  - the current access mode.
+  - the current access mode;
+  - in read-and-write mode: read tools use the default branch unless a `branch` is passed, and `get_session_info` returns the session branch to pass when reading changes made in this session.
 - **FR-002**: The server instructions MUST NOT repeat what each tool description already says ([MCP blog: server instructions](https://blog.modelcontextprotocol.io/posts/2025-11-03-using-server-instructions/)).
 - **FR-003**: In read-only mode, the server instructions MUST NOT mention write tools or the branch-per-session write workflow.
 - **FR-004**: The descriptions of `get_nodes`, `search_nodes`, `query_graphql`, `node_upsert` and their `kind` and `filters` parameters MUST name `get_schema` as the step for finding valid kind names and filter keys. They MUST NOT make the step depend on whether the client supports resources.
@@ -136,6 +139,7 @@ A network engineer has an assistant add a kind on a session branch, then asks a 
 ## Assumptions
 
 - The customer's gateway passes tool names and descriptions to the model unchanged. Whether it passes server instructions, prompts or resources is not known, so every requirement in User Story 1 must work with tools alone.
+- A fix for `get_nodes` paging merges before this feature. `get_nodes` calls the SDK with `parallel=True` (`src/infrahub_mcp/tools/nodes.py:60`). In that mode, SDK `client.filters` requests every page of the result and applies `limit` to each page, not to the whole result; with an `offset`, every page uses the same offset. A test with a mocked transport and 1,000 nodes gave these results: `limit=50` without offset made 20 GraphQL calls and returned all 1,000 nodes; `limit=50, offset=100` made 20 calls and returned 1,000 nodes of which 50 were unique. The existing pagination tests mock `_fetch_nodes`, so they do not catch it. FR-001 tells the assistant to count with `get_nodes`, which is only cheap once `limit` is applied. The fix is tracked in its own issue and pull request, and the SDK behavior is reported to the Infrahub SDK maintainers.
 - PR 193 is merged before this feature, and this feature reuses its `"write"` tag to hide write content in read-only mode.
 - SC-001 is measured with Claude, the model used in the field test. Results with other models are not known.
 - Changing descriptions, adding server instructions and adding an optional branch to the resources does not change any existing tool name, argument or resource URI, so existing callers are not broken.

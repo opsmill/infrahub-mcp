@@ -138,6 +138,7 @@ Covered by the "do not fetch again" line in Phase A (FR-008). Checked by the con
 
 ## Dependencies and Order
 
+- The `get_nodes` paging fix (spec Assumptions) must merge first. Until it does, FR-001's rule to count with `get_nodes` makes the server fetch every node of the kind. The fix is a separate issue and pull request: call the SDK with `parallel=True` only when `limit=-1`, and add a test that does not mock `_fetch_nodes`.
 - [PR 193](https://github.com/opsmill/infrahub-mcp/pull/193) should merge first. Phase A reuses its read-only test pattern, and the read-only instructions must agree with its hidden `make_infra_change` prompt. If it has not merged, Phase A can still proceed. The tests for the prompt list in read-only mode then wait for it.
 - Phases A, C and D touch different files except `server.py`. A and D both edit `server.py`, so do them in that order.
 
