@@ -64,7 +64,7 @@
             <td>
                 <code><b>get_nodes</b></code>
             </td>
-            <td>List nodes of a specific kind — the default read path for typed queries with optional filtering and pagination.<br/><br/>Prefer this over `<code>query_graphql</code>` when you just need objects of one kind:<br/>results come back as display labels (fast, token-cheap) or full attribute<br/>dicts (``include_attributes=True``).<br/><br/>To discover available kinds, read the ``infrahub://schema`` resource.<br/>If your client does not support MCP resources, call the `<code>get_schema</code>` tool instead.<br/>To discover available filters for a kind, read ``infrahub://schema/{kind}``<br/>or call ``get_schema(kind='...')``.<br/><br/>Filter keys follow the schema's filter map. Attribute filters use<br/>``<attr>__value`` (e.g. ``{"name__value": "atl1"}``) and relationship<br/>filters chain via ``<rel>__<attr>__value`` (e.g.<br/>``{"site__name__value": "atl1"}``). See ``infrahub://schema/{kind}`` for<br/>the full list of valid keys.<br/><br/>Use `<code>offset</code>` and `<code>limit</code>` to page through large result sets. The response<br/>always includes `<code>total_count</code>` and `<code>has_more</code>` so you know when to stop.</td>
+            <td>List nodes of a specific kind — the default read path for typed queries with optional filtering and pagination.<br/><br/>Prefer this over `<code>query_graphql</code>` when you just need objects of one kind:<br/>results come back as display labels (fast, token-cheap) or full attribute<br/>dicts (``include_attributes=True``).<br/><br/>Call ``get_schema()`` for the available kinds and ``get_schema(kind='...')``<br/>for a kind's filter keys before calling this tool; never guess them.<br/><br/>Filter keys follow the schema's filter map. Attribute filters use<br/>``<attr>__value`` (e.g. ``{"name__value": "atl1"}``) and relationship<br/>filters chain via ``<rel>__<attr>__value`` (e.g.<br/>``{"site__name__value": "atl1"}``).<br/><br/>Use `<code>offset</code>` and `<code>limit</code>` to page through large result sets. The response<br/>always includes `<code>total_count</code>` and `<code>has_more</code>` so you know when to stop.<br/>For a count only, pass ``limit=1`` and read `<code>total_count</code>`.</td>
             <td>
                 <ul>
                     <li> <code>branch</code> : string | null<br /></li>
@@ -85,7 +85,7 @@
             <td>
                 <code><b>get_schema</b></code>
             </td>
-            <td>Discover available schema kinds — call this first when you don't know what kinds or filters exist.<br/><br/>Without a `<code>kind</code>`, returns the catalog of all kinds (compact JSON).<br/>With a `<code>kind</code>`, returns its attributes, relationships, and the full set<br/>of filter keys accepted by `<code>get_nodes</code>` (TOON-encoded for token efficiency).<br/>Each relationship inlines one level of its peer schema unless `<code>expand</code>` is<br/>`<code>False</code>` (or the server default disables it).<br/><br/>Prefer reading the ``infrahub://schema`` resource if your client supports<br/>MCP resources — this tool provides the same data for clients that don't.</td>
+            <td>Discover available schema kinds — call this first when you don't know what kinds or filters exist.<br/><br/>Without a `<code>kind</code>`, returns the catalog of all kinds (compact JSON).<br/>With a `<code>kind</code>`, returns its attributes, relationships, and the full set<br/>of filter keys (TOON-encoded for token efficiency).<br/>Each relationship inlines one level of its peer schema unless `<code>expand</code>` is<br/>`<code>False</code>` (or the server default disables it).<br/><br/>The filter keys work in two places: as keys of the `<code>filters</code>` argument of<br/>`<code>get_nodes</code>`, and as GraphQL arguments in `<code>query_graphql</code>`, placed<br/>directly on the kind's query (``LocationSite(name__value: "atl1")``), not<br/>in a `<code>filters</code>` argument.<br/><br/>Hosts that attach context can read the same data that `<code>get_schema</code>`<br/>returns from the ``infrahub://schema`` and ``infrahub://schema/{kind}``<br/>resources.</td>
             <td>
                 <ul>
                     <li> <code>branch</code> : string | null<br /></li>
@@ -116,7 +116,7 @@
             <td>
                 <code><b>mutate_graphql</b></code>
             </td>
-            <td>Execute a GraphQL mutation against Infrahub — use only for complex writes that typed tools can't express.<br/><br/>Prefer `<code>node_upsert</code>` (create/update scalar attributes) or `<code>node_delete</code>`<br/>(remove a node) for straightforward changes; they validate against the<br/>schema and produce clearer audit entries. Reach for `<code>mutate_graphql</code>`<br/>when you need relationship edits, bulk operations, or any mutation shape<br/>not covered by the typed tools. For reads, use `<code>query_graphql</code>`.<br/><br/>The mutation always runs on the **active session branch** (auto-created on the<br/>first write of the session, ``mcp/session-YYYYMMDD-<hex>``). There is no branch<br/>override — writes are isolated to the session, and changes reach the default<br/>branch only through `<code>propose_changes</code>` and human review. To target a different<br/>branch deliberately, switch the session with `<code>reset_session_branch</code>` first.<br/>Branch- and schema-management mutations are rejected.<br/><br/>To discover available kinds and their attributes, read the ``infrahub://schema``<br/>resource or call the `<code>get_schema</code>` tool.<br/>For the full GraphQL SDL, read ``infrahub://graphql-schema``.</td>
+            <td>Execute a GraphQL mutation against Infrahub — use only for complex writes that typed tools can't express.<br/><br/>Prefer `<code>node_upsert</code>` (create/update scalar attributes) or `<code>node_delete</code>`<br/>(remove a node) for straightforward changes; they validate against the<br/>schema and produce clearer audit entries. Reach for `<code>mutate_graphql</code>`<br/>when you need relationship edits, bulk operations, or any mutation shape<br/>not covered by the typed tools. For reads, use `<code>query_graphql</code>`.<br/><br/>The mutation always runs on the **active session branch** (auto-created on the<br/>first write of the session, ``mcp/session-YYYYMMDD-<hex>``). There is no branch<br/>override — writes are isolated to the session, and changes reach the default<br/>branch only through `<code>propose_changes</code>` and human review. To target a different<br/>branch deliberately, switch the session with `<code>reset_session_branch</code>` first.<br/>Branch- and schema-management mutations are rejected.<br/><br/>Call ``get_schema()`` for the available kinds and ``get_schema(kind='...')``<br/>for a kind's attribute names before writing the mutation; never guess them.<br/>Hosts that attach context can also read the full GraphQL SDL from the<br/>``infrahub://graphql-schema`` resource.</td>
             <td>
                 <ul>
                     <li> <code>query</code> : string<br /></li>
@@ -131,7 +131,7 @@
             <td>
                 <code><b>node_delete</b></code>
             </td>
-            <td>Delete a node in Infrahub on the active session branch.<br/><br/>The deletion is applied to the session branch only and is not visible on the<br/>default branch until a proposed change is merged.<br/>To discover available kinds, read the ``infrahub://schema`` resource.<br/>If your client does not support MCP resources, call the `<code>get_schema</code>`<br/>tool instead.</td>
+            <td>Delete a node in Infrahub on the active session branch.<br/><br/>The deletion is applied to the session branch only and is not visible on the<br/>default branch until a proposed change is merged.<br/>Call ``get_schema()`` for the available kinds; never guess a kind name.</td>
             <td>
                 <ul>
                     <li> <code>hfid</code> : string [ ] | null<br /></li>
@@ -148,7 +148,7 @@
             <td>
                 <code><b>node_upsert</b></code>
             </td>
-            <td>Create or update a node in Infrahub on the active session branch.<br/><br/>The session branch is auto-created on the first write of the session<br/>(``mcp/session-YYYYMMDD-<hex>``). Use `<code>propose_changes</code>` to open a<br/>review once your changes are ready.<br/>To discover available kinds and attributes, read the ``infrahub://schema``<br/>resource. If your client does not support MCP resources, call the<br/>`<code>get_schema</code>` tool instead.<br/><br/>- **Create**: omit both `<code>id</code>` and `<code>hfid</code>`.<br/>- **Update**: supply either `<code>id</code>` or `<code>hfid</code>` to identify the target node.<br/><br/>Only scalar attribute fields are accepted in `<code>data</code>`. To set relationship<br/>fields, use `<code>mutate_graphql</code>` with an appropriate GraphQL mutation.</td>
+            <td>Create or update a node in Infrahub on the active session branch.<br/><br/>The session branch is auto-created on the first write of the session<br/>(``mcp/session-YYYYMMDD-<hex>``). Use `<code>propose_changes</code>` to open a<br/>review once your changes are ready.<br/>Call ``get_schema()`` for the available kinds and ``get_schema(kind='...')``<br/>for a kind's attribute names before calling this tool; never guess them.<br/><br/>- **Create**: omit both `<code>id</code>` and `<code>hfid</code>`.<br/>- **Update**: supply either `<code>id</code>` or `<code>hfid</code>` to identify the target node.<br/><br/>Only scalar attribute fields are accepted in `<code>data</code>`. To set relationship<br/>fields, use `<code>mutate_graphql</code>` with an appropriate GraphQL mutation.</td>
             <td>
                 <ul>
                     <li> <code>data</code> : unknown<br /></li>
@@ -183,7 +183,7 @@
             <td>
                 <code><b>query_graphql</b></code>
             </td>
-            <td>Execute a read-only GraphQL query against Infrahub — use for reads only, never mutations.<br/><br/>Mutations are rejected at the AST level: use `<code>mutate_graphql</code>` instead<br/>(available when write mode is enabled). For simple attribute reads, prefer<br/>`<code>get_nodes</code>` / `<code>search_nodes</code>` — use GraphQL only when you need relationship<br/>traversal, aggregation, or fields not exposed by the typed tools.<br/><br/>To discover available kinds and their attributes, read the ``infrahub://schema``<br/>resource. If your client does not support MCP resources, call the `<code>get_schema</code>`<br/>tool instead. For the full GraphQL SDL, read ``infrahub://graphql-schema``.</td>
+            <td>Execute a read-only GraphQL query against Infrahub — use for reads only, never mutations.<br/><br/>Mutations are rejected at the AST level: use `<code>mutate_graphql</code>` instead<br/>(available when write mode is enabled). For simple attribute reads, prefer<br/>`<code>get_nodes</code>` / `<code>search_nodes</code>` — use GraphQL only when you need relationship<br/>traversal, aggregation, or fields not exposed by the typed tools.<br/><br/>Call ``get_schema()`` for the available kinds and ``get_schema(kind='...')``<br/>for a kind's attributes, relationships and filter keys; never guess them.<br/><br/>Filter keys go directly on the kind's query as arguments;<br/>there is no "filters" argument. Example::<br/><br/>    LocationSite(name__value: "atl1") { count edges { node { id name { value } } } }</td>
             <td>
                 <ul>
                     <li> <code>branch</code> : string | null<br /></li>
@@ -214,7 +214,7 @@
             <td>
                 <code><b>search_nodes</b></code>
             </td>
-            <td>Find nodes of a specific kind by partial substring — use when you only know part of a value.<br/><br/>Matches the query as a substring against **all attributes** of the kind<br/>via Infrahub's `<code>any__value</code>` filter with ``partial_match=True``. Works<br/>uniformly on concrete kinds (e.g. `<code>LocationSite</code>`) and abstract/generic<br/>kinds (e.g. `<code>CoreNode</code>`) — agents can ping any kind without first<br/>checking whether it has a `<code>name</code>` attribute.<br/><br/>For a filter on one specific attribute (or combining multiple filters),<br/>use `<code>get_nodes</code>` with an explicit `<code>filters</code>` dict instead.<br/><br/>Each result is labelled with the node's `<code>display_label</code>` when present,<br/>falling back to its HFID (kind-prefixed) and finally its UUID — so<br/>generic-kind results that lack a `<code>display_label</code>` still return a<br/>human-readable identifier rather than a bare UUID.<br/><br/>To discover available kinds, read the ``infrahub://schema`` resource.<br/>If your client does not support MCP resources, call the `<code>get_schema</code>` tool instead.</td>
+            <td>Find nodes of a specific kind by partial substring — use when you only know part of a value.<br/><br/>Matches the query as a substring against **all attributes** of the kind<br/>via Infrahub's `<code>any__value</code>` filter with ``partial_match=True``. Works<br/>uniformly on concrete kinds (e.g. `<code>LocationSite</code>`) and abstract/generic<br/>kinds (e.g. `<code>CoreNode</code>`) — agents can ping any kind without first<br/>checking whether it has a `<code>name</code>` attribute.<br/><br/>For a filter on one specific attribute (or combining multiple filters),<br/>use `<code>get_nodes</code>` with an explicit `<code>filters</code>` dict instead.<br/><br/>Each result is labelled with the node's `<code>display_label</code>` when present,<br/>falling back to its HFID (kind-prefixed) and finally its UUID — so<br/>generic-kind results that lack a `<code>display_label</code>` still return a<br/>human-readable identifier rather than a bare UUID.<br/><br/>Call ``get_schema()`` for the available kinds; never guess a kind name.</td>
             <td>
                 <ul>
                     <li> <code>branch</code> : string | null<br /></li>
@@ -293,7 +293,7 @@
             <td>
                 <a>infrahub://schema</a> <i>(application/json)</i>
             </td>
-            <td>All non-internal schema kinds available in this Infrahub instance, as a JSON object mapping kind names to their human-readable labels. Use this to discover what kinds exist before calling get_nodes or node_upsert.</td>
+            <td>All non-internal schema kinds available in this Infrahub instance, as a JSON object mapping kind names to their human-readable labels. Use this to discover what kinds exist before calling get_nodes or node_upsert. Same data as the get_schema() tool. Reads the default branch.</td>
         </tr>
         <tr>
             <td>2.</td>
@@ -324,7 +324,7 @@
 </tbody>
 </table>
 
-## 🧩 Resource Templates (1)
+## 🧩 Resource Templates (2)
 
 <table style="text-align: left;">
 <thead>
@@ -343,12 +343,25 @@
                 <!--- no icon -->
             </td>
             <td>
+                <code><b>Schema Catalog on Branch</b></code>
+            </td>
+            <td>
+                <a>infrahub://schema{?branch}</a> <i>(application/json)</i>
+            </td>
+            <td>All non-internal schema kinds available in this Infrahub instance, as a JSON object mapping kind names to their human-readable labels. Use this to discover what kinds exist before calling get_nodes or node_upsert. Same data as the get_schema() tool. Pass ?branch=<name> to read another branch.</td>
+        </tr>
+        <tr>
+            <td>2.</td>
+            <td>
+                <!--- no icon -->
+            </td>
+            <td>
                 <code><b>Schema Kind Detail</b></code>
             </td>
             <td>
-                <a>infrahub://schema/{kind}</a> <i>(text/plain)</i>
+                <a>infrahub://schema/{kind}{?branch}</a> <i>(text/plain)</i>
             </td>
-            <td>Full schema definition for a specific node kind: attributes, relationships, and the complete set of filters accepted by get_nodes. Relationships include one level of inlined peer schemas when INFRAHUB_MCP_SCHEMA_EXPAND_PEERS is enabled (the default). Fetch this before filtering nodes of an unfamiliar kind. Arrays are encoded in TOON tabular format: header declares fields once, each row is one entry.</td>
+            <td>Full schema definition for a specific node kind: attributes, relationships, and the complete set of filters accepted by get_nodes. Relationships include one level of inlined peer schemas when INFRAHUB_MCP_SCHEMA_EXPAND_PEERS is enabled (the default). Pass ?branch=<name> to read another branch than the default one. Same data as get_schema(kind=...). Arrays are encoded in TOON tabular format: header declares fields once, each row is one entry.</td>
         </tr>
 </tbody>
 </table>

@@ -154,16 +154,16 @@ Single project: `src/infrahub_mcp/`, `tests/unit/`, `docs/docs/`, `dev/` at the 
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T026 [P] Add `INFRAHUB_MCP_RESOURCES_AS_TOOLS` to the variable table in `docs/docs/references/configuration.mdx`.
-- [ ] T027 [P] Update `docs/docs/references/methods.mdx` (server instructions, the optional `branch` on schema resources, the two optional resource tools, the `query_graphql` remediation for a `filters` argument) and `docs/docs/readme.mdx` line 28 (server instructions next to the `infrahub_agent` prompt). Include the GraphQL schema size limit if T025 found it. Run `uv run rumdl check docs/docs/`.
-- [ ] T028 [P] Write `dev/adr/0009-guidance-in-instructions-and-descriptions.md` from `.specify/templates/adr-template.md`: model guidance lives in server instructions and tool descriptions; prompts carry workflows; resources serve hosts; `get_schema` is kept (research R1, R2).
-- [ ] T029 [P] Add one paragraph to `dev/knowledge/architecture.md` on where model guidance lives.
-- [ ] T030 [P] Create the changelog fragment with `uv run towncrier create -c "<text>" 191.added.md`.
-- [ ] T031 Regenerate `CAPABILITIES.md` with `uv run invoke update-capabilities` (needs the `mcp-discovery` CLI; see `scripts/update-capabilities.sh`). CI (`ci-mcp-discovery.yml`) fails if it is out of date. Depends on all description changes (T013 to T018, T022, T024).
-- [ ] T032 Run the full gate: `uv sync && uv run pre-commit run && uv run pytest && uv run invoke lint && uv run invoke validate-dockercomposeenv && uv run invoke validate-serverjson && uv run rumdl check docs/docs/`.
-- [ ] T033 Run [quickstart.md](./quickstart.md) section 2 (what a client receives) for the four variants.
-- [ ] T034 Run the manual SC-001 check in [quickstart.md](./quickstart.md) section 3: 3 runs with Claude through a client that passes only tools; at least 2 must pass; record all three in the pull request. Depends on T001 (paging fix merged).
-- [ ] T035 Open the pull request against `stable` with the label `changes/minor`, linking issue 191 and the `get_nodes` paging issue. Merge waits on T034.
+- [X] T026 [P] Add `INFRAHUB_MCP_RESOURCES_AS_TOOLS` to the variable table in `docs/docs/references/configuration.mdx`.
+- [X] T027 [P] Update `docs/docs/references/methods.mdx` (server instructions, the optional `branch` on schema resources, the two optional resource tools, the `query_graphql` remediation for a `filters` argument) and `docs/docs/readme.mdx` line 28 (server instructions next to the `infrahub_agent` prompt). Include the GraphQL schema size limit if T025 found it. Run `uv run rumdl check docs/docs/`.
+- [X] T028 [P] Write `dev/adr/0009-guidance-in-instructions-and-descriptions.md` from `.specify/templates/adr-template.md`: model guidance lives in server instructions and tool descriptions; prompts carry workflows; resources serve hosts; `get_schema` is kept (research R1, R2).
+- [X] T029 [P] Add one paragraph to `dev/knowledge/architecture.md` on where model guidance lives.
+- [X] T030 [P] Create the changelog fragment with `uv run towncrier create -c "<text>" 191.added.md`.
+- [X] T031 Regenerate `CAPABILITIES.md` with `uv run invoke update-capabilities` (needs the `mcp-discovery` CLI; see `scripts/update-capabilities.sh`). CI (`ci-mcp-discovery.yml`) fails if it is out of date. Depends on all description changes (T013 to T018, T022, T024).
+- [X] T032 Run the full gate: `uv sync && uv run pre-commit run && uv run pytest && uv run invoke lint && uv run invoke validate-dockercomposeenv && uv run invoke validate-serverjson && uv run rumdl check docs/docs/`.
+- [X] T033 Run [quickstart.md](./quickstart.md) section 2 (what a client receives) for the four variants.
+- [ ] T034 (pending: needs the get_nodes paging fix, T001) Run the manual SC-001 check in [quickstart.md](./quickstart.md) section 3: 3 runs with Claude through a client that passes only tools; at least 2 must pass; record all three in the pull request. Depends on T001 (paging fix merged).
+- [ ] T035 (pending: not requested yet) Open the pull request against `stable` with the label `changes/minor`, linking issue 191 and the `get_nodes` paging issue. Merge waits on T034.
 
 ---
 

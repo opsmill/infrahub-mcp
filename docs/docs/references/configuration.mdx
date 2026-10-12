@@ -24,6 +24,7 @@ Username/password authentication against Infrahub is not supported. Use [OIDC](.
 | `INFRAHUB_MCP_BRANCH_PATTERN` | Branch naming pattern. Supports `{date}`, `{hex}`, `{user}` placeholders. Fixed names (no placeholders) must not already exist. | `mcp/session-{date}-{hex}` |
 | `INFRAHUB_MCP_MAX_BRANCH_RETRIES` | Max collision retries when generating branch names (1–20) | `5` |
 | `INFRAHUB_MCP_LOG_LEVEL` | Set to `debug` for verbose logging with tracebacks | `info` |
+| `INFRAHUB_MCP_RESOURCES_AS_TOOLS` | Add the `list_resources` and `read_resource` tools, so clients that pass only tools to the model can read every resource (`true`/`false`). See [Resource tools](./methods.mdx#resource-tools) | `false` |
 
 ## Rate limiting
 

@@ -14,6 +14,19 @@ items[N]{field1,field2,field3}:
 
 Scalar fields use standard `key: value` notation. Flat string maps (the schema catalog, branch lists) are returned as compact JSON where TOON offers no benefit.
 
+## Server instructions
+
+The server sends instructions to every client when it connects. Clients that pass server instructions to the model give the agent these rules without anyone selecting a prompt:
+
+- Call `get_schema()` for the list of kinds and `get_schema(kind=...)` for a kind's attributes and filter keys before querying a kind it does not know. Never guess kind names or filter keys, and do not fetch a schema that is already in the conversation.
+- Use `get_nodes` for nodes of one kind, including counts through `total_count`, and `find_paths` / `find_reachable` for connectivity and impact questions.
+- Filter keys go in the `filters` argument of `get_nodes`, but directly on the kind's query in GraphQL. There is no `filters` argument in Infrahub GraphQL.
+- How to read TOON, and whether the server is read-only. In read-and-write mode, the instructions also explain the session branch: read tools use the default branch unless a `branch` is passed, and `get_session_info` returns the session branch.
+
+When `INFRAHUB_MCP_RESOURCES_AS_TOOLS` is enabled, the instructions also name the resources that `read_resource` can read. The `infrahub_agent` prompt includes the same text.
+
+Not every client passes server instructions to the model. The tool descriptions carry the same rules, so agents in other clients receive them too.
+
 ## Schema
 
 <!-- vale off -->
@@ -29,9 +42,9 @@ Scalar fields use standard `key: value` notation. Flat string maps (the schema c
 Discover available schema kinds or retrieve the full detail for a single kind.
 
 - Without `kind`: returns the catalog of all available kinds as compact JSON.
-- With `kind`: returns the kind's attributes, relationships, and the full set of filter keys accepted by `get_nodes` (TOON-encoded).
+- With `kind`: returns the kind's attributes, relationships, and the full set of filter keys (TOON-encoded).
 
-Prefer reading the `infrahub://schema` resource if your client supports MCP resources — this tool provides the same data for clients that don't.
+Call this tool first when the kind name or its filter keys are not known. The filter keys work in two places: as keys of the `filters` argument of `get_nodes`, and as GraphQL arguments placed directly on the kind's query in `query_graphql`. Hosts that attach context can read the same data from the `infrahub://schema` resources (see [Resources](#resources)).
 
 #### Parameters
 
@@ -116,6 +129,14 @@ Return the current MCP session state. Reports the active session branch (if any)
 - no destroy
 
 Execute a read-only GraphQL query against Infrahub. Mutations are rejected at the AST level — use `mutate_graphql` instead. For straightforward attribute reads, prefer `get_nodes` or `search_nodes`.
+
+Filter keys go directly on the kind's query as arguments. Infrahub GraphQL has no `filters` argument:
+
+```graphql
+LocationSite(name__value: "atl1") { count edges { node { id name { value } } } }
+```
+
+When Infrahub rejects a query because of a `filters` argument, the error returned to the agent shows this form for the kind named in the query.
 
 #### Parameters
 
@@ -279,3 +300,24 @@ A merged or deleted session branch is recovered automatically on the next write;
 #### Parameters
 
 - **branch** (string): target branch; omit to reset to a fresh auto-created branch
+
+## Resources
+
+Resources are read by the client application, or attached by the user, as context. The same data is available through tools, so agents in clients that do not read resources are not affected.
+
+| URI | Content | Tool with the same data |
+| --- | --- | --- |
+| `infrahub://schema` | Catalog of kinds on the default branch (JSON) | `get_schema()` |
+| `infrahub://schema{?branch}` | Catalog of kinds on the given branch, for example `infrahub://schema?branch=my-branch` | `get_schema(branch=...)` |
+| `infrahub://schema/{kind}{?branch}` | Attributes, relationships and filter keys of one kind (TOON), on the default branch or the given branch | `get_schema(kind=..., branch=...)` |
+| `infrahub://graphql-schema` | GraphQL SDL of the default branch | none, unless resource tools are enabled |
+| `infrahub://branches` | All branches (JSON) | none, unless resource tools are enabled |
+
+### Resource tools
+
+With `INFRAHUB_MCP_RESOURCES_AS_TOOLS=true`, the server adds two read-only tools for clients that pass only tools to the model, such as the Claude API MCP connector:
+
+- `list_resources`: lists every resource and resource template.
+- `read_resource` (`uri`, string, required): reads one resource by URI, for example `read_resource(uri="infrahub://branches")`.
+
+Reads through these tools pass through the same authentication, read-only and audit middleware as direct resource reads. Responses larger than the response size limit (500 KB) are rejected with an error.

@@ -24,8 +24,9 @@ All writes are branch-isolated and require human approval before merging — age
 
 - **Tools (read)** — `get_nodes` retrieves objects by kind with filters, `search_nodes` finds nodes by partial name match, `query_graphql` executes arbitrary GraphQL queries.
 - **Tools (write)** — `node_upsert` creates or updates nodes, `node_delete` removes nodes, `mutate_graphql` executes GraphQL mutations, `propose_changes` opens a Proposed Change for human review — all on an auto-created session branch.
-- **Resources** — `infrahub://schema` lists all available kinds, `infrahub://schema/{kind}` returns full attribute/filter details, `infrahub://graphql-schema` exposes the GraphQL SDL, `infrahub://branches` lists all branches.
-- **Prompts** — a built-in `infrahub_agent` system prompt that teaches agents the branch-per-session workflow and available tools.
+- **Resources** — `infrahub://schema` lists all available kinds, `infrahub://schema/{kind}` returns full attribute/filter details (both accept `?branch=`), `infrahub://graphql-schema` exposes the GraphQL SDL, `infrahub://branches` lists all branches. An optional setting exposes them as tools for clients that pass only tools.
+- **Server instructions** — sent to every client when it connects: read the schema before querying, which tool to use, and how filter keys differ between `get_nodes` and GraphQL.
+- **Prompts** — a built-in `infrahub_agent` system prompt that includes the server instructions and lists the available tools.
 - **Middleware** — 17-layer production middleware stack with rate limiting, retry with exponential backoff, response caching, scope-based auth, OpenTelemetry tracing, Prometheus metrics, and read-only mode — all opt-in via environment variables.
 - **Infrastructure** — Dockerfile for container deployment, Docker Compose sidecar configuration, Streamable HTTP transport support, `/health` and `/metrics` endpoints.
 
