@@ -93,7 +93,7 @@ Single project: `src/infrahub_mcp/`, `tests/unit/`, `docs/docs/`, `dev/` at the 
 
 **Independent Test**: In a client that supports resources, attach `infrahub://schema` and ask a question about a kind in the catalog; the assistant does not read the catalog again.
 
-- [ ] T020 [US2] Confirm that T003 covers FR-008 in all four variants. Run the independent test above by hand in a client that supports resources (for example Claude Code or Claude Desktop) and record the result in the pull request.
+- [ ] T020 [US2] (automated part done in T003; manual check pending) Confirm that T003 covers FR-008 in all four variants. Run the independent test above by hand in a client that supports resources (for example Claude Code or Claude Desktop) and record the result in the pull request.
 
 **Checkpoint**: The implementation is in Phase 2 (FR-008 is one line of the guidance text). This phase is a check only.
 
@@ -136,7 +136,7 @@ Single project: `src/infrahub_mcp/`, `tests/unit/`, `docs/docs/`, `dev/` at the 
 
 ### Tests for the resource tools setting
 
-- [ ] T023 [P] [US1] Write `tests/unit/test_resources_as_tools.py`, one fresh interpreter per case:
+- [X] T023 [P] [US1] Write `tests/unit/test_resources_as_tools.py`, one fresh interpreter per case:
   - setting off: `list_resources` and `read_resource` are not in the tool list, and the instructions do not mention them;
   - setting on: both tools are listed, `read_resource(uri="infrahub://branches")` returns the branch list (mocked `client.branch.all`), and the instructions name both URIs;
   - setting on with read-only: both tools are listed and callable;
@@ -145,8 +145,8 @@ Single project: `src/infrahub_mcp/`, `tests/unit/`, `docs/docs/`, `dev/` at the 
 
 ### Implementation for the resource tools setting
 
-- [ ] T024 [US1] In `src/infrahub_mcp/server.py`, after all `mcp.mount(...)` calls (after line 288), add `if _config.resources_as_tools: mcp.add_transform(ResourcesAsTools(mcp))`. T023 passes. Depends on T012 (same file).
-- [ ] T025 [US1] Measure the size of `infrahub://graphql-schema` on the integration test instance (`tests/integration/`). Record the size in [research.md](./research.md) R3. If it is over 500 KB, add the limit to the documentation in T027.
+- [X] T024 [US1] In `src/infrahub_mcp/server.py`, after all `mcp.mount(...)` calls (after line 288), add `if _config.resources_as_tools: mcp.add_transform(ResourcesAsTools(mcp))`. T023 passes. Depends on T012 (same file).
+- [ ] T025 [US1] (pending: no Docker daemon in the implementation session on 2026-10-12) Measure the size of `infrahub://graphql-schema` on the integration test instance (`tests/integration/`). Record the size in [research.md](./research.md) R3. If it is over 500 KB, add the limit to the documentation in T027.
 
 **Checkpoint**: The setting works on its own and changes nothing when it is off.
 

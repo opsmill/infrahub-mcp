@@ -5,6 +5,7 @@ from importlib.metadata import version
 from typing import TYPE_CHECKING, Any
 
 from fastmcp import FastMCP
+from fastmcp.server.transforms import ResourcesAsTools
 from infrahub_sdk.client import InfrahubClient
 from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
 from starlette.requests import Request
@@ -262,6 +263,10 @@ mcp.mount(traversal_mcp)
 # Write tools — hidden in read-only mode
 if not _config.read_only:
     mcp.mount(write_mcp)
+
+# Resources as tools — for clients that only pass tools to the model (opt-in)
+if _config.resources_as_tools:
+    mcp.add_transform(ResourcesAsTools(mcp))
 
 
 # ---------------------------------------------------------------------------
