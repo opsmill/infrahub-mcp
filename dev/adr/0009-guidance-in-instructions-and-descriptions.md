@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-10-12
-**Author:** Claude Code (spec `specs/004-schema-discovery-guidance/`)
+**Author:** @bkohler
 
 ## Context
 
