@@ -24,7 +24,7 @@ The wording below is the target. Small wording changes during implementation are
 | Do not fetch the schema again when it is already in the conversation | yes | yes | FR-008 |
 | Use `get_nodes` for nodes of one kind, including counts through `total_count`, before writing GraphQL | yes | yes | FR-001 |
 | Use `find_paths` and `find_reachable` for connectivity and impact questions | yes | yes | FR-001 |
-| GraphQL filters are arguments of the kind's query; there is no `filters` argument; one example | yes | yes | FR-001, FR-007 |
+| GraphQL filters are arguments of the kind's query; there is no `filters` argument; the keys are the ones `get_schema` lists and `get_nodes` takes in `filters`; one example | yes | yes | FR-001, FR-007, FR-017 |
 | How to read TOON | yes | yes | FR-001 |
 | Access mode | "read and write" | "read-only" | FR-001 |
 | Session-branch workflow and `propose_changes` | yes | no | FR-003 |
@@ -48,7 +48,7 @@ Choosing a tool:
 - Nodes of one kind, including "how many": get_nodes. Its total_count gives the count without GraphQL.
 - How two nodes are connected, or what a node affects: find_paths and find_reachable, not nested GraphQL.
 
-GraphQL (query_graphql): the query for a kind has the kind's name, and filters are arguments of that query. There is no "filters" argument. Example:
+Filter keys (for example role__value) are the ones get_schema(kind=...) lists under "filters". In get_nodes they go in the filters argument. In GraphQL (query_graphql) they go directly on the kind's query; there is no "filters" argument. Example:
   DcimDevice(role__value: "edge") { count edges { node { id name { value } } } }
 
 Results that contain lists use TOON: a header names the fields once, then each indented row is one record.
@@ -74,7 +74,7 @@ Other data: read_resource(uri="infrahub://branches") lists the branches; read_re
 
 ## Tests
 
-- All four variants contain `get_schema()`, `get_schema(kind=`, `Never guess`, `get_nodes`, `total_count`, `find_paths`, `find_reachable` and `There is no "filters" argument`.
+- All four variants contain `get_schema()`, `get_schema(kind=`, `Never guess`, `get_nodes`, `total_count`, `find_paths`, `find_reachable` and `there is no "filters" argument`.
 - Variants 3 and 4 contain none of the names of the tools registered in `src/infrahub_mcp/tools/write.py`.
 - Variants 2 and 4 contain `infrahub://branches` and `infrahub://graphql-schema`. Variants 1 and 3 contain neither `read_resource` nor `list_resources`.
 - All four variants are under 2,000 characters.

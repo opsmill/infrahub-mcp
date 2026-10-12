@@ -105,6 +105,7 @@ Ordered by user story. Each phase can be merged and tested on its own.
 3. Rewrite descriptions, parameters and error remediations listed in research R9. Add the GraphQL filter syntax to `query_graphql`.
 4. `test_tool_descriptions.py`: lists every tool, parameter and prompt through the in-memory client and enforces the SC-002 rule.
 5. `ReadOnlyMiddleware._KNOWN_READ_ONLY_TOOLS`: add the five names (research R8).
+6. Filter keys in `get_nodes` and GraphQL (research R11): the `query_graphql` remediation for `Unknown argument 'filters'` (FR-016), and the `get_schema` and `get_nodes` `filters` descriptions (FR-017). Tests in `tests/unit/test_tools.py` with a mocked `GraphQLError` (SC-006).
 
 ### Phase B: Use the schema already in context (User Story 2, P2)
 

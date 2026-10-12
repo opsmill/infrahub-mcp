@@ -28,6 +28,7 @@ Facts that shape this specification:
 - Q: When the resource tools setting is on, should the instructions name the URIs `read_resource` can read? → A: Yes, one line, only when the setting is on (FR-015).
 - Q: How is SC-001 checked before merge? → A: Run the scenario 3 times with Claude through a client that passes only tools; the pull request merges only if at least 2 runs pass (SC-001).
 - Q: Should `infrahub://graphql-schema` also accept a branch in this feature? → A: No, out of scope; tracked in a separate issue together with the raw HTTP call that resource uses (Assumptions).
+- Q: Should the spec cover how filter keys differ between `get_nodes` and GraphQL? → A: Yes; it is part of the instructions and descriptions this feature changes (FR-016, FR-017, SC-006).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -44,6 +45,8 @@ A network engineer asks an assistant "how many services of type X are there?". T
 1. **Given** a client that passes only tools to the model and no prompt selected, **When** the engineer asks a question about nodes of a kind, **Then** the tool list and tool descriptions that the assistant receives name the schema step as the step to take before querying, and name it as a tool the assistant can call.
 2. **Given** a client that passes server instructions to the model, **When** the session starts, **Then** the assistant receives the schema-first rule, the GraphQL filter syntax rule and the current access mode (read-only, or read and write) without anyone selecting a prompt.
 3. **Given** a parameter description or error message that refers the assistant to the schema, **When** the assistant reads it in any client, **Then** it names a step the assistant can take with the tools it has.
+4. **Given** the assistant has read the filter keys of a kind with `get_schema`, **When** it writes a GraphQL query, **Then** the descriptions it received say that the same keys are arguments of the kind's query, not a `filters` argument.
+5. **Given** the assistant sends a GraphQL query with a `filters` argument, **When** Infrahub rejects it, **Then** the error the assistant receives names the mistake and shows the correct form, so the next query is correct.
 
 ---
 
@@ -80,6 +83,7 @@ A network engineer has an assistant add a kind on a session branch, then asks a 
 - The client passes neither server instructions nor prompts. The tool and parameter descriptions alone must carry the schema-first rule.
 - The server runs in read-only mode. The instructions must not mention write tools, the same way read-only mode hides the `make_infra_change` prompt ([PR 193](https://github.com/opsmill/infrahub-mcp/pull/193)).
 - A gateway merges the instructions of several servers. The instructions must name Infrahub tools by their names, so the rule still applies after merging.
+- The same filter keys are used in two forms: as keys of the `filters` argument of `get_nodes`, and as arguments of the kind's query in GraphQL. The `get_schema` output lists them under the label `filters`. An assistant that reads this label can carry the `filters` wrapper into GraphQL, as in calls 3 and 5 of the field test.
 - A gateway merges the tools of several servers. General-purpose tool names such as `read_resource` or `get_prompt` can collide with tools of the same name from other servers. Whether the customer's gateway adds a prefix is not known.
 
 ## Requirements *(mandatory)*
@@ -108,6 +112,8 @@ A network engineer has an assistant add a kind on a session branch, then asks a 
 - **FR-013**: The server MUST NOT expose prompts as tools. Prompts stay selected by the user, as the MCP specification defines them.
 - **FR-014**: In read-only mode, the two general-purpose resource tools MUST be allowed, because they only read data.
 - **FR-015**: When the resource tools setting is on, the server instructions MUST name the URIs of the branch list (`infrahub://branches`) and the GraphQL schema (`infrahub://graphql-schema`) as readable with `read_resource`. When the setting is off, the instructions MUST NOT mention `read_resource` or `list_resources`.
+- **FR-016**: When Infrahub rejects a `query_graphql` query because of an unknown `filters` argument, the error MUST state that filter keys are arguments of the kind's query and MUST show the correct form, using the kind name from the rejected query when the server can read it. The server adds this text itself, so it reaches the model in every client.
+- **FR-017**: The `get_schema` description and the description of the `filters` parameter of `get_nodes` MUST state that the same keys are used as GraphQL arguments in `query_graphql`, placed directly on the kind's query and not in a `filters` argument. The `get_schema` output does not change (FR-011).
 
 ### Key Entities
 
@@ -125,6 +131,7 @@ A network engineer has an assistant add a kind on a session branch, then asks a 
 - **SC-003**: In read-only mode, nothing the server sends to the model names a write tool.
 - **SC-004**: For every kind and branch, the schema resource and `get_schema` return the same data.
 - **SC-005**: With the resource tools setting on and only tools passed to the model, the assistant can read the branch list in one tool call.
+- **SC-006**: Every `query_graphql` error caused by a `filters` argument contains the correct form, with the kind name from the rejected query when the query names one kind.
 
 ## Assumptions
 

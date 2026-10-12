@@ -119,7 +119,7 @@ All four variants (read-only on or off, resource tools on or off) stay under 2,0
 
 | File | Lines (on `stable` at 36b80f9) | Text |
 | --- | --- | --- |
-| `src/infrahub_mcp/tools/gql.py` | 40-42 | `query_graphql` description; also add the filter syntax (FR-007) |
+| `src/infrahub_mcp/tools/gql.py` | 40-42, 70 | `query_graphql` description; also add the filter syntax (FR-007) |
 | `src/infrahub_mcp/tools/nodes.py` | 141, 154, 195-204, 309, 336-337 | `get_nodes` and `search_nodes` descriptions and `kind`/`filters` parameters |
 | `src/infrahub_mcp/tools/nodes.py` | 113, 263 | error remediation |
 | `src/infrahub_mcp/tools/write.py` | 113, 138, 144, 169-171, 244 | `node_upsert` and `mutate_graphql` descriptions, parameters and errors |
@@ -134,3 +134,25 @@ All four variants (read-only on or off, resource tools on or off) stay under 2,0
 **Decision**: Automated tests check the text the server sends (instructions, descriptions, error messages). The reduction in tool calls (SC-001) is checked by hand with Claude through a client that passes only tools, following [quickstart.md](./quickstart.md). The scenario is run 3 times; the pull request merges only if at least 2 runs pass, and all results are recorded in the pull request (spec clarification of 2026-10-12).
 
 **Rationale**: Model behavior is not deterministic and needs a live model and a live Infrahub instance. The project has no evaluation harness for model behavior today.
+
+## R11. Filter keys in `get_nodes` and in GraphQL
+
+**Decision**: Cover the difference in three places, each reaching the model through a different channel (spec FR-016, FR-017):
+
+1. **Error remediation in `query_graphql`** (FR-016). When `GraphQLError.errors[].message` contains `Unknown argument 'filters'`, the remediation names the mistake and shows the correct form, using the first top-level field of the parsed query as the kind name. The exact text and tests are in [contracts/mcp-surface.md](./contracts/mcp-surface.md).
+2. **Descriptions** (FR-017). The `get_schema` description and the `get_nodes` `filters` parameter description say that the same keys are GraphQL arguments of the kind's query.
+3. **Server instructions** (FR-001). One sentence links the keys `get_schema` lists, the `filters` argument of `get_nodes` and the GraphQL arguments.
+
+**Rationale**:
+
+- The same keys work in both tools. `get_nodes` passes them to the SDK as keyword arguments (`client.filters(**filters)`, `src/infrahub_mcp/tools/nodes.py:66`), and the SDK sends them to Infrahub as GraphQL arguments.
+- Three things point the assistant to a `filters` wrapper: the `get_nodes` argument is named `filters`; `get_schema(kind=...)` returns the keys in a list named `filters` (`src/infrahub_mcp/schema.py:72`), described as the keys "accepted by `get_nodes`"; and the current `query_graphql` remediation is generic (`src/infrahub_mcp/tools/gql.py:70`).
+- In the field test, call 5 came after `get_schema` and used a valid key inside a `filters:` wrapper ([issue 191](https://github.com/opsmill/infrahub-mcp/issues/191)). Reading the schema did not prevent the mistake, so descriptions alone are not enough.
+- The error remediation is added by the server, so it reaches the model in every client, including clients that drop server instructions. It does not stop the first wrong query, but it makes the second one correct.
+- The SDK's `GraphQLError` keeps Infrahub's error list in `errors` (`infrahub_sdk/exceptions.py:60`), so the server can match the message without parsing free text from `str(exc)`.
+
+**Alternatives considered**:
+
+- Rename the `filters` list in the `get_schema` output (for example to `filter_keys`). Rejected: changes the output of `get_schema`, which FR-011 keeps unchanged.
+- Rewrite or reject a query with a `filters` argument before sending it to Infrahub. Rejected: the server would parse GraphQL and decide what is valid, which Infrahub already does. The specific remediation gives the same next step with less code.
+- Rename the `get_nodes` argument. Rejected: breaking change for existing callers.
