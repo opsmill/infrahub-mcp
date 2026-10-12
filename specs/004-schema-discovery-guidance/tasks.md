@@ -107,7 +107,7 @@ Single project: `src/infrahub_mcp/`, `tests/unit/`, `docs/docs/`, `dev/` at the 
 
 ### Tests for User Story 3
 
-- [ ] T021 [P] [US3] Write `tests/unit/test_schema_resources_branch.py`, with the SDK client mocked:
+- [X] T021 [P] [US3] Write `tests/unit/test_schema_resources_branch.py`, with the SDK client mocked:
   - `infrahub://schema` is still listed by `list_resources` (static resource) and reads the default branch;
   - `infrahub://schema?branch=b1` and `infrahub://schema/LocationSite?branch=b1` call the helpers with `branch="b1"`;
   - `infrahub://schema/LocationSite` calls them with `branch=None`;
@@ -116,7 +116,7 @@ Single project: `src/infrahub_mcp/`, `tests/unit/`, `docs/docs/`, `dev/` at the 
 
 ### Implementation for User Story 3
 
-- [ ] T022 [US3] In `src/infrahub_mcp/resources/schema.py`:
+- [X] T022 [US3] In `src/infrahub_mcp/resources/schema.py`:
   - add the template `infrahub://schema{?branch}` next to the static `infrahub://schema`;
   - change the kind template to `infrahub://schema/{kind}{?branch}`;
   - pass `branch` to `get_schema_catalog` / `get_schema_detail`;
