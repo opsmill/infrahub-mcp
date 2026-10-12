@@ -183,6 +183,13 @@
           "isRequired": false,
           "format": "string",
           "isSecret": false
+        },
+        {
+          "name": "INFRAHUB_MCP_RESOURCES_AS_TOOLS",
+          "description": "Resources as tools (default: false)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
         }
       ]
     }

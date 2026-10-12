@@ -34,6 +34,7 @@ class TestServerConfig:
         assert config.prometheus_enabled is False
         assert config.dereference_schemas is False
         assert config.schema_expand_peers is True
+        assert config.resources_as_tools is False
         assert config.ping_interval_ms == 0
         assert config.auth_scopes_write == "write"
         assert config.auth_mode == "none"
@@ -44,6 +45,12 @@ class TestServerConfig:
         assert not config.oidc_audience
         assert config.oidc_user_claim == "email"
         assert config.token_passthrough_header == "Authorization"  # noqa: S105
+
+    @pytest.mark.parametrize(("value", "expected"), [("true", True), ("false", False)])
+    def test_resources_as_tools_from_env(self, value: str, expected: bool) -> None:
+        with patch.dict(os.environ, {"INFRAHUB_MCP_RESOURCES_AS_TOOLS": value}, clear=True):
+            config = ServerConfig()
+        assert config.resources_as_tools is expected
 
     def test_frozen(self) -> None:
         with patch.dict(os.environ, {}, clear=True):

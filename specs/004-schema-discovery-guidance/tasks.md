@@ -24,8 +24,8 @@ Single project: `src/infrahub_mcp/`, `tests/unit/`, `docs/docs/`, `dev/` at the 
 
 **Purpose**: Confirm the starting point and the prerequisite fix.
 
-- [ ] T001 Check that the `get_nodes` paging fix (spec Assumptions; separate issue, not yet filed) has merged into `stable`. If it has, merge `stable` into `feat/schema-discovery-guidance` and run `uv sync`. If it has not, continue with the other tasks; T034 (manual SC-001 check) and the merge of this feature wait for it.
-- [ ] T002 Run `uv run invoke format lint` and `uv run pytest` on `feat/schema-discovery-guidance` and record that both pass before any change.
+- [ ] T001 (pending: fix not merged on 2026-10-12) Check that the `get_nodes` paging fix (spec Assumptions; separate issue, not yet filed) has merged into `stable`. If it has, merge `stable` into `feat/schema-discovery-guidance` and run `uv sync`. If it has not, continue with the other tasks; T034 (manual SC-001 check) and the merge of this feature wait for it.
+- [X] T002 Run `uv run invoke format lint` and `uv run pytest` on `feat/schema-discovery-guidance` and record that both pass before any change.
 
 ---
 
@@ -33,15 +33,15 @@ Single project: `src/infrahub_mcp/`, `tests/unit/`, `docs/docs/`, `dev/` at the 
 
 **Purpose**: The guidance text and the setting it depends on. Every user story phase uses `build_instructions`.
 
-- [ ] T003 [P] Write `tests/unit/test_instructions.py` for `build_instructions(*, read_only, resources_as_tools)`, following the "Tests" list in [contracts/server-instructions.md](./contracts/server-instructions.md):
+- [X] T003 [P] Write `tests/unit/test_instructions.py` for `build_instructions(*, read_only, resources_as_tools)`, following the "Tests" list in [contracts/server-instructions.md](./contracts/server-instructions.md):
   - all four variants contain `get_schema()`, `get_schema(kind=`, `Never guess`, `get_nodes`, `total_count`, `find_paths`, `find_reachable` and `there is no "filters" argument`;
   - all four variants contain the "do not fetch it again" rule (FR-008);
   - variants 1 and 2 (read and write) contain `get_session_info` and `propose_changes`; variants 3 and 4 (read-only) contain none of the names of the tools registered in `src/infrahub_mcp/tools/write.py`, read from the `write_mcp` server rather than a hard-coded list;
   - variants 2 and 4 contain `infrahub://branches` and `infrahub://graphql-schema`; variants 1 and 3 contain neither `read_resource` nor `list_resources`;
   - every variant is under 2,000 characters.
-- [ ] T004 [P] Add `resources_as_tools: bool = False` to `ServerConfig` in `src/infrahub_mcp/config.py`, with an entry in the class docstring's attribute list. Add tests to `tests/unit/test_config.py`: the default is `False`, and `INFRAHUB_MCP_RESOURCES_AS_TOOLS=true` sets it to `True`.
-- [ ] T005 Create `src/infrahub_mcp/instructions.py` with `build_instructions(*, read_only: bool, resources_as_tools: bool) -> str`, using the target text in [contracts/server-instructions.md](./contracts/server-instructions.md). Depends on T003 (tests fail first). T003 passes.
-- [ ] T006 Regenerate the files that CI checks against `ServerConfig`: run `uv run invoke gen-config-env --update` (updates `docker-compose.yml`) and `uv run invoke validate-serverjson --update` (updates `server.json`). Depends on T004.
+- [X] T004 [P] Add `resources_as_tools: bool = False` to `ServerConfig` in `src/infrahub_mcp/config.py`, with an entry in the class docstring's attribute list. Add tests to `tests/unit/test_config.py`: the default is `False`, and `INFRAHUB_MCP_RESOURCES_AS_TOOLS=true` sets it to `True`.
+- [X] T005 Create `src/infrahub_mcp/instructions.py` with `build_instructions(*, read_only: bool, resources_as_tools: bool) -> str`, using the target text in [contracts/server-instructions.md](./contracts/server-instructions.md). Depends on T003 (tests fail first). T003 passes.
+- [X] T006 Regenerate the files that CI checks against `ServerConfig`: run `uv run invoke gen-config-env --update` (updates `docker-compose.yml`) and `uv run invoke validate-serverjson --update` (updates `server.json`). Depends on T004.
 
 **Checkpoint**: `build_instructions` returns the four variants, and the setting exists. Nothing is sent to clients yet.
 
@@ -62,12 +62,12 @@ Single project: `src/infrahub_mcp/`, `tests/unit/`, `docs/docs/`, `dev/` at the 
   - FR-006: the `get_schema` description does not contain "Prefer reading";
   - FR-007: the `query_graphql` description contains a filter example of the form `<Kind>(<key>: ...)` and the words `no "filters" argument`;
   - FR-017: the `get_schema` description and the `get_nodes` `filters` parameter description say the keys are GraphQL arguments of the kind's query.
-- [ ] T009 [P] [US1] Add tests to `tests/unit/test_tools.py` for the `query_graphql` remediation (FR-016, SC-006):
+- [ ] T009 [P] [US1] Add tests to `tests/unit/test_gql_remediation.py` for the `query_graphql` remediation (FR-016, SC-006). (`tests/unit/test_tools.py` runs only against a live Infrahub instance, so these offline tests get their own file.)
   - a mocked `GraphQLError` whose `errors` contains `Unknown argument 'filters' on field 'Query.LocationSite'`, for the query `{ LocationSite(filters: {name__value: "x"}) { count } }`, returns a remediation containing `LocationSite(name__value:`;
   - a query with no top-level field name falls back to `DcimDevice`;
   - any other `GraphQLError` returns the existing remediation.
 - [ ] T010 [P] [US1] Update `tests/unit/test_server_prompt.py`: the `infrahub_agent` prompt contains `build_instructions(...)` for the server's settings, and no longer contains its own "Data formats" or "Schema discovery" sections.
-- [ ] T011 [P] [US1] Update `tests/unit/test_read_only.py`: `ReadOnlyMiddleware._KNOWN_READ_ONLY_TOOLS` contains `list_resources`, `read_resource`, `find_paths`, `find_reachable` and `get_session_info` (research R8, FR-014).
+- [ ] T011 [P] [US1] Update `tests/unit/test_middleware.py` (`TestReadOnlyMiddleware`; `tests/unit/test_read_only.py` covers mutation detection only): `ReadOnlyMiddleware._KNOWN_READ_ONLY_TOOLS` contains `list_resources`, `read_resource`, `find_paths`, `find_reachable` and `get_session_info` (research R8, FR-014).
 
 ### Implementation for User Story 1
 
