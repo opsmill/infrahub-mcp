@@ -109,7 +109,7 @@ All four variants (read-only on or off, resource tools on or off) stay under 2,0
 
 ## R8. Read-only fallback allow-list
 
-**Decision**: Add `list_resources`, `read_resource`, `find_paths`, `find_reachable` and `get_session_info` to `ReadOnlyMiddleware._KNOWN_READ_ONLY_TOOLS` (`src/infrahub_mcp/middleware.py:153`).
+**Decision**: Add `list_resources`, `read_resource`, `find_paths`, `find_reachable` and `get_session_info` to `ReadOnlyMiddleware._KNOWN_READ_ONLY_TOOLS` (`src/infrahub_mcp/middleware.py:157`).
 
 **Rationale**: The allow-list is used only when no FastMCP context is available, and it blocks every tool not on it. The two resource tools only read data (spec FR-014). The three other tools are read-only today (`read_only_hint=True`) but missing from the list. Found while reviewing PR 193.
 
