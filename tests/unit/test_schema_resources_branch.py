@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,11 +14,14 @@ import infrahub_mcp.resources.schema as resources_module
 import infrahub_mcp.tools.schema as tools_module
 from infrahub_mcp.config import ServerConfig
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 KNOWN_BRANCHES = {None, "b1"}
 calls: list[tuple[str, str | None, str | None]] = []
 
 
-async def _fake_catalog(client: Any, branch: str | None = None) -> dict[str, str]:  # noqa: ARG001, RUF029
+async def _fake_catalog(client: Any, branch: str | None = None) -> dict[str, str]:  # noqa: RUF029
     calls.append(("catalog", None, branch))
     if branch not in KNOWN_BRANCHES:
         raise BranchNotFoundError(identifier=str(branch))
@@ -27,7 +29,7 @@ async def _fake_catalog(client: Any, branch: str | None = None) -> dict[str, str
 
 
 async def _fake_detail(  # noqa: RUF029
-    client: Any,  # noqa: ARG001
+    client: Any,
     kind: str,
     branch: str | None = None,
     expand_peers: bool = True,
