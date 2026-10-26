@@ -1,0 +1,34 @@
+tests/transport/test_server.py
+  s_bb834ed24af087::t_3d174cefbd7ba9 1-15,17-28,36-38,40-41,43-52,55-57,61,64-67,71-74,78-93,95-102,106-107,109-123,126-127,129-139,141,143-145,147-153,155-169,171-175
+  s_bb834ed24af087::t_f898345e42a163 16,29-35,39,42,53-54,58-60,62-63,94,103-105,108,124-125,128,140,142,146,154,170
+  s_bb834ed24af087::t_414a376c2f0cd4 68-70,75-77
+changelog/+mcp-transport-smoke-tests.housekeeping.md
+  s_bb834ed24af087::t_3d174cefbd7ba9 1
+pyproject.toml
+  s_bb834ed24af087::t_414a376c2f0cd4 41
+dev/guidelines/python.md
+  s_bb834ed24af087::t_3d174cefbd7ba9 84-90
+tests/transport/__init__.py
+  s_bb834ed24af087::t_3d174cefbd7ba9 1
+.github/workflows/ci.yml
+  s_bb834ed24af087::t_414a376c2f0cd4 252
+tests/transport/_server.py
+  s_bb834ed24af087::t_3d174cefbd7ba9 1-45,50-53
+  s_bb834ed24af087::t_414a376c2f0cd4 46-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "82f941dc2ce71df461c72a9e3cdec2262740a547",
+  "prompts": {},
+  "sessions": {
+    "s_bb834ed24af087": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a178d0-079c-7751-80ce-825b93ff16ef",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
