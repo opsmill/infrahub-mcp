@@ -38,7 +38,7 @@ dev = [
 asyncio_mode = "auto"
 testpaths = ["tests"]
 filterwarnings = []
-# Default run = unit only: exclude the integration marker and disable the
+# Default run = unit and transport tests: exclude the integration marker and disable the
 # infrahub-sdk / testcontainers pytest plugins (pulled in by the
 # infrahub-testcontainers dev dependency) so the fast loop stays Docker-free.
 # Run the integration suite with:  uv run pytest -m integration
