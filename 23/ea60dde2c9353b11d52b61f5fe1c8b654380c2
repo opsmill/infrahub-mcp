@@ -1,0 +1,21 @@
+changelog/+lifespan-generator-typing.housekeeping.md
+  s_510a5b6d9ce296::t_38f4086cbd134a 1
+src/infrahub_mcp/server.py
+  s_510a5b6d9ce296::t_4cd3fe080e25cf 2,88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "23ea60dde2c9353b11d52b61f5fe1c8b654380c2",
+  "prompts": {},
+  "sessions": {
+    "s_510a5b6d9ce296": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a178d0-bc6c-78b1-be27-2301fb84ad56",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
