@@ -1,1 +1,0 @@
-Assemble release notes with towncrier instead of release-drafter: every pull request now carries a news fragment, and a reviewable release pull request publishes the assembled changelog as the GitHub Release body.

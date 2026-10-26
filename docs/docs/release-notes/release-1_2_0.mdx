@@ -1,0 +1,68 @@
+---
+title: Release 1.2.0
+description: Keep Infrahub credentials in a local environment file while sharing MCP client configuration, with compatible FastMCP and MCP SDK dependencies.
+---
+
+<table>
+  <tbody>
+    <tr>
+      <th>Release Number</th>
+      <td>1.2.0</td>
+    </tr>
+    <tr>
+      <th>Release Type</th>
+      <td>Feature</td>
+    </tr>
+    <tr>
+      <th>Release Date</th>
+      <td>September 30th, 2026</td>
+    </tr>
+    <tr>
+      <th>Tag</th>
+      <td>[v1.2.0](https://github.com/opsmill/infrahub-mcp/releases/tag/v1.2.0)</td>
+    </tr>
+  </tbody>
+</table>
+
+## Release summary
+
+Keep shared MCP client configuration free of Infrahub credentials by loading connection values from a local `.env` file at startup. Dependency constraints also ensure installations resolve a compatible FastMCP and MCP SDK combination.
+
+### Keep credentials out of MCP client configuration
+
+Store Infrahub connection credentials in a local `.env` file while keeping `.mcp.json` safe to commit. The server reads the file when it starts and preserves values already set in the real environment.
+
+**What changed**
+
+* Load `INFRAHUB_ADDRESS`, `INFRAHUB_API_TOKEN`, `INFRAHUB_USERNAME`, and `INFRAHUB_PASSWORD` from `./.env` by default. Other SDK and `INFRAHUB_MCP_*` settings are ignored.
+* Set `INFRAHUB_MCP_ENV_FILE` to use another file, including a path beginning with `~`, or set it to an empty value to disable file loading.
+* Keep real environment variables authoritative when the same key is also present in the file.
+* Continue sourcing credentials from request headers in HTTP token-passthrough and basic-passthrough modes; `.env` can still provide `INFRAHUB_ADDRESS`.
+
+## Bug fixes
+
+* Install compatible FastMCP 4.x and MCP SDK 2.x versions so startup no longer fails with an `ImportError` for `MCPError`.
+* Review generated version synchronization changes in a pull request instead of pushing them directly to `stable`. When an untagged version is not associated with a merged release pull request, the release workflow now explains why it did not publish and how to prepare an authorized release.
+
+## Minor changes
+
+### Developer experience
+
+* Updated exception handling and tool annotations for the MCP Python SDK 2.x API.
+* Assemble release changelogs from news fragments in a release pull request, so the version and notes can be reviewed together before publishing.
+
+## Full changelog
+
+### Added
+
+* Load Infrahub connection credentials from a local `.env` file at server startup ([#147](https://github.com/opsmill/infrahub-mcp/issues/147)).
+
+### Changed
+
+* Adapt error handling and tool annotations to the MCP Python SDK 2.x API ([#169](https://github.com/opsmill/infrahub-mcp/pull/169)).
+* Assemble the changelog with towncrier and publish only after a release pull request is reviewed and merged ([#164](https://github.com/opsmill/infrahub-mcp/pull/164)).
+
+### Fixed
+
+* Require `fastmcp>=4.0.0` and `mcp>=2.0` to prevent incompatible dependency resolution ([#174](https://github.com/opsmill/infrahub-mcp/pull/174)).
+* Route generated version synchronization changes through a pull request and clarify the untagged-version guard ([#177](https://github.com/opsmill/infrahub-mcp/pull/177)).

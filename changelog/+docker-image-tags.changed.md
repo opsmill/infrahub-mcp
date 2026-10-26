@@ -1,0 +1,1 @@
+Container images now follow the Infrahub tagging scheme: `latest` only moves when the release is GitHub's latest release, and each release is also tagged `stable` (or `preview` for pre-releases) and, for full releases, `vX.Y`.
