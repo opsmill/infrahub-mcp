@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 if TYPE_CHECKING:
     from collections.abc import Generator
+    from pathlib import Path
 
 import pytest
 
@@ -34,11 +35,12 @@ class TestCreateAuthProvider:
         result = create_auth_provider(config)
         assert result is None
 
-    def test_mode_oidc_returns_oidc_proxy(self) -> None:
+    def test_mode_oidc_public_client_passes_signing_key(self) -> None:
         config = ServerConfig(
             auth_mode="oidc",
             oidc_config_url="https://accounts.google.com/.well-known/openid-configuration",
             oidc_client_id="my-client",
+            oidc_jwt_signing_key="a-long-signing-key",
             oidc_base_url="https://mcp.example.com",
         )
         mock_proxy = MagicMock()
@@ -49,6 +51,8 @@ class TestCreateAuthProvider:
             config_url="https://accounts.google.com/.well-known/openid-configuration",
             client_id="my-client",
             base_url="https://mcp.example.com",
+            token_endpoint_auth_method="none",  # noqa: S106
+            jwt_signing_key="a-long-signing-key",
         )
 
     def test_mode_oidc_with_optional_fields(self) -> None:
@@ -71,6 +75,60 @@ class TestCreateAuthProvider:
             base_url="https://mcp.example.com",
             audience="my-api",
         )
+
+    def test_mode_oidc_signing_key_replaces_derived_key(self) -> None:
+        config = ServerConfig(
+            auth_mode="oidc",
+            oidc_config_url="https://example.com/.well-known/openid-configuration",
+            oidc_client_id="my-client",
+            oidc_client_secret="my-secret",  # noqa: S106
+            oidc_jwt_signing_key="a-long-signing-key",
+            oidc_base_url="https://mcp.example.com",
+        )
+        with patch("fastmcp.server.auth.OIDCProxy") as mock_cls:
+            create_auth_provider(config)
+        kwargs = mock_cls.call_args.kwargs
+        assert kwargs["client_secret"] == "my-secret"  # noqa: S105
+        assert kwargs["jwt_signing_key"] == "a-long-signing-key"
+        # A confidential client keeps FastMCP's default token endpoint auth method.
+        assert "token_endpoint_auth_method" not in kwargs
+
+    def test_mode_oidc_public_client_builds_real_proxy(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # FastMCP's OIDCProxy rejects a config with neither a client secret nor a JWT
+        # signing key, which the mocked tests above cannot see. Build the real class;
+        # only the discovery fetch is stubbed, so no network is used.
+        import fastmcp  # noqa: PLC0415
+        from fastmcp.server.auth import OIDCProxy  # noqa: PLC0415
+        from fastmcp.server.auth.oidc_proxy import OIDCConfiguration  # noqa: PLC0415
+
+        # The proxy keeps its encrypted client store under FastMCP's home folder.
+        monkeypatch.setattr(fastmcp.settings, "home", tmp_path)
+        discovery = OIDCConfiguration.model_validate(
+            {
+                "issuer": "https://idp.example.com",
+                "authorization_endpoint": "https://idp.example.com/authorize",
+                "token_endpoint": "https://idp.example.com/token",
+                "jwks_uri": "https://idp.example.com/jwks",
+                "response_types_supported": ["code"],
+                "subject_types_supported": ["public"],
+                "id_token_signing_alg_values_supported": ["RS256"],
+            }
+        )
+        config = ServerConfig(
+            auth_mode="oidc",
+            oidc_config_url="https://idp.example.com/.well-known/openid-configuration",
+            oidc_client_id="my-public-client",
+            oidc_jwt_signing_key="a-long-signing-key",
+            oidc_base_url="https://mcp.example.com",
+        )
+        with patch.object(OIDCProxy, "get_oidc_configuration", return_value=discovery):
+            result = create_auth_provider(config)
+
+        assert isinstance(result, OIDCProxy)
+        # Without "none", FastMCP falls back to client_secret_basic and sends a Basic
+        # header with no secret to the identity provider's token endpoint.
+        assert result._token_endpoint_auth_method == "none"  # noqa: S105, SLF001
+        assert (tmp_path / "oauth-proxy").is_dir()
 
 
 class TestPassthroughTokenContextVar:

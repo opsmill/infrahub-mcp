@@ -42,13 +42,20 @@ def create_auth_provider(config: ServerConfig) -> OIDCProxy | None:
     }
     if config.oidc_client_secret:
         kwargs["client_secret"] = config.oidc_client_secret
+    else:
+        # Public client: send only the client ID to the upstream token endpoint.
+        # FastMCP otherwise defaults to client_secret_basic, which needs a secret.
+        kwargs["token_endpoint_auth_method"] = "none"  # noqa: S105
+    if config.oidc_jwt_signing_key:
+        kwargs["jwt_signing_key"] = config.oidc_jwt_signing_key
     if config.oidc_audience:
         kwargs["audience"] = config.oidc_audience
 
     logger.info(
-        "oidc_auth enabled=true config_url=%s client_id=%s",
+        "oidc_auth enabled=true config_url=%s client_id=%s public_client=%s",
         config.oidc_config_url,
         config.oidc_client_id,
+        str(not config.oidc_client_secret).lower(),
     )
     return OIDCProxy(**kwargs)
 

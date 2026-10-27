@@ -1,0 +1,1 @@
+OIDC mode now starts without `INFRAHUB_MCP_OIDC_CLIENT_SECRET` when the new `INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY` is set, so the identity provider can register the MCP server as a public client. Before, the server stopped at startup with a FastMCP error in that setup. When neither variable is set, the server now stops with an error that names both.
