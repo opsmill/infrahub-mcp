@@ -1,0 +1,31 @@
+tests/transport/_server.py
+  s_0299ffd4541c60::t_cb050deed0725f 11-12,22-33,53-57
+tests/transport/test_server.py
+  s_1203ba7015f3ed::t_14105d223bf079 16,20,151-212
+tests/unit/test_middleware.py
+  s_1203ba7015f3ed::t_fdd3ab9ede5552 15,143-161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e9c4a7b1a1870cf0e94cfc0805032ad1140623f6",
+  "prompts": {},
+  "sessions": {
+    "s_0299ffd4541c60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "83af699b-aa91-41b4-b423-d0988dd7fc3a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    },
+    "s_1203ba7015f3ed": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17dba-12f8-7150-b003-8b8f7a330dce",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
