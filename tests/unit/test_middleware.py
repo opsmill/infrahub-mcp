@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -20,6 +21,7 @@ from fastmcp.tools.base import ToolResult
 from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
 from mcp import MCPError
 from mcp.types import TextContent
+from opentelemetry import trace
 
 import infrahub_mcp.middleware as middleware_module
 from infrahub_mcp.auth import _passthrough_token, set_passthrough_token
@@ -414,15 +416,57 @@ class TestOTelTracingMiddleware:
     @pytest.mark.anyio
     async def test_passes_through_when_otel_unavailable(self) -> None:
         """When opentelemetry is not installed, middleware is a no-op."""
-        middleware = OTelTracingMiddleware()
+        with patch.dict("sys.modules", {"opentelemetry.trace": None}):
+            middleware = OTelTracingMiddleware()
         ctx = _make_tool_context("get_schema")
 
         async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
             return "ok"
 
-        # Even if otel is not installed, this should work
         result = await middleware.on_message(ctx, call_next)
         assert result == "ok"
+
+    @pytest.mark.parametrize("fails", [False, True], ids=["success", "error"])
+    async def test_span_lifecycle_uses_real_api_context(self, fails: bool) -> None:
+        """Keep API context management real while observing our span annotations."""
+        tracer = trace.NoOpTracer()
+        span = MagicMock(wraps=trace.NonRecordingSpan(trace.INVALID_SPAN_CONTEXT), spec=trace.Span)
+        previous_span = trace.get_current_span()
+        failure = RuntimeError("test request failed")
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(context: MiddlewareContext[Any]) -> str:
+            assert trace.get_current_span() is span
+            await asyncio.sleep(0)
+            assert trace.get_current_span() is span
+            if fails:
+                raise failure
+            return "ok"
+
+        with (
+            patch("opentelemetry.trace.get_tracer", return_value=tracer),
+            patch.object(tracer, "start_span", return_value=span) as start_span,
+        ):
+            middleware = OTelTracingMiddleware()
+            if fails:
+                with pytest.raises(RuntimeError, match="test request failed") as caught:
+                    await middleware.on_message(ctx, call_next)
+                assert caught.value is failure
+            else:
+                assert await middleware.on_message(ctx, call_next) == "ok"
+
+        assert start_span.call_args.kwargs["name"] == "mcp.tools/call"
+        span.set_attribute.assert_any_call("mcp.method", "tools/call")
+        span.set_attribute.assert_any_call("mcp.status", "error" if fails else "ok")
+        if fails:
+            span.set_attribute.assert_any_call("mcp.error.type", "RuntimeError")
+            span.record_exception.assert_called_once_with(failure)
+            span.set_status.assert_called_once_with(trace.StatusCode.ERROR, str(failure))
+        else:
+            span.record_exception.assert_not_called()
+            span.set_status.assert_not_called()
+        span.end.assert_called_once_with()
+        assert trace.get_current_span() is previous_span
 
     @pytest.mark.anyio
     async def test_propagates_errors(self) -> None:
