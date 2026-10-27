@@ -1,0 +1,23 @@
+tests/unit/test_certifi_trust.py
+  s_a55da8c9666df6::t_e8993bf5136009 1-20
+changelog/+certifi-security-update.security.md
+  s_a55da8c9666df6::t_e8993bf5136009 1
+uv.lock
+  s_a55da8c9666df6::t_20e4a7e6738513 201,203,205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a1fc6c1aa583983b8aa8617b2704cd7e85cc2091",
+  "prompts": {},
+  "sessions": {
+    "s_a55da8c9666df6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17d9f-db86-7202-8a3c-ca3b1402688f",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
