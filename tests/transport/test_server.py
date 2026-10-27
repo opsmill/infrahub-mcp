@@ -198,9 +198,24 @@ async def test_invalid_tool_arguments_preserve_session(connected: Connection) ->
 async def test_tool_error_does_not_execute_mutation(connected: Connection) -> None:
     """Application errors retain their message and never reach the SDK as mutations."""
     client, events = connected
-    with pytest.raises(MCPError, match="Mutations are not allowed"):
-        await client.call_tool("query_graphql", {"query": 'mutation { TestWidgetDelete(id: "example") { ok } }'})
+    result = await client.call_tool(
+        "query_graphql", {"query": 'mutation { TestWidgetDelete(id: "example") { ok } }'}, raise_on_error=False
+    )
+    assert result.is_error
+    assert "Mutations are not allowed" in result.content[0].text  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
     assert "graphql-executed" not in (await AsyncPath(events).read_text(encoding="utf-8")).splitlines()
+
+
+async def test_tool_error_returns_error_result(connected: Connection) -> None:
+    """A failed tool call comes back as an isError result the model can read, not a JSON-RPC error."""
+    client, _ = connected
+    result = await client.call_tool("get_schema", {"kind": "MissingWidget"}, raise_on_error=False)
+    assert result.is_error
+    text = result.content[0].text  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+    assert text.startswith("Schema not found for kind: MissingWidget.")
+    assert "Remediation:" in text
+    assert "Traceback" not in text
+    assert not (await client.call_tool("get_schema", {})).is_error
 
 
 async def test_empty_structured_tool_result_is_preserved(connected: Connection) -> None:

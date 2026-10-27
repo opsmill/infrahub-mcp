@@ -38,4 +38,7 @@ async def test_bad_request_surfaces_clean_error(mcp_client: Client) -> None:
         raise_on_error=False,
     )
 
+    # A tool execution error is a result with isError=True, not a JSON-RPC protocol error.
+    assert result.is_error
+    assert "Schema not found for kind: ThisKindDoesNotExist" in tool_text(result)
     assert "Traceback (most recent call last)" not in tool_text(result)

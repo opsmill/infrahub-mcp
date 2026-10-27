@@ -37,6 +37,7 @@ from infrahub_mcp.middleware import (
     SafeRetryMiddleware,
     StrictResponseLimitingMiddleware,
     TokenPassthroughMiddleware,
+    ToolResultErrorHandlingMiddleware,
     configure_middleware,
     get_caching_middleware,
     get_error_handling,
@@ -518,7 +519,7 @@ class TestConfigureMiddleware:
         assert "RequestIdMiddleware" in types
         assert "MetricsMiddleware" in types
         assert "AuditMiddleware" in types
-        assert "ErrorHandlingMiddleware" in types
+        assert any(isinstance(m, ToolResultErrorHandlingMiddleware) for m in mock_mcp.middleware)
 
     def test_registers_middleware_read_only_mode(self) -> None:
         mock_mcp = MagicMock()
@@ -547,7 +548,7 @@ class TestConfigureMiddleware:
         config = ServerConfig(log_level="debug")
         configure_middleware(mock_mcp, config)
 
-        error_mw = next(m for m in mock_mcp.middleware if type(m).__name__ == "ErrorHandlingMiddleware")
+        error_mw = next(m for m in mock_mcp.middleware if isinstance(m, ToolResultErrorHandlingMiddleware))
         assert error_mw.include_traceback is True
 
     def test_rate_limiting_enabled(self) -> None:
@@ -1301,6 +1302,68 @@ class TestInfrahubConnectionMiddleware:
 
         types = [type(m).__name__ for m in mock_mcp.middleware]
         assert "InfrahubConnectionMiddleware" in types
+
+
+# ---------------------------------------------------------------------------
+# ToolResultErrorHandlingMiddleware
+# ---------------------------------------------------------------------------
+
+
+def _error_handling_server() -> FastMCP:
+    """Build a server whose only middleware is the error handler under test."""
+    server = FastMCP("error-handling")
+
+    @server.tool
+    def get_schema(kind: str) -> str:
+        msg = f"Schema not found for kind: {kind}.\n\nRemediation: Call get_schema() for the full catalog."
+        raise ToolError(msg)
+
+    server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
+    return server
+
+
+class TestToolResultErrorHandlingMiddleware:
+    async def test_tool_error_reaches_client_as_error_result(self) -> None:
+        """A ToolError comes back with isError so the model can read the remediation and retry."""
+        async with Client(_error_handling_server()) as client:
+            result = await client.call_tool("get_schema", {"kind": "Missing"}, raise_on_error=False)
+        assert result.is_error
+        text = result.content[0].text  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+        assert text.startswith("Schema not found for kind: Missing.")
+        assert "Remediation:" in text
+
+    async def test_unknown_tool_stays_protocol_error(self) -> None:
+        async with Client(_error_handling_server()) as client:
+            with pytest.raises(MCPError, match="Unknown tool: 'does_not_exist'"):
+                await client.call_tool("does_not_exist", {})
+
+    async def test_invalid_arguments_stay_protocol_error(self) -> None:
+        async with Client(_error_handling_server()) as client:
+            with pytest.raises(MCPError, match="Input should be a valid string"):
+                await client.call_tool("get_schema", {"kind": 42})
+
+    async def test_tool_error_is_logged_and_counted(self) -> None:
+        middleware = ToolResultErrorHandlingMiddleware()
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
+            msg = "Schema not found for kind: Missing."
+            raise ToolError(msg)
+
+        with pytest.raises(ToolError, match="Schema not found"):
+            await middleware.on_message(ctx, call_next)
+        assert middleware.get_error_stats() == {"ToolError:tools/call": 1}
+
+    async def test_tool_error_outside_tool_call_is_transformed(self) -> None:
+        middleware = ToolResultErrorHandlingMiddleware()
+        ctx = _make_resource_context("infrahub://schema")
+
+        async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
+            msg = "boom"
+            raise ToolError(msg)
+
+        with pytest.raises(MCPError, match="Internal error: boom"):
+            await middleware.on_message(ctx, call_next)
 
 
 # ---------------------------------------------------------------------------
