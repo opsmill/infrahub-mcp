@@ -1,0 +1,38 @@
+development/Dockerfile
+  s_cc455e06b21d3a::t_379f6b1873fea3 35-37,40-41
+  s_cc455e06b21d3a::t_e0b245d2c75f6b 5-9
+.github/workflows/ci-docker-image.yml
+  s_cc455e06b21d3a::t_4b314d62ad5689 119-137
+changelog/+emudhra-trust-store.security.md
+  s_cc455e06b21d3a::t_5265237ab4ad17 1
+scripts/check_trust_store.py
+  s_cc455e06b21d3a::t_bbd40667ac2a65 53
+  s_cc455e06b21d3a::t_0378cbb6d220b9 101
+  s_cc455e06b21d3a::t_5772c9594a96b7 6-19,29-48,55-99,103-124
+  s_cc455e06b21d3a::t_469ca3b406e591 22-25
+  s_0299ffd4541c60::t_8ebf2b203a7a4f 1-5,20-21,26-28,49-52,54,100,102,125-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "502c028cb03476b5796ced8056fae5709012aa1a",
+  "prompts": {},
+  "sessions": {
+    "s_0299ffd4541c60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "83af699b-aa91-41b4-b423-d0988dd7fc3a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    },
+    "s_cc455e06b21d3a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8495e80-2417-4a90-810d-6cecea4a4e29",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
