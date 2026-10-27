@@ -521,6 +521,15 @@ class TestDotenv:
             assert os.environ["INFRAHUB_API_TOKEN"] == "from-dotenv"  # noqa: S105
             assert "infrahub_api_token" not in os.environ
 
+    def test_placeholder_with_inline_comment_is_empty(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # python-dotenv 1.2.4 reads "KEY= # comment" as an empty value. Earlier releases
+        # returned the comment text, which then reached Infrahub as the API token.
+        (tmp_path / ".env").write_text("INFRAHUB_API_TOKEN= # fill me in\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            _prime_env_from_dotenv()
+            assert not os.environ["INFRAHUB_API_TOKEN"]  # present, and empty
+
     def test_values_are_not_interpolated(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         # Credentials are opaque strings: a "${...}" inside one must survive verbatim
         # rather than being expanded away into a silently wrong secret.

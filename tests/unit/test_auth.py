@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import string
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
@@ -9,6 +10,11 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
 import pytest
+from authlib.common.security import generate_token
+from authlib.integrations.base_client import OAuthError
+from fastmcp.server.auth import OIDCProxy
+from fastmcp.server.auth.oauth_proxy import proxy, upstream
+from fastmcp.server.auth.oidc_proxy import OIDCConfiguration
 
 from infrahub_mcp.auth import (
     _passthrough_token,
@@ -71,6 +77,60 @@ class TestCreateAuthProvider:
             base_url="https://mcp.example.com",
             audience="my-api",
         )
+
+    def test_mode_oidc_builds_real_proxy(self) -> None:
+        # The tests above replace OIDCProxy, so a renamed keyword or a broken import in
+        # FastMCP's OAuth proxy (which pulls in authlib) would pass them. Build the real
+        # class here; only the discovery fetch is stubbed, so no network is used.
+        discovery = OIDCConfiguration.model_validate(
+            {
+                "issuer": "https://idp.example.com",
+                "authorization_endpoint": "https://idp.example.com/authorize",
+                "token_endpoint": "https://idp.example.com/token",
+                "jwks_uri": "https://idp.example.com/jwks",
+                "response_types_supported": ["code"],
+                "subject_types_supported": ["public"],
+                "id_token_signing_alg_values_supported": ["RS256"],
+            }
+        )
+        config = ServerConfig(
+            auth_mode="oidc",
+            oidc_config_url="https://idp.example.com/.well-known/openid-configuration",
+            oidc_client_id="my-client",
+            oidc_client_secret="my-secret",  # noqa: S106
+            oidc_base_url="https://mcp.example.com",
+            oidc_audience="my-api",
+        )
+        with patch.object(OIDCProxy, "get_oidc_configuration", return_value=discovery) as fetch:
+            result = create_auth_provider(config)
+
+        assert isinstance(result, OIDCProxy)
+        assert str(fetch.call_args.args[0]) == "https://idp.example.com/.well-known/openid-configuration"
+        assert str(result.oidc_config.token_endpoint) == "https://idp.example.com/token"
+
+
+class TestAuthlibSurfaceUsedByFastMCP:
+    """authlib is not imported here; FastMCP's OAuth proxy uses two of its symbols.
+
+    Pinning them catches an authlib upgrade that moves or changes them before the
+    OIDC flow fails at runtime.
+    """
+
+    def test_fastmcp_imports_resolve_to_authlib(self) -> None:
+        assert upstream.OAuthError is OAuthError
+        assert proxy.generate_token is generate_token
+
+    def test_oauth_error_keeps_rfc6749_fields(self) -> None:
+        error = OAuthError(error="invalid_grant", description="refresh token expired")
+        assert error.error == "invalid_grant"
+        assert error.description == "refresh token expired"
+
+    def test_generated_pkce_verifier_is_rfc7636_valid(self) -> None:
+        # FastMCP calls generate_token(48) for the PKCE code verifier, which RFC 7636
+        # limits to 43-128 characters from the unreserved set.
+        verifier = generate_token(48)
+        assert len(verifier) == 48
+        assert set(verifier) <= set(string.ascii_letters + string.digits + "-._~")
 
 
 class TestPassthroughTokenContextVar:
