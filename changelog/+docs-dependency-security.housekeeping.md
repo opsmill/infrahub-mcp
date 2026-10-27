@@ -1,0 +1,1 @@
+Upgraded the documentation site dependencies to clear the open Dependabot alerts for docs/pnpm-lock.yaml, pinned tinypool, Mermaid and the React type definitions through pnpm overrides, and added the docs site to the Dependabot version-update configuration.
