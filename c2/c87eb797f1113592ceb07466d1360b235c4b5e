@@ -1,0 +1,19 @@
+changelog/+tool-errors-as-results.fixed.md
+  s_61789da7a5623f::t_500b0e2fe0889d 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c2c87eb797f1113592ceb07466d1360b235c4b5e",
+  "prompts": {},
+  "sessions": {
+    "s_61789da7a5623f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e71bed79-d378-4f35-8adf-6225c344afde",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
