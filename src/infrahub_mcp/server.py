@@ -286,6 +286,9 @@ mcp.mount(traversal_mcp)
 # Write tools — hidden in read-only mode
 if not _config.read_only:
     mcp.mount(write_mcp)
+else:
+    # Also hides write prompts (make_infra_change) that would point at missing tools.
+    mcp.disable(tags={"write"})
 
 
 # ---------------------------------------------------------------------------

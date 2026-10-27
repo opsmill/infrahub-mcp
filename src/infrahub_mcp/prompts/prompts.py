@@ -82,7 +82,7 @@ The header declares field names once; each indented row is one record."""
     return [Message(body)]
 
 
-@mcp.prompt()
+@mcp.prompt(tags={"write"})
 def make_infra_change(
     description: Annotated[str, Field(description="What infrastructure change to make.")],
     kind: Annotated[
