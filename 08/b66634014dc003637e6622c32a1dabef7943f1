@@ -1,0 +1,31 @@
+changelog/+dotenv-inline-comment-placeholder.changed.md
+  s_a27647991913c7::t_687c84b6e641d5 1
+tests/unit/test_auth.py
+  s_a27647991913c7::t_f07150ecfea331 113,117,120,124-127,132-133
+  s_a27647991913c7::t_ec492a1156f6f5 141-142
+  s_a27647991913c7::t_3778fdf05b0678 11
+  s_a27647991913c7::t_e76e91566d2bee 77,80-87
+tests/transport/test_server.py
+  s_a27647991913c7::t_5a93ae4195f30a 69,75-76,78
+  s_a27647991913c7::t_1ad0df14c88466 171
+docs/pnpm-workspace.yaml
+  s_a27647991913c7::t_ca0eaa23ee0b3f 12-14
+docs/package.json
+  s_a27647991913c7::t_5e9ebdb8f037a9 56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "08b66634014dc003637e6622c32a1dabef7943f1",
+  "prompts": {},
+  "sessions": {
+    "s_a27647991913c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7428eb91-df3b-4a86-811e-09b520518701",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
