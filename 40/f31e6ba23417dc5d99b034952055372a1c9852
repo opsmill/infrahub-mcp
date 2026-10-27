@@ -1,9 +1,12 @@
 .github/workflows/ci-mcp-discovery.yml
   s_1d34929a58eef5::t_e6fcb2a8ee22bb 11-12
+  s_1d34929a58eef5::t_09c867a240d082 11-12
 CAPABILITIES.md
   s_1d34929a58eef5::t_b89a32acdd6b89 105
+  s_1d34929a58eef5::t_57a0f2e6901375 105
 changelog/+dependency-capabilities.housekeeping.md
   s_1d34929a58eef5::t_3090db7c3acbae 1
+  s_1d34929a58eef5::t_09c867a240d082 1
 ---
 {
   "schema_version": "authorship/3.0.0",
