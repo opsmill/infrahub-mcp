@@ -2,9 +2,21 @@
 # pnpm 11 reads settings from this file (no longer from the package.json "pnpm" field).
 # Version overrides preserve the security pins that previously lived in npm's "overrides".
 overrides:
-  serialize-javascript: "^7.0.5"
+  serialize-javascript: "^7.1.3"
   uuid: "^14.0.1"
   minimatch@9: "^9.0.7"
+  # @docusaurus/core asks for tinypool ^1, which has no fix for GHSA-5gmw-xhrv-c9v3 and
+  # GHSA-85c8-ppgw-ccpr. tinypool 2.0.0 only drops Node 18, which pnpm 11 already requires.
+  tinypool@1: "^2.1.2"
+  # @docusaurus/module-type-aliases asks for @types/react "*", which resolves to the React 19
+  # types and breaks `tsc` on this React 18 site (no global JSX namespace). This keeps the
+  # types it installs, which `tsc` uses, on React 18. Auto-installed peers of @mdx-js/react
+  # and @docsearch still resolve to React 19 types; overrides do not reach them.
+  "@types/react": "^18.3.18"
+  # @docusaurus/theme-mermaid asks for mermaid ">=11.6.0", which now resolves to 12.x. Mermaid 12
+  # changes the default layout and look of existing diagrams and requires Safari 17.4+, so stay
+  # on 11.x, which carries the fixes for the Mermaid advisories (11.16.1 and later).
+  mermaid: "^11.16.1"
 
 # core-js only ships a postinstall funding banner; it is not needed for the docs build,
 # so its build script is disabled to keep `pnpm install --frozen-lockfile` non-interactive.

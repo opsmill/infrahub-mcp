@@ -5,12 +5,16 @@ description = "MCP server to interact with Infrahub"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    # Security floor, not a direct import: fastmcp-slim only requires authlib>=1.6.11,
+    # which lets pip/uvx installs resolve releases affected by GHSA-6v38-4h7w-rj9h,
+    # GHSA-7vr2-2fgp-9w7p and GHSA-8m4g-j4wp-wgcg (fixed in 1.9.1).
+    "authlib>=1.9.1",
     "fastmcp>=4.0.0",
     "mcp>=2.0",
     "infrahub-sdk>=1.22.0",
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.6,<3",
-    "python-dotenv>=1.0,<2",
+    "python-dotenv>=1.2.4,<2",
     "toonify>=0.1.2",
 ]
 
@@ -29,7 +33,7 @@ dev = [
     "pylint>=4.0.5",
     "yamllint>=1.37.1",
     "pyyaml>=6.0",
-    "infrahub-testcontainers>=1.11.7,<2",
+    "infrahub-testcontainers>=1.11.9,<2",
     "towncrier>=25.8.0",
     "pre-commit>=4.6.1",
 ]
