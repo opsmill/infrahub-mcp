@@ -1,0 +1,23 @@
+CAPABILITIES.md
+  s_1d34929a58eef5::t_57a0f2e6901375 105
+.github/workflows/ci-mcp-discovery.yml
+  s_1d34929a58eef5::t_09c867a240d082 11-12
+changelog/+dependency-capabilities.housekeeping.md
+  s_1d34929a58eef5::t_09c867a240d082 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8bc7885878849b78ac2649c7bfe7e6fd62b7f4ab",
+  "prompts": {},
+  "sessions": {
+    "s_1d34929a58eef5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17e7e-0cc6-7c33-8cb8-6dad8cd9ffb0",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
