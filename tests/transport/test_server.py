@@ -78,13 +78,16 @@ async def connected(
     env = {
         key: value
         for key, value in os.environ.items()
-        if not key.upper().startswith("INFRAHUB") and key.upper() not in {"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"}
+        if not key.upper().startswith(("INFRAHUB", "OTEL_"))
+        and key.upper() not in {"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"}
     }
     env.update(
         {
             "INFRAHUB_MCP_ENV_FILE": "",
             "INFRAHUB_MCP_AUTH_MODE": "none",
             "INFRAHUB_MCP_READ_ONLY": "true",
+            "INFRAHUB_MCP_OTEL_ENABLED": "true",
+            "FASTMCP_TELEMETRY_MODE": "native",
             "INFRAHUB_ADDRESS": "http://127.0.0.1:9",
             "INFRAHUB_API_TOKEN": "transport-test-placeholder",
             "MCP_TEST_EVENTS": str(events),
@@ -173,3 +176,60 @@ async def test_cancel_cleans_server_work_and_session_remains_usable(connected: C
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+
+
+@pytest.mark.parametrize(
+    ("tracestate", "expected_state"),
+    [
+        pytest.param("vendor=opaque", "vendor=opaque", id="valid"),
+        pytest.param("invalid state", "", id="malformed"),
+        pytest.param(",".join(f"vendor{index}=" + "x" * 256 for index in range(32)), "", id="oversized"),
+    ],
+)
+async def test_trace_context_reaches_sdk_and_is_cleared(
+    connected: Connection, tracestate: str, expected_state: str
+) -> None:
+    """The real API propagates valid parent IDs and safely rejects bad trace state."""
+    client, _ = connected
+    trace_id = "1234567890abcdef1234567890abcdef"
+    span_id = "1234567890abcdef"
+    result = await client.call_tool(
+        "get_schema",
+        {"branch": "trace-parent"},
+        meta={"traceparent": f"00-{trace_id}-{span_id}-01", "tracestate": tracestate},
+    )
+    catalog = json.loads(result.content[0].text)  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+    assert json.loads(catalog["TestWidget"]) == {
+        "trace_id": trace_id,
+        "span_id": span_id,
+        "tracestate": expected_state,
+    }
+
+    untraced = await client.call_tool("get_schema", {"branch": "trace-clean"})
+    catalog = json.loads(untraced.content[0].text)  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+    assert json.loads(catalog["TestWidget"]) == {
+        "trace_id": "0" * 32,
+        "span_id": "0" * 16,
+        "tracestate": "",
+    }
+
+
+async def test_concurrent_trace_contexts_stay_separate(connected: Connection) -> None:
+    """Overlapping protocol requests retain their own OpenTelemetry context."""
+    client, _ = connected
+    trace_ids = [f"{index:032x}" for index in range(1, 5)]
+    results = await asyncio.gather(
+        *(
+            client.call_tool(
+                "get_schema",
+                {"branch": f"trace-{trace_id}"},
+                meta={"traceparent": f"00-{trace_id}-1234567890abcdef-01", "tracestate": f"vendor={trace_id}"},
+            )
+            for trace_id in trace_ids
+        )
+    )
+    contexts = [json.loads(json.loads(result.content[0].text)["TestWidget"]) for result in results]  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+    assert contexts == [
+        {"trace_id": trace_id, "span_id": "1234567890abcdef", "tracestate": f"vendor={trace_id}"}
+        for trace_id in trace_ids
+    ]
