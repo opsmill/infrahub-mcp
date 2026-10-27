@@ -10,6 +10,7 @@ mid-write clears the session entry and raises a retryable error.
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from fastmcp.exceptions import ToolError
@@ -18,7 +19,7 @@ from infrahub_sdk.exceptions import BranchNotFoundError, GraphQLError
 
 from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.tools.write import _assert_no_privileged_mutations, _maybe_recover_read_only
-from infrahub_mcp.utils import AppContext, reset_or_switch_session_branch
+from infrahub_mcp.utils import AppContext, _session_key, reset_or_switch_session_branch
 
 _PATTERN = "mcp/session-{date}-{hex}"
 
@@ -26,6 +27,7 @@ _PATTERN = "mcp/session-{date}-{hex}"
 def _make_ctx(app_ctx: AppContext) -> MagicMock:
     ctx = MagicMock()
     ctx.request_context.lifespan_context = app_ctx
+    ctx.request_context.request.headers = {"mcp-session-id": uuid4().hex}
     ctx.info = AsyncMock()
     ctx.warning = AsyncMock()
     ctx.debug = AsyncMock()
@@ -42,14 +44,14 @@ class TestResetSessionBranch:
     async def test_reset_no_arg_clears_entry(self) -> None:
         app_ctx = _app_ctx()
         ctx = _make_ctx(app_ctx)
-        app_ctx._session_branches[ctx.request_context.session] = "mcp/session-x"  # noqa: SLF001
+        app_ctx._session_branches[_session_key(ctx)] = "mcp/session-x"  # noqa: SLF001
 
         result = await reset_or_switch_session_branch(ctx, None)
 
         assert result["action"] == "reset"
         assert result["session_branch"] is None
         assert result["previous_branch"] == "mcp/session-x"
-        assert ctx.request_context.session not in app_ctx._session_branches  # noqa: SLF001
+        assert _session_key(ctx) not in app_ctx._session_branches  # noqa: SLF001
 
     async def test_reset_no_arg_safe_when_empty(self) -> None:
         app_ctx = _app_ctx()
@@ -76,7 +78,7 @@ class TestResetSessionBranch:
         assert result["action"] == "switched"
         assert result["created"] is False
         assert result["session_branch"] == "mcp/session-existing"
-        assert app_ctx._session_branches[ctx.request_context.session] == "mcp/session-existing"  # noqa: SLF001
+        assert app_ctx._session_branches[_session_key(ctx)] == "mcp/session-existing"  # noqa: SLF001
         client.branch.create.assert_not_called()
 
     async def test_create_on_conformant_missing(self) -> None:
@@ -146,12 +148,12 @@ class TestResetSessionBranch:
         app_ctx = _app_ctx()
         ctx_a = _make_ctx(app_ctx)
         ctx_b = _make_ctx(app_ctx)
-        app_ctx._session_branches[ctx_b.request_context.session] = "mcp/session-B"  # noqa: SLF001
+        app_ctx._session_branches[_session_key(ctx_b)] = "mcp/session-B"  # noqa: SLF001
 
         result = await reset_or_switch_session_branch(ctx_a, None)
 
         assert result["action"] == "reset"
-        assert app_ctx._session_branches[ctx_b.request_context.session] == "mcp/session-B"  # noqa: SLF001
+        assert app_ctx._session_branches[_session_key(ctx_b)] == "mcp/session-B"  # noqa: SLF001
 
 
 class TestReadOnlyWriteRecovery:
@@ -168,32 +170,32 @@ class TestReadOnlyWriteRecovery:
         """Read-only error + Infrahub confirms MERGED → clear the branch and raise retryable."""
         app_ctx = _app_ctx()
         ctx = _make_ctx(app_ctx)
-        app_ctx._session_branches[ctx.request_context.session] = "mcp/session-merged"  # noqa: SLF001
+        app_ctx._session_branches[_session_key(ctx)] = "mcp/session-merged"  # noqa: SLF001
         client = self._client(status=BranchStatus.MERGED)
         exc = GraphQLError(errors=[{"message": "Branch 'mcp/session-merged' has been merged and is read-only"}])
 
         with patch("infrahub_mcp.utils.get_client", return_value=client), pytest.raises(ToolError, match="Retry"):
             await _maybe_recover_read_only(ctx, exc)
 
-        assert ctx.request_context.session not in app_ctx._session_branches  # noqa: SLF001
+        assert _session_key(ctx) not in app_ctx._session_branches  # noqa: SLF001
 
     async def test_read_only_attribute_error_does_not_clear(self) -> None:
         """FR-011 false-positive guard: 'read-only' attribute error on a writable branch must NOT clear it."""
         app_ctx = _app_ctx()
         ctx = _make_ctx(app_ctx)
-        app_ctx._session_branches[ctx.request_context.session] = "mcp/session-ok"  # noqa: SLF001
+        app_ctx._session_branches[_session_key(ctx)] = "mcp/session-ok"  # noqa: SLF001
         client = self._client(status=BranchStatus.OPEN)  # branch is actually fine
         exc = GraphQLError(errors=[{"message": "Attribute 'name' is read-only and cannot be updated"}])
 
         with patch("infrahub_mcp.utils.get_client", return_value=client):
             await _maybe_recover_read_only(ctx, exc)  # must NOT raise
 
-        assert app_ctx._session_branches[ctx.request_context.session] == "mcp/session-ok"  # noqa: SLF001
+        assert app_ctx._session_branches[_session_key(ctx)] == "mcp/session-ok"  # noqa: SLF001
 
     async def test_non_read_only_error_is_noop(self) -> None:
         app_ctx = _app_ctx()
         ctx = _make_ctx(app_ctx)
-        app_ctx._session_branches[ctx.request_context.session] = "mcp/session-ok"  # noqa: SLF001
+        app_ctx._session_branches[_session_key(ctx)] = "mcp/session-ok"  # noqa: SLF001
         client = MagicMock()
         client.branch.get = AsyncMock()
         exc = GraphQLError(errors=[{"message": "some unrelated validation failure"}])
@@ -201,7 +203,7 @@ class TestReadOnlyWriteRecovery:
         with patch("infrahub_mcp.utils.get_client", return_value=client):
             await _maybe_recover_read_only(ctx, exc)  # returns without raising
 
-        assert app_ctx._session_branches[ctx.request_context.session] == "mcp/session-ok"  # noqa: SLF001
+        assert app_ctx._session_branches[_session_key(ctx)] == "mcp/session-ok"  # noqa: SLF001
         client.branch.get.assert_not_called()  # cheap pre-filter short-circuits, no round-trip
 
 

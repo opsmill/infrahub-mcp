@@ -1,7 +1,8 @@
 """Tests for per-session branch resolution, recovery, and name conformance.
 
-The active session branch is tracked per MCP session (keyed by the session
-object) on ``AppContext``. The cached branch is validated against Infrahub
+The active session branch is tracked per caller (keyed by ``_session_key``:
+MCP session id, else authenticated caller, else the server process) on
+``AppContext``. The cached branch is validated against Infrahub
 before reuse; if it was deleted (``BranchNotFoundError``) or merged / is being
 removed (``status`` MERGED/DELETING — still present but read-only), the cache is
 cleared and a fresh branch is provisioned without a server restart.
@@ -10,16 +11,20 @@ cleared and a fresh branch is provisioned without a server restart.
 from __future__ import annotations
 
 import asyncio
-import gc
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from infrahub_sdk.branch import BranchStatus
 from infrahub_sdk.exceptions import BranchNotFoundError
 
+from infrahub_mcp.auth import reset_passthrough_token, set_passthrough_token
 from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.utils import (
+    _MAX_SESSION_ENTRIES,
     AppContext,
+    _session_key,
+    _set_session_branch,
     branch_name_conforms,
     get_or_create_session_branch,
     get_session_branch,
@@ -27,9 +32,10 @@ from infrahub_mcp.utils import (
 
 
 def _make_ctx(app_ctx: AppContext) -> MagicMock:
-    """Create a mock FastMCP Context with a stable per-session object."""
+    """Create a mock FastMCP Context with its own MCP session id."""
     ctx = MagicMock()
     ctx.request_context.lifespan_context = app_ctx
+    ctx.request_context.request.headers = {"mcp-session-id": uuid4().hex}
     ctx.info = AsyncMock()
     ctx.warning = AsyncMock()
     ctx.debug = AsyncMock()
@@ -49,7 +55,7 @@ class TestGetOrCreateSessionBranch:
         config = ServerConfig(auth_mode="none")
         app_ctx = AppContext(client=MagicMock(), config=config)
         ctx = _make_ctx(app_ctx)
-        app_ctx._session_branches[ctx.request_context.session] = "mcp/session-existing"  # noqa: SLF001
+        app_ctx._session_branches[_session_key(ctx)] = "mcp/session-existing"  # noqa: SLF001
 
         client = MagicMock()
         client.branch.get = AsyncMock(return_value=_branch(BranchStatus.OPEN))
@@ -69,7 +75,7 @@ class TestGetOrCreateSessionBranch:
         config = ServerConfig(auth_mode="none")
         app_ctx = AppContext(client=MagicMock(), config=config)
         ctx = _make_ctx(app_ctx)
-        app_ctx._session_branches[ctx.request_context.session] = "mcp/session-reuse"  # noqa: SLF001
+        app_ctx._session_branches[_session_key(ctx)] = "mcp/session-reuse"  # noqa: SLF001
 
         client = MagicMock()
         client.branch.get = AsyncMock(return_value=_branch(status))
@@ -86,7 +92,7 @@ class TestGetOrCreateSessionBranch:
         config = ServerConfig(auth_mode="none", branch_pattern="mcp/session-{date}-{hex}")
         app_ctx = AppContext(client=MagicMock(), config=config)
         ctx = _make_ctx(app_ctx)
-        app_ctx._session_branches[ctx.request_context.session] = "mcp/session-stale"  # noqa: SLF001
+        app_ctx._session_branches[_session_key(ctx)] = "mcp/session-stale"  # noqa: SLF001
 
         client = MagicMock()
         client.branch.get = AsyncMock(side_effect=BranchNotFoundError(identifier="mcp/session-stale"))
@@ -107,7 +113,7 @@ class TestGetOrCreateSessionBranch:
         config = ServerConfig(auth_mode="none", branch_pattern="mcp/session-{date}-{hex}")
         app_ctx = AppContext(client=MagicMock(), config=config)
         ctx = _make_ctx(app_ctx)
-        app_ctx._session_branches[ctx.request_context.session] = "mcp/session-merged"  # noqa: SLF001
+        app_ctx._session_branches[_session_key(ctx)] = "mcp/session-merged"  # noqa: SLF001
 
         client = MagicMock()
         client.branch.get = AsyncMock(return_value=_branch(status))
@@ -146,8 +152,8 @@ class TestGetOrCreateSessionBranch:
         app_ctx = AppContext(client=MagicMock(), config=config)
         ctx_a = _make_ctx(app_ctx)
         ctx_b = _make_ctx(app_ctx)
-        app_ctx._session_branches[ctx_a.request_context.session] = "mcp/session-A"  # noqa: SLF001
-        app_ctx._session_branches[ctx_b.request_context.session] = "mcp/session-B"  # noqa: SLF001
+        app_ctx._session_branches[_session_key(ctx_a)] = "mcp/session-A"  # noqa: SLF001
+        app_ctx._session_branches[_session_key(ctx_b)] = "mcp/session-B"  # noqa: SLF001
 
         client = MagicMock()
         client.branch.get = AsyncMock(return_value=_branch(BranchStatus.MERGED))
@@ -180,22 +186,87 @@ class TestGetOrCreateSessionBranch:
         client.branch.create.assert_called_once()
 
 
-class TestSessionStateLifecycle:
-    def test_session_entry_released_when_session_collected(self) -> None:
-        """Per-session entries are weakly held and released at session end (no leak — FR-010)."""
+def _make_sessionless_ctx(app_ctx: AppContext) -> MagicMock:
+    """Create a mock Context as the 2026-07-28 protocol sends it: no MCP session id."""
+    ctx = _make_ctx(app_ctx)
+    ctx.request_context.request.headers = {}
+    return ctx
+
+
+class TestSessionKey:
+    def test_uses_mcp_session_id_header_when_present(self) -> None:
+        app_ctx = AppContext(client=MagicMock(), config=ServerConfig(auth_mode="none"))
+        ctx = _make_ctx(app_ctx)
+        ctx.request_context.request.headers = {"mcp-session-id": "abc"}
+
+        assert _session_key(ctx) == "session:abc"
+
+    def test_falls_back_to_process_key_without_session_or_credentials(self) -> None:
         app_ctx = AppContext(client=MagicMock(), config=ServerConfig(auth_mode="none"))
 
-        class _Session:
-            """Stand-in for a per-session object (weak-referenceable)."""
+        assert _session_key(_make_sessionless_ctx(app_ctx)) == "process"
 
-        sess = _Session()
-        app_ctx._session_branches[sess] = "mcp/session-x"  # noqa: SLF001
-        assert len(app_ctx._session_branches) == 1  # noqa: SLF001
+    def test_uses_hashed_caller_identity_without_session_id(self) -> None:
+        app_ctx = AppContext(client=MagicMock(), config=ServerConfig(auth_mode="none"))
+        reset_token = set_passthrough_token("secret-token-a")
+        try:
+            key_a = _session_key(_make_sessionless_ctx(app_ctx))
+        finally:
+            reset_passthrough_token(reset_token)
+        reset_token = set_passthrough_token("secret-token-b")
+        try:
+            key_b = _session_key(_make_sessionless_ctx(app_ctx))
+        finally:
+            reset_passthrough_token(reset_token)
 
-        del sess
-        gc.collect()
+        assert key_a.startswith("caller:")
+        assert key_a != key_b
+        assert "secret-token" not in key_a
 
-        assert len(app_ctx._session_branches) == 0  # noqa: SLF001
+    def test_session_id_cannot_cross_callers(self) -> None:
+        """Two callers sending the same session id get different keys."""
+        app_ctx = AppContext(client=MagicMock(), config=ServerConfig(auth_mode="none"))
+        keys = []
+        for token in ("secret-token-a", "secret-token-b"):
+            ctx = _make_ctx(app_ctx)
+            ctx.request_context.request.headers = {"mcp-session-id": "shared"}
+            reset_token = set_passthrough_token(token)
+            try:
+                keys.append(_session_key(ctx))
+            finally:
+                reset_passthrough_token(reset_token)
+
+        assert keys[0] != keys[1]
+        assert all(key.endswith("|session:shared") for key in keys)
+
+    async def test_branch_survives_new_session_object_per_call(self) -> None:
+        """Regression: a new session object on every call must still find the branch.
+
+        From protocol 2026-07-28 each request gets a new session object, so keying on
+        it made ``propose_changes`` fail with "No session branch exists yet".
+        """
+        config = ServerConfig(auth_mode="none", branch_pattern="mcp/session-{date}-{hex}")
+        app_ctx = AppContext(client=MagicMock(), config=config)
+        client = MagicMock()
+        client.branch.create = AsyncMock()
+
+        with patch("infrahub_mcp.utils.get_client", return_value=client):
+            created = await get_or_create_session_branch(_make_sessionless_ctx(app_ctx))
+
+        assert get_session_branch(_make_sessionless_ctx(app_ctx)) == created
+
+
+class TestSessionStateLifecycle:
+    def test_least_recently_used_entry_dropped_past_limit(self) -> None:
+        """The branch map keeps at most ``_MAX_SESSION_ENTRIES`` keys (no unbounded growth)."""
+        app_ctx = AppContext(client=MagicMock(), config=ServerConfig(auth_mode="none"))
+
+        for index in range(_MAX_SESSION_ENTRIES + 1):
+            _set_session_branch(app_ctx, f"session:{index}", f"mcp/session-{index}")
+
+        assert len(app_ctx._session_branches) == _MAX_SESSION_ENTRIES  # noqa: SLF001
+        assert "session:0" not in app_ctx._session_branches  # noqa: SLF001
+        assert f"session:{_MAX_SESSION_ENTRIES}" in app_ctx._session_branches  # noqa: SLF001
 
 
 class TestBranchNameConforms:
