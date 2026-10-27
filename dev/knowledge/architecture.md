@@ -57,9 +57,7 @@ via `configure_middleware()`.
 
 - `StructuredLoggingMiddleware` — structured log output
 - `DetailedTimingMiddleware` — request duration tracking
-- `ErrorHandlingMiddleware` — exception-to-MCP-error translation, through the
-  `ToolResultErrorHandlingMiddleware` subclass, which returns a `ToolError` as a
-  tool result with `isError: true` instead of a JSON-RPC error
+- `ErrorHandlingMiddleware` — exception-to-MCP-error translation
 - `RetryMiddleware` — transient failure retry with backoff
 - `ResponseCachingMiddleware` — TTL-based caching for schema/list ops
 - `RateLimitingMiddleware` — token-bucket rate limiting
@@ -70,6 +68,9 @@ via `configure_middleware()`.
 
 **Custom middleware:**
 
+- `ToolResultErrorHandlingMiddleware` — subclass of `ErrorHandlingMiddleware`
+  that returns a `ToolError` from `tools/call` as a tool result with
+  `isError: true` instead of a JSON-RPC error
 - `ReadOnlyMiddleware` — blocks tools tagged `"write"` in read-only mode
 - `AuditMiddleware` — structured audit log with request IDs
 - `InfrahubErrorMiddleware` — translates SDK exceptions to MCP errors

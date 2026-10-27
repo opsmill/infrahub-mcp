@@ -164,7 +164,7 @@ The server applies middleware in registration order. The full stack when all fea
 | 1 | **RequestIdMiddleware** — unique correlation ID per request | yes |
 | 2 | **MetricsMiddleware** — request/error/latency counters for `/metrics` | yes |
 | 3 | **OTelTracingMiddleware** — OpenTelemetry spans | no |
-| 4 | **ToolResultErrorHandlingMiddleware** — exception-to-MCP-error mapping with error tracking; a failed tool call returns a result with `isError: true` | yes |
+| 4 | **ToolResultErrorHandlingMiddleware** — exception-to-MCP-error mapping with error tracking; an error raised while a tool runs returns a result with `isError: true` | yes |
 | 5 | **InfrahubConnectionMiddleware** — friendly errors for unreachable/unresponsive Infrahub | yes |
 | 6 | **RetryMiddleware** — exponential backoff for transient failures | no |
 | 7 | **RateLimitingMiddleware** — token bucket rate limiting | no |
@@ -177,7 +177,7 @@ The server applies middleware in registration order. The full stack when all fea
 | 14 | **ResponseCachingMiddleware** — TTL-based response caching | no |
 | 15 | **DereferenceRefsMiddleware** — inline `$ref` in JSON schemas | no |
 | 16 | **PingMiddleware** — periodic keepalive pings | no |
-| 17 | **ResponseLimitingMiddleware** — truncates responses over 500 KB | yes |
+| 17 | **StrictResponseLimitingMiddleware** — rejects tool responses over 500 KB with a remediation hint | yes |
 
 <!-- vale on -->
 

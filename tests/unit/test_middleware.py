@@ -1342,17 +1342,52 @@ class TestToolResultErrorHandlingMiddleware:
             with pytest.raises(MCPError, match="Input should be a valid string"):
                 await client.call_tool("get_schema", {"kind": 42})
 
-    async def test_tool_error_is_logged_and_counted(self) -> None:
-        middleware = ToolResultErrorHandlingMiddleware()
+    async def test_error_from_tool_code_reaches_client_as_error_result(self) -> None:
+        """FastMCP wraps an exception from the tool body in a ToolError, so it also becomes an isError result."""
+        server = FastMCP("tool-code-error")
+
+        @server.tool
+        def get_schema() -> str:
+            raise ServerNotReachableError(address="http://infrahub:8000")
+
+        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
+        async with Client(server) as client:
+            result = await client.call_tool("get_schema", {}, raise_on_error=False)
+        assert result.is_error
+        assert result.content[0].text.startswith("Error calling tool 'get_schema':")
+
+    async def test_oversized_response_reaches_client_as_error_result(self) -> None:
+        """The response-size ToolError keeps its remediation hint and reaches the model as an isError result."""
+        server = FastMCP("oversized-response")
+
+        @server.tool
+        def get_nodes() -> str:
+            return "x" * 1_000
+
+        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
+        server.add_middleware(StrictResponseLimitingMiddleware(max_size=200))
+        async with Client(server) as client:
+            result = await client.call_tool("get_nodes", {}, raise_on_error=False)
+        assert result.is_error
+        text = result.content[0].text
+        assert "over the 200-byte limit" in text
+        assert "Remediation:" in text
+
+    async def test_tool_error_is_logged_and_counted(self, caplog: pytest.LogCaptureFixture) -> None:
+        middleware = ToolResultErrorHandlingMiddleware(logger=logging.getLogger("infrahub_mcp.errors"))
         ctx = _make_tool_context("get_schema")
 
         async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             msg = "Schema not found for kind: Missing."
             raise ToolError(msg)
 
-        with pytest.raises(ToolError, match="Schema not found"):
+        with (
+            caplog.at_level(logging.ERROR, logger="infrahub_mcp.errors"),
+            pytest.raises(ToolError, match="Schema not found"),
+        ):
             await middleware.on_message(ctx, call_next)
         assert middleware.get_error_stats() == {"ToolError:tools/call": 1}
+        assert any("Error in tools/call: ToolError: Schema not found" in r.message for r in caplog.records)
 
     async def test_tool_error_outside_tool_call_is_transformed(self) -> None:
         middleware = ToolResultErrorHandlingMiddleware()
