@@ -37,3 +37,25 @@ updates:
       all:
         patterns:
           - "*"
+
+  # Docusaurus site. The "npm" ecosystem covers pnpm lockfiles; version
+  # overrides live in docs/pnpm-workspace.yaml.
+  - package-ecosystem: "npm"
+    directory: "/docs"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    labels:
+      - "type/housekeeping"
+      - "changes/patch"
+      # Dependency bumps carry no behaviour change of their own, so they are
+      # exempt from the news-fragment gate in changelog-check.yml.
+      - "ci/skip-changelog"
+    groups:
+      docs:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
