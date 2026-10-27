@@ -1,0 +1,25 @@
+changelog/185.housekeeping.md
+  s_1203ba7015f3ed::t_b3b771924ba475 1
+.github/workflows/ci-sbom.yml
+  s_1203ba7015f3ed::t_b3b771924ba475 1-40
+tests/unit/test_sbom_workflow.py
+  s_1203ba7015f3ed::t_b3b771924ba475 1-25
+scripts/test_sbom.sh
+  s_1203ba7015f3ed::t_b3b771924ba475 1-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d806c28687dc604eda9f56fddd1b868df43b3b5d",
+  "prompts": {},
+  "sessions": {
+    "s_1203ba7015f3ed": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17dba-12f8-7150-b003-8b8f7a330dce",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
