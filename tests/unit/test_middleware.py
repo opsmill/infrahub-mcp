@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 import mcp.types as mt
 import pytest
+from fastmcp import Client, FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.middleware.error_handling import RetryMiddleware
 from fastmcp.server.middleware.middleware import MiddlewareContext
@@ -139,6 +140,25 @@ class TestRequestIdMiddleware:
 
 
 class TestReadOnlyMiddleware:
+    async def test_resolves_write_tags_through_mounted_server(self) -> None:
+        """Mounted tags override the fallback name allowlist before executing a tool."""
+        child = FastMCP("mounted-write-tool")
+
+        @child.tool(tags={WRITE_TAG})
+        def get_schema() -> str:
+            # The name is deliberately on the fallback read allowlist. Resolving
+            # mounted tags must prevent the call from reaching this body.
+            msg = "write-tagged tool executed"
+            raise AssertionError(msg)
+
+        server = FastMCP("read-only-parent")
+        server.mount(child)
+        server.add_middleware(ReadOnlyMiddleware())
+        async with Client(server) as client:
+            assert "get_schema" not in {tool.name for tool in await client.list_tools()}
+            with pytest.raises(MCPError, match="read-only mode"):
+                await client.call_tool("get_schema", {})
+
     @pytest.mark.anyio
     async def test_filters_write_tagged_tools_from_listing(self) -> None:
         middleware = ReadOnlyMiddleware()

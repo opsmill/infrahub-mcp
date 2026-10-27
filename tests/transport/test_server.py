@@ -174,7 +174,7 @@ async def test_resource_error_preserves_session(connected: Connection) -> None:
 
 @pytest.mark.parametrize("tool_name", ["node_delete", "reset_session_branch"])
 async def test_read_only_denies_direct_write_calls(connected: Connection, tool_name: str) -> None:
-    """Hidden and mounted write tools cannot be invoked by bypassing discovery."""
+    """Hidden write tools cannot be invoked by bypassing discovery."""
     client, _ = connected
     assert tool_name not in {tool.name for tool in await client.list_tools()}
     with pytest.raises(MCPError, match="read-only mode"):
