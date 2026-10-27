@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from infrahub_sdk.exceptions import SchemaNotFoundError
+from opentelemetry import trace
 
 from infrahub_mcp import _cli
 
@@ -40,7 +42,17 @@ class _Schema:
                 _record("slow-cleaned")
         # Yield so simultaneous requests can overlap at the SDK boundary.
         await asyncio.sleep(0)
-        return {"TestWidget": SimpleNamespace(namespace="Test", label=branch or "Widget")}
+        label = branch or "Widget"
+        if branch and branch.startswith("trace-"):
+            span_context = trace.get_current_span().get_span_context()
+            label = json.dumps(
+                {
+                    "trace_id": format(span_context.trace_id, "032x"),
+                    "span_id": format(span_context.span_id, "016x"),
+                    "tracestate": span_context.trace_state.to_header(),
+                }
+            )
+        return {"TestWidget": SimpleNamespace(namespace="Test", label=label)}
 
 
 class _SDK:

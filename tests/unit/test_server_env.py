@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess  # noqa: S404 - native Git only creates isolated test repositories
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -121,3 +123,76 @@ class TestLifespanEnvPriming:
             async with app_lifespan(mcp) as context:
                 assert os.environ["INFRAHUB_ADDRESS"] == "http://infrahub"
                 assert context.client is not None
+
+
+def _git(directory: Path, *args: str) -> None:
+    """Create test fixtures with native Git, independent of the SDK's Dulwich reader."""
+    executable = shutil.which("git")
+    assert executable is not None
+    subprocess.run(  # noqa: S603 - fixed executable and test-controlled arguments
+        [executable, "-C", str(directory), *args],
+        check=True,
+        capture_output=True,
+        env={**os.environ, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull},
+    )
+
+
+class TestLifespanGitBranch:
+    @pytest.mark.parametrize("linked_worktree", [False, True], ids=["repository", "linked-worktree"])
+    async def test_git_branch_reaches_real_sdk_client(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, linked_worktree: bool
+    ) -> None:
+        """The SDK's Git branch lookup must work when launched from either checkout layout."""
+        _git(tmp_path, "init", "--initial-branch=sdk-branch")
+        checkout = tmp_path
+        expected_branch = "sdk-branch"
+        if linked_worktree:
+            _git(
+                tmp_path,
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+                "-c",
+                f"core.hooksPath={os.devnull}",
+                "commit",
+                "--allow-empty",
+                "--no-gpg-sign",
+                "-m",
+                "Test fixture",
+            )
+            checkout = tmp_path / "linked"
+            expected_branch = "sdk-worktree"
+            _git(tmp_path, "worktree", "add", "-b", expected_branch, str(checkout))
+        monkeypatch.chdir(checkout)
+        env = {
+            "INFRAHUB_MCP_ENV_FILE": "",
+            "INFRAHUB_ADDRESS": "http://infrahub",
+            "INFRAHUB_API_TOKEN": "test-token",
+            "INFRAHUB_DEFAULT_BRANCH": "fallback",
+            "INFRAHUB_DEFAULT_BRANCH_FROM_GIT": "true",
+        }
+
+        with patch.dict(os.environ, env, clear=True):
+            async with app_lifespan(mcp) as context:
+                assert context.client is not None
+                assert context.client.default_branch == expected_branch
+
+    async def test_explicit_branch_does_not_require_or_create_git_repository(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        env = {
+            "INFRAHUB_MCP_ENV_FILE": "",
+            "INFRAHUB_ADDRESS": "http://infrahub",
+            "INFRAHUB_API_TOKEN": "test-token",
+            "INFRAHUB_DEFAULT_BRANCH": "configured-branch",
+            "INFRAHUB_DEFAULT_BRANCH_FROM_GIT": "false",
+        }
+
+        with patch.dict(os.environ, env, clear=True):
+            async with app_lifespan(mcp) as context:
+                assert context.client is not None
+                assert context.client.default_branch == "configured-branch"
+
+        assert not (tmp_path / ".git").exists()
