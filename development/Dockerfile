@@ -34,11 +34,13 @@ LABEL io.modelcontextprotocol.server.name="infrahub-mcp"
 # 8.14.1-2+deb13u4), so an exact pin breaks the build on the next security update.
 # ca-certificates is upgraded so that a stale base image still gets the trust
 # store that distrusts the compromised eMudhra intermediates (Debian bug
-# #1151413, fixed in 20250419+deb13u1); the build fails on an older store.
+# #1151413, fixed for trixie in 20250419+deb13u1); the build fails on an older
+# store. The version floor is trixie's: a bookworm base needs a different one.
 # hadolint ignore=DL3008
 RUN apt-get update && \
     apt-get install --no-install-recommends -y ca-certificates curl && \
-    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge 20250419+deb13u1 && \
+    { dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge 20250419+deb13u1 || \
+      { echo "ca-certificates is older than 20250419+deb13u1 and still trusts the compromised eMudhra intermediates" >&2; exit 1; }; } && \
     rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1
