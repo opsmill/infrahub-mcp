@@ -1,0 +1,19 @@
+tests/unit/test_middleware.py
+  s_9c5b6446126571::t_6b0833d83aa2a9 1331
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "678d4a18a66035b9a5de1ada072c6ef1bfec7c08",
+  "prompts": {},
+  "sessions": {
+    "s_9c5b6446126571": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "91f59d33-3322-493f-ad2a-f4f60dfe37db",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
