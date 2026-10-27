@@ -1,0 +1,24 @@
+tests/unit/test_write_graphql.py
+  s_1203ba7015f3ed::t_d42641d0ca7056 1-64
+  s_1203ba7015f3ed::t_e074943a6c71f7 65-73
+changelog/+graphql-parser-upgrade-tests.housekeeping.md
+  s_1203ba7015f3ed::t_d42641d0ca7056 1
+tests/unit/test_read_only.py
+  s_1203ba7015f3ed::t_d42641d0ca7056 1,3,6-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "30c8674ad61c20afe1721e8e06d8e4a0bb33a9f6",
+  "prompts": {},
+  "sessions": {
+    "s_1203ba7015f3ed": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17dba-12f8-7150-b003-8b8f7a330dce",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
