@@ -1,0 +1,29 @@
+development/Dockerfile
+  s_cc455e06b21d3a::t_8c65898d861513 37-38,42-43
+tests/unit/test_check_trust_store.py
+  s_cc455e06b21d3a::t_094e0de3081c4a 1-108
+changelog/+emudhra-trust-store.security.md
+  s_cc455e06b21d3a::t_61129a7cd4a1e7 1
+scripts/check_trust_store.py
+  s_cc455e06b21d3a::t_3406e1f98ebfe9 74-75
+  s_cc455e06b21d3a::t_f3995a619c7169 7-12,21-24,41-42,51-55,64-66,76-101,105,118-119,127-128,134-135,139-142,147-169,175-181,184,186
+  s_cc455e06b21d3a::t_f5975f645490dc 136
+  s_cc455e06b21d3a::t_087bb17539106e 56-63
+  s_cc455e06b21d3a::t_1aafdf8e92b270 109,111,120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e3352e164483aa49e499093b85b337f63e187f0",
+  "prompts": {},
+  "sessions": {
+    "s_cc455e06b21d3a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8495e80-2417-4a90-810d-6cecea4a4e29",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
