@@ -13,9 +13,11 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
+import toon
 from anyio import Path as AsyncPath
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
+from mcp import MCPError
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -147,6 +149,68 @@ async def test_protocol_round_trip(connected: Connection) -> None:
     assert session.data["has_session_branch"] is False
     prompt = await client.get_prompt("answer_infra_question", {"question": "List widgets"})
     assert "List widgets" in prompt.messages[0].content.text  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+
+
+async def test_mounted_resource_template_matches_tool_result(connected: Connection) -> None:
+    """Mounted templates retain their URI, MIME type and Unicode schema content."""
+    client, _ = connected
+    templates = await client.list_resource_templates()
+    assert "infrahub://schema/{kind}" in {template.uri_template for template in templates}
+    resource = await client.read_resource("infrahub://schema/TestWidget")
+    result = await client.call_tool("get_schema", {"kind": "TestWidget"})
+    assert str(resource[0].uri) == "infrahub://schema/TestWidget"
+    assert resource[0].mime_type == "text/plain"
+    detail = toon.decode(resource[0].text)  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+    assert detail == toon.decode(result.data)
+    assert detail["label"] == "Widget — 東京"
+    assert detail["filters"] == [{"filter": "name__value", "type": "String"}]
+
+
+async def test_resource_error_preserves_session(connected: Connection) -> None:
+    """A missing mounted resource returns actionable guidance without closing the session."""
+    client, _ = connected
+    with pytest.raises(MCPError, match="Schema not found for kind 'MissingWidget'"):
+        await client.read_resource("infrahub://schema/MissingWidget")
+    resource = await client.read_resource("infrahub://schema")
+    assert json.loads(resource[0].text) == {"TestWidget": "Widget"}  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+
+
+@pytest.mark.parametrize("tool_name", ["node_delete", "reset_session_branch"])
+async def test_read_only_denies_direct_write_calls(connected: Connection, tool_name: str) -> None:
+    """Hidden write tools cannot be invoked by bypassing discovery."""
+    client, _ = connected
+    assert tool_name not in {tool.name for tool in await client.list_tools()}
+    with pytest.raises(MCPError, match="read-only mode"):
+        await client.call_tool(tool_name, {})
+    session = await client.call_tool("get_session_info", {})
+    assert session.data["has_session_branch"] is False
+
+
+async def test_invalid_tool_arguments_preserve_session(connected: Connection) -> None:
+    """FastMCP rejects an invalid argument before the mounted tool reaches the SDK."""
+    client, events = connected
+    with pytest.raises(MCPError, match="Input should be a valid string"):
+        await client.call_tool("query_graphql", {"query": 42})
+    assert "graphql-executed" not in (await AsyncPath(events).read_text(encoding="utf-8")).splitlines()
+    assert not (await client.call_tool("get_schema", {})).is_error
+
+
+async def test_tool_error_does_not_execute_mutation(connected: Connection) -> None:
+    """Application errors retain their message and never reach the SDK as mutations."""
+    client, events = connected
+    with pytest.raises(MCPError, match="Mutations are not allowed"):
+        await client.call_tool("query_graphql", {"query": 'mutation { TestWidgetDelete(id: "example") { ok } }'})
+    assert "graphql-executed" not in (await AsyncPath(events).read_text(encoding="utf-8")).splitlines()
+
+
+async def test_empty_structured_tool_result_is_preserved(connected: Connection) -> None:
+    """Empty GraphQL results remain dictionaries when FastMCP hydrates structured content."""
+    client, events = connected
+    result = await client.call_tool("query_graphql", {"query": "query { TestWidget { count } }"})
+    assert not result.is_error
+    assert result.structured_content == {}
+    assert result.data == {}
+    assert "graphql-executed" in (await AsyncPath(events).read_text(encoding="utf-8")).splitlines()
 
 
 async def test_concurrent_requests_keep_responses_separate(connected: Connection) -> None:

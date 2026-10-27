@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from infrahub_sdk.exceptions import SchemaNotFoundError
 from opentelemetry import trace
 
 from infrahub_mcp import _cli
@@ -20,6 +21,18 @@ def _record(event: str) -> None:
 
 
 class _Schema:
+    async def get(self, kind: str, branch: str | None = None) -> SimpleNamespace:
+        await asyncio.sleep(0)
+        if kind != "TestWidget":
+            raise SchemaNotFoundError(kind)
+        return SimpleNamespace(
+            kind=kind,
+            namespace="Test",
+            label="Widget — 東京",
+            attributes=[SimpleNamespace(name="name", kind="Text", optional=False)],
+            relationships=[],
+        )
+
     async def all(self, branch: str | None = None) -> dict[str, SimpleNamespace]:
         if branch == "slow":
             _record("slow-started")
@@ -48,6 +61,11 @@ class _SDK:
 
     async def get_version(self) -> str:
         return "test-version"
+
+    async def execute_graphql(self, query: str, branch_name: str | None = None) -> dict[str, object]:
+        _record("graphql-executed")
+        await asyncio.sleep(0)
+        return {}
 
 
 def main() -> None:
