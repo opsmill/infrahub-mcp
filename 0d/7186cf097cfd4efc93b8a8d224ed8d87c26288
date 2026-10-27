@@ -1,0 +1,43 @@
+tests/transport/test_server.py
+  s_61789da7a5623f::t_4296c044d4fc1b 201-205,209-218
+  s_cfd0841cea4d76::t_4b69314e72949a 219-220
+tests/unit/test_middleware.py
+  s_61789da7a5623f::t_2418d2826d5509 40,522,551,1307-1366
+  s_61789da7a5623f::t_95eaf6717811c4 1367-1368
+dev/knowledge/architecture.md
+  s_61789da7a5623f::t_0f998d904f50fe 57,72,86,101,110,118
+  s_61789da7a5623f::t_5c374187d5f4e5 60-62
+tests/integration/test_failure_modes.py
+  s_61789da7a5623f::t_4d637a1a870b70 41-43
+changelog/+tool-errors-as-results.fixed.md
+  s_61789da7a5623f::t_5c374187d5f4e5 1
+src/infrahub_mcp/middleware.py
+  s_61789da7a5623f::t_b3e55b7e17cebe 264-287
+  s_61789da7a5623f::t_c397657e2f4931 623,632-633,651-652,686
+docs/docs/references/configuration.mdx
+  s_61789da7a5623f::t_5c374187d5f4e5 167
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0d7186cf097cfd4efc93b8a8d224ed8d87c26288",
+  "prompts": {},
+  "sessions": {
+    "s_61789da7a5623f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e71bed79-d378-4f35-8adf-6225c344afde",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    },
+    "s_cfd0841cea4d76": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f9acd83a-988e-4ad7-b6b4-f8da4ae196af",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
