@@ -1,0 +1,116 @@
+---
+title: Release 1.2.1
+description: Install and run the server without the dependency releases named in recent security advisories, follow a release line with container image tags, and catch an unfilled API token in .env at startup.
+---
+
+<table>
+  <tbody>
+    <tr>
+      <th>Release Number</th>
+      <td>1.2.1</td>
+    </tr>
+    <tr>
+      <th>Release Type</th>
+      <td>Security</td>
+    </tr>
+    <tr>
+      <th>Release Date</th>
+      <td>October 27th, 2026</td>
+    </tr>
+    <tr>
+      <th>Tag</th>
+      <td>[v1.2.1](https://github.com/opsmill/infrahub-mcp/releases/tag/v1.2.1)</td>
+    </tr>
+  </tbody>
+</table>
+
+## Release summary
+
+Upgrade to remove the `authlib` and `dnspython` releases named in recent security advisories from both the container image and `pip` or `uvx` installs; the server does not call the affected code. Container deployments can now follow a release line with predictable image tags, and an unfilled API token placeholder in `.env` now stops startup with a clear message instead of reaching Infrahub as a token.
+
+### Install the server without the affected `authlib` and `dnspython` releases
+
+The container image and every `pip` or `uvx` install now resolve `authlib` 1.9.1 or later, and the container image ships `dnspython` 2.9.0. The server does not call the `authlib` or `dnspython` code named in the advisories, so the upgrade removes the affected versions from your installation rather than closing a path a client could reach.
+
+**What changed**
+
+* Install `infrahub-mcp` with `pip` or `uvx` and get `authlib` 1.9.1 or later, which the package now requires directly. Earlier installs could resolve any `authlib` release from 1.6.11, including releases affected by [GHSA-6v38-4h7w-rj9h](https://github.com/advisories/GHSA-6v38-4h7w-rj9h), [GHSA-7vr2-2fgp-9w7p](https://github.com/advisories/GHSA-7vr2-2fgp-9w7p) and [GHSA-8m4g-j4wp-wgcg](https://github.com/advisories/GHSA-8m4g-j4wp-wgcg).
+* Pull the 1.2.1 container image to get `authlib` 1.9.1 and `dnspython` 2.9.0, which carries the fix for [GHSA-45c3-73f7-pv4m](https://github.com/advisories/GHSA-45c3-73f7-pv4m).
+
+### Follow a release line with container image tags
+
+Container images now carry the same tags as Infrahub's images, so you can pin a deployment to a minor release line or follow full releases. See [Image tags](../guides/docker.mdx#image-tags) for the full list.
+
+**What changed**
+
+* Pin a deployment to a minor release line with the `vX.Y` tag, for example `v1.2`, which moves to the newest full release of that line.
+* Follow full releases with the `stable` tag, or pre-releases with the `preview` tag.
+* Track the newest release with `latest`, which now moves only when the published version is GitHub's latest release. Publishing a patch on an older line, such as 1.1.8 after 1.2.0, no longer points `latest` at the older version.
+
+### Catch an unfilled API token in `.env` at startup
+
+When an `.env` line leaves the API token blank with an inline comment, such as `INFRAHUB_API_TOKEN= # fill me in`, the server now reads an empty token instead of using the comment text as the token. This follows python-dotenv 1.2.4, which is now the minimum supported version.
+
+**What changed**
+
+* Start the server with only that placeholder and an address, and startup stops with "Authentication required" instead of sending the comment text to Infrahub as the API token.
+* Set `INFRAHUB_USERNAME` and `INFRAHUB_PASSWORD` next to that placeholder, and the server logs in with them instead of stopping with "Conflicting credentials".
+
+## Bug fixes
+
+* Read the curated release-notes page, when one exists, as the body of each GitHub Release instead of the assembled changelog.
+
+## Minor changes
+
+### Dependencies
+
+* Updated FastMCP from 4.0.10 to 4.1.3, the MCP Python SDK from 2.2.0 to 2.3.0, pydantic to 2.14.1, pydantic-settings to 2.16.1, and AnyIO to 4.14.2.
+
+### Documentation
+
+* Updated the documentation site dependencies to clear its open Dependabot alerts, and added the site to Dependabot version updates.
+
+### Testing
+
+* Added tests for stdio and Streamable HTTP transports, GraphQL parsing, SDK branch selection at startup, the OIDC proxy and `.env` placeholders, to catch regressions from dependency updates.
+
+## Upgrade notes
+
+### API token placeholders in `.env`
+
+If: your `.env` sets `INFRAHUB_API_TOKEN=` followed only by a comment, and supplies no other credentials.
+
+Then: set a real token, or set `INFRAHUB_USERNAME` and `INFRAHUB_PASSWORD`. Startup now stops with "Authentication required" for this file.
+
+### Environments that pin `authlib` or `python-dotenv`
+
+If: you install `infrahub-mcp` into an environment that also pins `authlib` below 1.9.1 or `python-dotenv` below 1.2.4.
+
+Then: raise or remove those pins. `infrahub-mcp` 1.2.1 requires `authlib>=1.9.1` and `python-dotenv>=1.2.4`, so the installer cannot resolve both.
+
+## Full changelog
+
+### Security
+
+* Upgraded `authlib` from 1.7.2 to 1.9.1 and `dnspython` from 2.8.0 to 2.9.0, and require `authlib>=1.9.1` so `pip` and `uvx` installs cannot resolve a release affected by GHSA-6v38-4h7w-rj9h, GHSA-7vr2-2fgp-9w7p or GHSA-8m4g-j4wp-wgcg ([#213](https://github.com/opsmill/infrahub-mcp/pull/213)).
+
+### Changed
+
+* An `.env` line that leaves the API token blank with an inline comment now sets an empty token instead of the comment text, following python-dotenv 1.2.4, which is now the minimum supported version ([#213](https://github.com/opsmill/infrahub-mcp/pull/213)).
+* Container images follow the Infrahub tagging scheme: `latest` only moves for GitHub's latest release, each release is also tagged `stable` or `preview`, and full releases are tagged `vX.Y` ([#181](https://github.com/opsmill/infrahub-mcp/pull/181)).
+
+### Fixed
+
+* Publish GitHub Releases from the curated release-notes page when one exists, and avoid rerunning the general CI workflow after a reviewed pull request is merged ([#179](https://github.com/opsmill/infrahub-mcp/pull/179)).
+
+### Housekeeping
+
+* Updated AnyIO from 4.14.0 to 4.14.2 to include upstream fixes for cancellation, concurrency limits, subprocess handling, and TLS hostname validation ([#166](https://github.com/opsmill/infrahub-mcp/pull/166)).
+* Exercise stdio and Streamable HTTP requests, concurrent requests, cancellation cleanup, and server shutdown in the default test suite ([#203](https://github.com/opsmill/infrahub-mcp/pull/203)).
+* Exercise the GraphQL read and write tools with real parser results ([#209](https://github.com/opsmill/infrahub-mcp/pull/209)).
+* Regenerate MCP capabilities for FastMCP 4.1.2 and check capabilities freshness when dependencies change ([#207](https://github.com/opsmill/infrahub-mcp/pull/207)).
+* Require exactly one release-intent label on every pull request ([#183](https://github.com/opsmill/infrahub-mcp/pull/183)).
+* Test SDK default branch selection during server startup from Git repositories, linked worktrees, and deployments with an explicitly configured branch ([#189](https://github.com/opsmill/infrahub-mcp/pull/189)).
+* The Update Infrahub Version workflow writes `infrahub-testcontainers` with a lower and an upper bound instead of an exact pin ([#170](https://github.com/opsmill/infrahub-mcp/pull/170)).
+* Updated application lifespan typing for compatibility with the upgraded Ruff and `ty` releases ([#213](https://github.com/opsmill/infrahub-mcp/pull/213)).
+* Upgraded the documentation site dependencies, pinned `tinypool`, Mermaid and the React type definitions through `pnpm` overrides, and added the site to Dependabot version updates ([#213](https://github.com/opsmill/infrahub-mcp/pull/213)).
