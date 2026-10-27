@@ -18,7 +18,6 @@ from anyio import Path as AsyncPath
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
 from mcp import MCPError
-from mcp_types.version import HANDSHAKE_PROTOCOL_VERSIONS
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -67,16 +66,16 @@ async def _stop_http(process: asyncio.subprocess.Process) -> None:
         pytest.fail("HTTP server failed to shut down within 10 seconds")
 
 
-@pytest.fixture(params=["stdio", "streamable-http"])
+@pytest.fixture(params=[("stdio", "auto"), ("streamable-http", "auto")], ids=["stdio", "streamable-http"])
 async def connected(
     request: pytest.FixtureRequest, tmp_path: Path, unused_tcp_port: int, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[Connection]:
     """Start a fresh read-only server for each scenario, then verify it exits.
 
-    ``request.param`` is a transport name, or a ``(transport, client mode)`` pair when a
-    test parametrizes this fixture indirectly to pin the protocol era.
+    ``request.param`` is a ``(transport, client mode)`` pair; a test can parametrize this
+    fixture indirectly to pin the protocol era with ``mode="legacy"``.
     """
-    transport_name, mode = (request.param, "auto") if isinstance(request.param, str) else request.param
+    transport_name, mode = request.param
     events = tmp_path / "events.txt"
     logs = tmp_path / "server.log"
     # A developer's credentials, proxies and .env must never influence these tests.
@@ -169,7 +168,7 @@ async def test_legacy_handshake_round_trip(connected: Connection) -> None:
     From mcp 2.3.0, such clients omit empty ``_meta`` and ``params`` on the wire.
     """
     client, _ = connected
-    assert client.protocol_version in HANDSHAKE_PROTOCOL_VERSIONS
+    assert client.initialize_result is not None  # only the legacy initialize handshake sets it
     await client.ping()
     tools = {tool.name for tool in await client.list_tools()}
     assert "get_schema" in tools

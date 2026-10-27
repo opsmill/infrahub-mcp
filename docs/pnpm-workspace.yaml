@@ -9,7 +9,9 @@ overrides:
   # GHSA-85c8-ppgw-ccpr. tinypool 2.0.0 only drops Node 18, which pnpm 11 already requires.
   tinypool@1: "^2.1.2"
   # @docusaurus/module-type-aliases asks for @types/react "*", which resolves to the React 19
-  # types and breaks `tsc` (no global JSX namespace). Keep the types on the React 18 major.
+  # types and breaks `tsc` on this React 18 site (no global JSX namespace). This keeps the
+  # types it installs, which `tsc` uses, on React 18. Auto-installed peers of @mdx-js/react
+  # and @docsearch still resolve to React 19 types; overrides do not reach them.
   "@types/react": "^18.3.18"
   # @docusaurus/theme-mermaid asks for mermaid ">=11.6.0", which now resolves to 12.x. Mermaid 12
   # changes the default layout and look of existing diagrams and requires Safari 17.4+, so stay
