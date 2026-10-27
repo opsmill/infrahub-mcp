@@ -31,6 +31,7 @@ jobs:
       mcp: ${{ steps.changes.outputs.mcp_all }}
       documentation: ${{ steps.changes.outputs.documentation_all }}
       python: ${{ steps.changes.outputs.python_all }}
+      unit_tests: ${{ steps.changes.outputs.unit_tests_all }}
       yaml: ${{ steps.changes.outputs.yaml_all }}
     steps:
       - name: "Check out repository code"
@@ -229,7 +230,7 @@ jobs:
         run: "uv run rumdl check docs/"
 
   python-unit-tests:
-    if: needs.files-changed.outputs.python == 'true'
+    if: needs.files-changed.outputs.unit_tests == 'true'
     needs: ["files-changed", "prepare-environment"]
     runs-on: "ubuntu-latest"
     timeout-minutes: 10
