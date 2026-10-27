@@ -1328,7 +1328,7 @@ class TestToolResultErrorHandlingMiddleware:
         async with Client(_error_handling_server()) as client:
             result = await client.call_tool("get_schema", {"kind": "Missing"}, raise_on_error=False)
         assert result.is_error
-        text = result.content[0].text  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+        text = result.content[0].text
         assert text.startswith("Schema not found for kind: Missing.")
         assert "Remediation:" in text
 
