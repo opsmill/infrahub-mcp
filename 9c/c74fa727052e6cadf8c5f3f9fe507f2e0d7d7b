@@ -1,0 +1,30 @@
+tests/unit/test_auth.py
+  s_6c303bcc06ae48::t_4471113a04031b 5,14-15,31-47,110,127-142,169,181-182,184-189
+src/infrahub_mcp/config.py
+  s_6c303bcc06ae48::t_d91664769378a9 84,125-126
+tests/unit/test_config.py
+  s_6c303bcc06ae48::t_4471113a04031b 415-428
+  s_6c303bcc06ae48::t_dc41d1fd8724bf 443
+docs/docs/references/configuration.mdx
+  s_6c303bcc06ae48::t_d91664769378a9 98-109
+src/infrahub_mcp/auth.py
+  s_6c303bcc06ae48::t_d6ad92ccd700c1 43-47,50-51,53-54,62
+docs/docs/getting-started/authentication.mdx
+  s_6c303bcc06ae48::t_d91664769378a9 128-135,223-234
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9cc74fa727052e6cadf8c5f3f9fe507f2e0d7d7b",
+  "prompts": {},
+  "sessions": {
+    "s_6c303bcc06ae48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bc3f301-49c9-4f88-a938-df829991f415",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
