@@ -1,0 +1,22 @@
+tests/unit/test_server_env.py
+  s_1203ba7015f3ed::t_0745bf9c0655b8 6-7,126-190
+  s_1203ba7015f3ed::t_9db60675338952 191-198
+changelog/+dulwich-startup-compatibility.housekeeping.md
+  s_1203ba7015f3ed::t_0745bf9c0655b8 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c959a8e708eff69fae6e8914df0345476f621291",
+  "prompts": {},
+  "sessions": {
+    "s_1203ba7015f3ed": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17dba-12f8-7150-b003-8b8f7a330dce",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
