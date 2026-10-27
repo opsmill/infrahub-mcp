@@ -1,0 +1,23 @@
+tests/transport/test_server.py
+  s_a27647991913c7::t_cf4c4d30481457 104,108
+  s_a27647991913c7::t_1f5fc8e7d9e0e0 21
+  s_a27647991913c7::t_f73c4dc02a0e4c 74-79
+  s_a27647991913c7::t_b7048d73ee7da6 127
+  s_a27647991913c7::t_0c5118ad3d2f6d 160-183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a2adc0ec56ad1196b5cd490dea84795bd5856337",
+  "prompts": {},
+  "sessions": {
+    "s_a27647991913c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7428eb91-df3b-4a86-811e-09b520518701",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
