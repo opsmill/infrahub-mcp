@@ -1,0 +1,19 @@
+.github/dependabot.yml
+  s_a27647991913c7::t_bc97789bbbb3d5 40-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c4a4092510c060f9687f083f6454ae3d1542ffab",
+  "prompts": {},
+  "sessions": {
+    "s_a27647991913c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7428eb91-df3b-4a86-811e-09b520518701",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
