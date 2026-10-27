@@ -40,6 +40,7 @@ class TestServerConfig:
         assert not config.oidc_config_url
         assert not config.oidc_client_id
         assert not config.oidc_client_secret
+        assert not config.oidc_jwt_signing_key
         assert not config.oidc_base_url
         assert not config.oidc_audience
         assert config.oidc_user_claim == "email"
@@ -279,6 +280,7 @@ class TestLoadConfig:  # noqa: PLR0904
             "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://idp.example.com/.well-known/openid-configuration",
             "INFRAHUB_MCP_OIDC_CLIENT_ID": "my-client",
             "INFRAHUB_MCP_OIDC_CLIENT_SECRET": "s3cret",
+            "INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY": "signing-key",
             "INFRAHUB_MCP_OIDC_BASE_URL": "https://mcp.example.com",
             "INFRAHUB_MCP_OIDC_AUDIENCE": "infrahub",
             "INFRAHUB_MCP_OIDC_USER_CLAIM": "sub",
@@ -306,6 +308,7 @@ class TestLoadConfig:  # noqa: PLR0904
         assert config.oidc_config_url == "https://idp.example.com/.well-known/openid-configuration"
         assert config.oidc_client_id == "my-client"
         assert config.oidc_client_secret == "s3cret"  # noqa: S105
+        assert config.oidc_jwt_signing_key == "signing-key"
         assert config.oidc_base_url == "https://mcp.example.com"
         assert config.oidc_audience == "infrahub"
         assert config.oidc_user_claim == "sub"
@@ -327,6 +330,7 @@ class TestAuthModeConfig:
             "INFRAHUB_MCP_AUTH_MODE": "oidc",
             "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://accounts.google.com/.well-known/openid-configuration",
             "INFRAHUB_MCP_OIDC_CLIENT_ID": "my-client-id",
+            "INFRAHUB_MCP_OIDC_CLIENT_SECRET": "secret",
             "INFRAHUB_MCP_OIDC_BASE_URL": "https://mcp.example.com",
         }
         with patch.dict(os.environ, env, clear=True):
@@ -341,6 +345,7 @@ class TestAuthModeConfig:
             "INFRAHUB_MCP_AUTH_MODE": "OIDC",
             "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://example.com/.well-known/openid-configuration",
             "INFRAHUB_MCP_OIDC_CLIENT_ID": "id",
+            "INFRAHUB_MCP_OIDC_CLIENT_SECRET": "secret",
             "INFRAHUB_MCP_OIDC_BASE_URL": "https://mcp.example.com",
         }
         with patch.dict(os.environ, env, clear=True):
@@ -382,6 +387,46 @@ class TestAuthModeConfig:
             with pytest.raises(ValueError, match="INFRAHUB_MCP_OIDC_BASE_URL"):
                 load_config()
 
+    def test_auth_mode_oidc_missing_client_secret_and_signing_key(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "oidc",
+            "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://example.com/.well-known/openid-configuration",
+            "INFRAHUB_MCP_OIDC_CLIENT_ID": "id",
+            "INFRAHUB_MCP_OIDC_BASE_URL": "https://mcp.example.com",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            with pytest.raises(
+                ValueError, match="INFRAHUB_MCP_OIDC_CLIENT_SECRET \\(or INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY"
+            ):
+                load_config()
+
+    def test_auth_mode_oidc_public_client_with_signing_key(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "oidc",
+            "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://example.com/.well-known/openid-configuration",
+            "INFRAHUB_MCP_OIDC_CLIENT_ID": "id",
+            "INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY": "signing-key",
+            "INFRAHUB_MCP_OIDC_BASE_URL": "https://mcp.example.com",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = load_config()
+        assert not config.oidc_client_secret
+        assert config.oidc_jwt_signing_key == "signing-key"
+        assert "signing-key" not in repr(config)
+
+    def test_auth_mode_oidc_blank_client_secret_and_signing_key(self) -> None:
+        env = {
+            "INFRAHUB_MCP_AUTH_MODE": "oidc",
+            "INFRAHUB_MCP_OIDC_CONFIG_URL": "https://example.com/.well-known/openid-configuration",
+            "INFRAHUB_MCP_OIDC_CLIENT_ID": "id",
+            "INFRAHUB_MCP_OIDC_CLIENT_SECRET": " ",
+            "INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY": " ",
+            "INFRAHUB_MCP_OIDC_BASE_URL": "https://mcp.example.com",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            with pytest.raises(ValueError, match="INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY"):
+                load_config()
+
     def test_auth_mode_oidc_optional_fields(self) -> None:
         env = {
             "INFRAHUB_MCP_AUTH_MODE": "oidc",
@@ -395,6 +440,7 @@ class TestAuthModeConfig:
         with patch.dict(os.environ, env, clear=True):
             config = load_config()
         assert config.oidc_client_secret == "secret"  # noqa: S105
+        assert "oidc_client_secret=" not in repr(config)
         assert config.oidc_audience == "my-audience"
         assert config.oidc_user_claim == "preferred_username"
 

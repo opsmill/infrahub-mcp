@@ -76,7 +76,12 @@ class ServerConfig(BaseSettings):
             ``basic-passthrough``).
         oidc_config_url: OIDC discovery URL (required when ``auth_mode=oidc``).
         oidc_client_id: OAuth client ID (required when ``auth_mode=oidc``).
-        oidc_client_secret: OAuth client secret (optional — omit for PKCE).
+        oidc_client_secret: OAuth client secret for a confidential client. Leave empty
+            for a public client and set ``oidc_jwt_signing_key`` instead.
+        oidc_jwt_signing_key: Key that signs the tokens the server issues to MCP clients
+            and encrypts its stored OAuth state. Required when ``oidc_client_secret`` is
+            empty; when set, it replaces the key derived from the client secret. Must
+            stay the same across restarts, or issued tokens stop working.
         oidc_base_url: Public URL where the MCP server is reachable (required when
             ``auth_mode=oidc``).
         oidc_audience: Token audience claim (optional).
@@ -117,7 +122,8 @@ class ServerConfig(BaseSettings):
     auth_mode: AuthMode = "none"
     oidc_config_url: str = ""
     oidc_client_id: str = ""
-    oidc_client_secret: str = ""
+    oidc_client_secret: str = Field(default="", repr=False)
+    oidc_jwt_signing_key: str = Field(default="", repr=False)
     oidc_base_url: str = ""
     oidc_audience: str = ""
     oidc_user_claim: str = "email"
@@ -192,6 +198,10 @@ def _validate_auth_requirements(config: ServerConfig) -> None:
             )
             if not value.strip()
         ]
+        # FastMCP's OIDCProxy signs its own tokens with a key derived from the client
+        # secret, so a public client (no secret) must supply that key explicitly.
+        if not config.oidc_client_secret.strip() and not config.oidc_jwt_signing_key.strip():
+            missing.append("INFRAHUB_MCP_OIDC_CLIENT_SECRET (or INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY for a public client)")
         if missing:
             msg = (
                 f"OIDC auth mode requires these environment variables: {', '.join(missing)}. "
