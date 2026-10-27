@@ -1,0 +1,39 @@
+src/infrahub_mcp/auth.py
+  s_6c303bcc06ae48::t_41e9c740d0e9c3 48
+  s_6c303bcc06ae48::t_38f9d8f78341e9 45-47,49-50,55,58
+docs/docs/getting-started/authentication.mdx
+  s_6c303bcc06ae48::t_6e7b40255ad307 106-108,120-130,157,182,193,204,216-227
+src/infrahub_mcp/config.py
+  s_6c303bcc06ae48::t_1b2574aa4ab004 126
+  s_6c303bcc06ae48::t_20faa875399c6d 201-204
+  s_6c303bcc06ae48::t_d00220e913b9f9 79-84
+tests/unit/test_auth.py
+  s_6c303bcc06ae48::t_3d899cd30c9b87 54,130
+  s_6c303bcc06ae48::t_80ee63f94332fe 10,38,43,55,79-129,131
+  s_6c303bcc06ae48::t_5cdaee374b97a7 132
+docs/docs/references/configuration.mdx
+  s_6c303bcc06ae48::t_6e7b40255ad307 98-109
+tests/unit/test_config.py
+  s_6c303bcc06ae48::t_80ee63f94332fe 43,283,311,333,348,390-414
+  s_6c303bcc06ae48::t_a90bae6cfe1b12 415
+changelog/+oidc-public-client.fixed.md
+  s_6c303bcc06ae48::t_e155f245484142 1
+tasks.py
+  s_6c303bcc06ae48::t_61046835b679d5 97,109,204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5b8f33909ebfee7cf126fb0deafc48f9f582cace",
+  "prompts": {},
+  "sessions": {
+    "s_6c303bcc06ae48": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3bc3f301-49c9-4f88-a938-df829991f415",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
