@@ -1,0 +1,25 @@
+dev/knowledge/architecture.md
+  s_61789da7a5623f::t_c8dc4385c1898a 60,71-73
+tests/unit/test_middleware.py
+  s_61789da7a5623f::t_c8dc4385c1898a 1345-1377,1384-1387,1390
+changelog/+tool-errors-as-results.fixed.md
+  s_61789da7a5623f::t_c8dc4385c1898a 1
+docs/docs/references/configuration.mdx
+  s_61789da7a5623f::t_c8dc4385c1898a 167,180
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2d8a27ac06476e7589b5e5d1606d0f4a6de33671",
+  "prompts": {},
+  "sessions": {
+    "s_61789da7a5623f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e71bed79-d378-4f35-8adf-6225c344afde",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Saltaferis Dimitrios <d.saltaferis@gmail.com>"
+    }
+  }
+}
