@@ -81,7 +81,7 @@ class ServerConfig(BaseSettings):
         oidc_jwt_signing_key: Key that signs the tokens the server issues to MCP clients
             and encrypts its stored OAuth state. Required when ``oidc_client_secret`` is
             empty; when set, it replaces the key derived from the client secret. Must
-            stay the same across restarts and replicas.
+            stay the same across restarts, or issued tokens stop working.
         oidc_base_url: Public URL where the MCP server is reachable (required when
             ``auth_mode=oidc``).
         oidc_audience: Token audience claim (optional).
@@ -122,8 +122,8 @@ class ServerConfig(BaseSettings):
     auth_mode: AuthMode = "none"
     oidc_config_url: str = ""
     oidc_client_id: str = ""
-    oidc_client_secret: str = ""
-    oidc_jwt_signing_key: str = ""
+    oidc_client_secret: str = Field(default="", repr=False)
+    oidc_jwt_signing_key: str = Field(default="", repr=False)
     oidc_base_url: str = ""
     oidc_audience: str = ""
     oidc_user_claim: str = "email"

@@ -125,7 +125,14 @@ export INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY=<generated-key>
 
 Without a client secret, the server sends only the client ID to the identity provider's token endpoint. The client type does not turn PKCE on or off.
 
-The signing key signs the tokens the server issues to MCP clients and encrypts the OAuth state the server stores. Set the same key on every restart and on every replica. A new key invalidates the tokens already issued, so users sign in again and MCP clients register again. With a client secret, the server derives this key from the secret, and setting `INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY` replaces the derived key.
+The signing key signs the tokens the server issues to MCP clients and encrypts the OAuth state the server stores. With a client secret, the server derives this key from the secret, and setting `INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY` replaces the derived key.
+
+The server stores that OAuth state, including the record of each token it issued, on local disk under the FastMCP home folder. Set `FASTMCP_HOME` to choose the folder. Issued tokens keep working after a restart only when both of these hold:
+
+- The signing key is the same as before.
+- The FastMCP home folder persists across the restart, for example on a container volume.
+
+Otherwise users sign in again and MCP clients register again. Replicas do not share this folder, so a token works only on the replica that issued it.
 
 The server checks the OIDC settings at startup. If a required setting is missing, including both the client secret and the signing key, the server stops with an error that names the missing environment variables.
 
@@ -213,15 +220,15 @@ INFRAHUB_MCP_AUTH_SCOPES_WRITE=write
 
 For the complete list of environment variables, see the [Configuration reference](../references/configuration.mdx#authentication-and-authorization). For an architectural deep-dive on each mode, see [Authentication architecture](../references/authentication.mdx).
 
-| Variable                                | Required                        | Default         | Description                                                                                                                                                   |
-| --------------------------------------- | ------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `INFRAHUB_MCP_AUTH_MODE`                | No                              | `none`          | Authentication mode (`none`, `oidc`, `token-passthrough`, `basic-passthrough`)                                                                                |
-| `INFRAHUB_MCP_OIDC_CONFIG_URL`          | Yes (oidc)                      |                 | OIDC discovery endpoint URL                                                                                                                                   |
-| `INFRAHUB_MCP_OIDC_CLIENT_ID`           | Yes (oidc)                      |                 | OAuth client ID registered with the IdP                                                                                                                       |
-| `INFRAHUB_MCP_OIDC_CLIENT_SECRET`       | Yes (oidc, confidential client) |                 | OAuth client secret. Leave unset for a public client and set `INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY` instead                                                      |
-| `INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY`     | Yes (oidc, public client)       |                 | Key that signs the tokens the server issues and encrypts its stored OAuth state. Optional with a client secret. Keep it the same across restarts and replicas |
-| `INFRAHUB_MCP_OIDC_BASE_URL`            | Yes (oidc)                      |                 | Public URL where the MCP server is accessible                                                                                                                 |
-| `INFRAHUB_MCP_OIDC_AUDIENCE`            | No                              |                 | Token audience claim                                                                                                                                          |
-| `INFRAHUB_MCP_OIDC_USER_CLAIM`          | No                              | `email`         | JWT claim used for user identity                                                                                                                              |
-| `INFRAHUB_MCP_AUTH_SCOPES_WRITE`        | No                              | `write`         | Scopes required for write operations (comma-separated)                                                                                                        |
-| `INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER` | No                              | `Authorization` | HTTP header carrying the Infrahub API token (token-passthrough mode)                                                                                          |
+| Variable                                | Required                        | Default         | Description                                                                                                                                      |
+| --------------------------------------- | ------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `INFRAHUB_MCP_AUTH_MODE`                | No                              | `none`          | Authentication mode (`none`, `oidc`, `token-passthrough`, `basic-passthrough`)                                                                   |
+| `INFRAHUB_MCP_OIDC_CONFIG_URL`          | Yes (oidc)                      |                 | OIDC discovery endpoint URL                                                                                                                      |
+| `INFRAHUB_MCP_OIDC_CLIENT_ID`           | Yes (oidc)                      |                 | OAuth client ID registered with the IdP                                                                                                          |
+| `INFRAHUB_MCP_OIDC_CLIENT_SECRET`       | Yes (oidc, confidential client) |                 | OAuth client secret. Leave unset for a public client and set `INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY` instead                                         |
+| `INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY`     | Yes (oidc, public client)       |                 | Key that signs the tokens the server issues and encrypts its stored OAuth state. Optional with a client secret. Keep it the same across restarts |
+| `INFRAHUB_MCP_OIDC_BASE_URL`            | Yes (oidc)                      |                 | Public URL where the MCP server is accessible                                                                                                    |
+| `INFRAHUB_MCP_OIDC_AUDIENCE`            | No                              |                 | Token audience claim                                                                                                                             |
+| `INFRAHUB_MCP_OIDC_USER_CLAIM`          | No                              | `email`         | JWT claim used for user identity                                                                                                                 |
+| `INFRAHUB_MCP_AUTH_SCOPES_WRITE`        | No                              | `write`         | Scopes required for write operations (comma-separated)                                                                                           |
+| `INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER` | No                              | `Authorization` | HTTP header carrying the Infrahub API token (token-passthrough mode)                                                                             |

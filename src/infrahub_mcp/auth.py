@@ -40,14 +40,18 @@ def create_auth_provider(config: ServerConfig) -> OIDCProxy | None:
         "client_id": config.oidc_client_id,
         "base_url": config.oidc_base_url,
     }
-    if config.oidc_client_secret:
-        kwargs["client_secret"] = config.oidc_client_secret
+    # Stripped to match _validate_auth_requirements, so a blank value counts as unset.
+    client_secret = config.oidc_client_secret.strip()
+    jwt_signing_key = config.oidc_jwt_signing_key.strip()
+    if client_secret:
+        kwargs["client_secret"] = client_secret
     else:
         # Public client: send only the client ID to the upstream token endpoint.
-        # FastMCP otherwise defaults to client_secret_basic, which needs a secret.
+        # FastMCP before 4.1.3 defaults to client_secret_basic even without a secret
+        # (PrefectHQ/fastmcp#5879), and pyproject.toml allows fastmcp>=4.0.0.
         kwargs["token_endpoint_auth_method"] = "none"  # noqa: S105
-    if config.oidc_jwt_signing_key:
-        kwargs["jwt_signing_key"] = config.oidc_jwt_signing_key
+    if jwt_signing_key:
+        kwargs["jwt_signing_key"] = jwt_signing_key
     if config.oidc_audience:
         kwargs["audience"] = config.oidc_audience
 
@@ -55,7 +59,7 @@ def create_auth_provider(config: ServerConfig) -> OIDCProxy | None:
         "oidc_auth enabled=true config_url=%s client_id=%s public_client=%s",
         config.oidc_config_url,
         config.oidc_client_id,
-        str(not config.oidc_client_secret).lower(),
+        str(not client_secret).lower(),
     )
     return OIDCProxy(**kwargs)
 
