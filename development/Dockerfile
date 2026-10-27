@@ -2,7 +2,11 @@
 # STAGE 1: Builder — install dependencies with uv
 # ****************************************************************
 ARG PYTHON_VER=3.13
-FROM ghcr.io/astral-sh/uv:0.7-python${PYTHON_VER}-bookworm-slim AS builder
+# uv 0.13.5 and later reject certificate chains that contain the compromised
+# eMudhra intermediates (https://emudhra.we-have-a-problem.com/). uv publishes
+# no bookworm images from 0.13 onwards, so the builder runs on trixie, the same
+# Debian release as the runtime stage.
+FROM ghcr.io/astral-sh/uv:0.13.6-python${PYTHON_VER}-trixie-slim AS builder
 
 WORKDIR /app
 
@@ -28,9 +32,13 @@ LABEL io.modelcontextprotocol.server.name="infrahub-mcp"
 # stacks (opsmill/infrahub-solution-ai-dc#70). Deliberately not version-pinned:
 # Debian drops superseded versions from the archive (trixie is already at
 # 8.14.1-2+deb13u4), so an exact pin breaks the build on the next security update.
+# ca-certificates is upgraded so that a stale base image still gets the trust
+# store that distrusts the compromised eMudhra intermediates (Debian bug
+# #1151413, fixed in 20250419+deb13u1); the build fails on an older store.
 # hadolint ignore=DL3008
 RUN apt-get update && \
-    apt-get install --no-install-recommends -y curl && \
+    apt-get install --no-install-recommends -y ca-certificates curl && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge 20250419+deb13u1 && \
     rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1
