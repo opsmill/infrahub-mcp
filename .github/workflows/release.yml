@@ -57,3 +57,29 @@ jobs:
       publish: true
       prerelease: ${{ github.event.release.prerelease }}
       version: ${{ github.ref_name }}
+
+  # Tell opsmill/infrahub-helm about the release once its image is published, so
+  # its "Update infrahub-mcp" workflow opens a pull request that moves
+  # charts/infrahub-mcp to this version. Only the latest full release is sent:
+  # the chart follows the newest version, not a patch on an older release line.
+  notify-helm:
+    needs: [publish]
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Send infrahub-mcp-released to opsmill/infrahub-helm
+        env:
+          GH_TOKEN: ${{ secrets.GH_INFRAHUB_BOT_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$(gh api "repos/$REPOSITORY/releases/latest" -q .tag_name)" != "$TAG" ]; then
+            echo "::notice::$TAG is not the latest release; infrahub-helm is not notified."
+            exit 0
+          fi
+          gh api "repos/opsmill/infrahub-helm/dispatches" \
+            -f event_type=infrahub-mcp-released \
+            -f "client_payload[version]=$TAG"
+          echo "Sent infrahub-mcp-released for $TAG to opsmill/infrahub-helm."
