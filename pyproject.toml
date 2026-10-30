@@ -33,7 +33,7 @@ dev = [
     "pylint>=4.0.5",
     "yamllint>=1.37.1",
     "pyyaml>=6.0",
-    "infrahub-testcontainers>=1.11.9,<2",
+    "infrahub-testcontainers>=1.12.0b0,<2",
     "towncrier>=25.8.0",
     "pre-commit>=4.6.1",
 ]
