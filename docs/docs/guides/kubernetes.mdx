@@ -1,0 +1,289 @@
+---
+title: Deploy on Kubernetes with Helm
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+The `infrahub-mcp` Helm chart installs the Infrahub MCP server in a Kubernetes cluster, where MCP clients connect to it over Streamable HTTP. Deploy it with Helm when Infrahub is installed in Kubernetes with the [`infrahub-helm`](https://github.com/opsmill/infrahub-helm) charts. When Infrahub runs in Docker Compose, follow the [Docker Compose guide](./docker-compose.mdx) instead.
+
+The examples on this page are for `infrahub-mcp` chart version `0.2.0`, which deploys MCP server `v1.2.1`, and `infrahub` chart version `4.36.0`.
+
+:::warning
+
+With the default values (`mcp.authMode: none`, `mcp.readOnly: false`), every client that can reach the MCP server gets read and write access to Infrahub through one shared API token. For a deployment that other people connect to, set `mcp.authMode` and `mcp.readOnly` as shown in the following sections.
+
+:::
+
+## Choose an install method
+
+You can install the MCP server in two ways. Either way, Helm installs the same chart with the same values; the difference is which Helm release the MCP server belongs to.
+
+- **As part of the `infrahub` chart.** Set `infrahub-mcp.enabled: true` in the values of your Infrahub release and put the MCP server values under the `infrahub-mcp:` key. Helm then installs, upgrades and removes the MCP server together with Infrahub. For the `infrahub-enterprise` chart, the key is `infrahub.infrahub-mcp:`.
+- **As a standalone release.** Install the `infrahub-mcp` chart from `oci://registry.opsmill.io/opsmill/chart`. The MCP server has its own release, so you upgrade it separately from Infrahub, and it can connect to an Infrahub instance that was not installed with `infrahub-helm`.
+
+The values in the following sections are written for the standalone chart. When you install through the `infrahub` chart, put them under `infrahub-mcp:`.
+
+## Set the Infrahub address
+
+The chart does not set the address of Infrahub, including when you install it through the `infrahub` chart. Set `infrahub.address` to the URL the MCP server uses to call the Infrahub API:
+
+```yaml
+infrahub:
+  address: "http://infrahub-infrahub-server:8000"
+```
+
+Inside the cluster, the Infrahub server service is named `<infrahub-release>-infrahub-server` and listens on port `8000`. The example above is for an Infrahub release named `infrahub`. If the MCP server runs in a different namespace from Infrahub, add the namespace to the hostname: `http://infrahub-infrahub-server.<namespace>.svc:8000`.
+
+## Require each client to send its own API token
+
+Set `mcp.authMode` to `token-passthrough` to require each MCP client to send its own Infrahub API token. The MCP server then calls Infrahub with that token:
+
+```yaml
+mcp:
+  authMode: "token-passthrough"
+```
+
+Each user then works in Infrahub with their own account and its permissions, rather than with one account shared by every client. The MCP server holds no Infrahub credentials, so leave `infrahub.apiToken` unset.
+
+Clients send the token in the `Authorization` header:
+
+```text
+Authorization: Bearer <infrahub-api-token>
+```
+
+If your clients send the token in a different header, set `mcp.tokenPassthroughHeader` to its name.
+
+A client can connect and list the tools without a token. The MCP server checks that a token is present when the client calls a tool, and Infrahub checks that the token is valid when the tool queries it:
+
+- With no token, every tool call fails with `Authentication required: no Infrahub API token in request header.`
+- With an invalid token, tool calls that query Infrahub fail with the `401 Unauthorized` response from Infrahub.
+
+For the other modes (`basic-passthrough` and `oidc`) and the values they need under `mcp.oidc`, see [Set up authentication](../getting-started/authentication.mdx).
+
+## Provide a shared API token from a Secret
+
+In the `none` and `oidc` modes, the MCP server calls Infrahub with one API token that it holds itself. Store that token in a Kubernetes Secret rather than in your values file:
+
+```bash
+kubectl create secret generic infrahub-mcp-token \
+  --namespace <namespace> \
+  --from-literal=INFRAHUB_API_TOKEN=<infrahub-api-token>
+```
+
+Then reference the Secret:
+
+```yaml
+infrahub:
+  apiToken:
+    existingSecret: "infrahub-mcp-token"
+    existingSecretKey: "INFRAHUB_API_TOKEN"
+```
+
+`existingSecretKey` is the key inside the Secret and defaults to `INFRAHUB_API_TOKEN`. When `existingSecret` is set, the chart uses it instead of `apiToken.value`. A token in `apiToken.value` is written into the pod specification as plain text.
+
+In `token-passthrough` mode the MCP server never reads this token. Leave it unset: if the mode were later changed back to `none`, every client would get that token's access.
+
+## Block write operations
+
+Set `mcp.readOnly: true` to make the MCP server hide its write tools (`node_upsert`, `node_delete`, `propose_changes` and `mutate_graphql`) and refuse calls to them:
+
+```yaml
+mcp:
+  readOnly: true
+```
+
+Clients then see only the tools that read data. A client that calls a write tool by name receives an error saying the tool is not available in read-only mode. The `query_graphql` tool rejects mutations in every mode, so with `mcp.readOnly: true` clients have no tool that changes data in Infrahub.
+
+## Expose the server on /mcp
+
+The chart defines a `ClusterIP` service on port `8001`. To reach the MCP server from outside the cluster, expose it with an Ingress or with a Gateway API `HTTPRoute`. Enable only one of them: when both are enabled, the install fails.
+
+Both default to the path prefix `/mcp`. Set the hostname to the hostname of your Infrahub ingress so that clients reach Infrahub at `/` and the MCP server at `/mcp` on the same host.
+
+<Tabs>
+<TabItem value="ingress" label="Ingress" default>
+
+```yaml
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  hostname: infrahub.example.com
+  path: /mcp
+  pathType: Prefix
+  tls: true
+```
+
+With `tls: true`, the ingress uses the TLS Secret `<fullname>-tls`. `<fullname>` is the name of the MCP server resources: `infrahub-mcp` for a standalone release named `infrahub-mcp`, or `infrahub-infrahub-mcp` for an `infrahub` release named `infrahub`. Create that Secret, or list your own in `ingress.extraTls`.
+
+</TabItem>
+<TabItem value="gateway-api" label="Gateway API">
+
+```yaml
+gatewayApi:
+  enabled: true
+  httpRoute:
+    hostnames:
+      - infrahub.example.com
+    parentRefs:
+      - name: default-gateway
+        namespace: net
+        sectionName: https-listener
+    path: /mcp
+```
+
+`httpRoute.parentRefs` names the Gateway the route attaches to. The install fails if `parentRefs` is empty, unless you set `gatewayApi.gateway.enabled: true` to create a Gateway with the chart, which also requires `gatewayApi.gateway.className`.
+
+</TabItem>
+</Tabs>
+
+## Install the chart
+
+The following values set the in-cluster Infrahub address, require a token from each client, block write operations and expose the MCP server on the Infrahub host.
+
+<Tabs>
+<TabItem value="standalone" label="Standalone chart" default>
+
+Save the values as `infrahub-mcp-values.yaml`:
+
+```yaml
+infrahub:
+  address: "http://infrahub-infrahub-server:8000"
+
+mcp:
+  authMode: "token-passthrough"
+  readOnly: true
+
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  hostname: infrahub.example.com
+  path: /mcp
+  pathType: Prefix
+  tls: true
+```
+
+Install the chart in the same namespace as Infrahub:
+
+```bash
+helm upgrade --install infrahub-mcp oci://registry.opsmill.io/opsmill/chart/infrahub-mcp \
+  --version 0.2.0 \
+  --namespace infrahub \
+  --values infrahub-mcp-values.yaml
+```
+
+</TabItem>
+<TabItem value="infrahub-chart" label="infrahub chart">
+
+Add the values to the values file of your Infrahub release, under `infrahub-mcp:`:
+
+```yaml
+infrahub-mcp:
+  enabled: true
+  infrahub:
+    address: "http://infrahub-infrahub-server:8000"
+  mcp:
+    authMode: "token-passthrough"
+    readOnly: true
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hostname: infrahub.example.com
+    path: /mcp
+    pathType: Prefix
+    tls: true
+```
+
+Apply them to the release:
+
+```bash
+helm upgrade --install infrahub oci://registry.opsmill.io/opsmill/chart/infrahub \
+  --version 4.36.0 \
+  --namespace infrahub \
+  --values infrahub-values.yaml
+```
+
+For the `infrahub-enterprise` chart, nest the same block under `infrahub:` so that the key is `infrahub.infrahub-mcp`.
+
+</TabItem>
+</Tabs>
+
+Pass `--version` on every install and upgrade. Without it, Helm installs the newest chart in the registry. The container image tag defaults to the chart's application version, so choosing the chart version also chooses the MCP server version.
+
+## Check the deployment
+
+List the MCP server pod:
+
+```bash
+kubectl get pods --namespace infrahub -l app.kubernetes.io/name=infrahub-mcp
+```
+
+The pod is ready when the readiness probe gets an HTTP 200 response from `/health`. Both the liveness and the readiness probe call `/health` on the container port. To call it yourself, forward the service port. The service is named `<fullname>`, so for a standalone release named `infrahub-mcp`:
+
+```bash
+kubectl port-forward --namespace infrahub svc/infrahub-mcp 8001:8001
+curl http://localhost:8001/health
+```
+
+`/health` checks different things depending on `mcp.authMode`:
+
+| `mcp.authMode` | What `/health` checks | Response when healthy |
+| --- | --- | --- |
+| `token-passthrough`, `basic-passthrough` | That `infrahub.address` is set. It does not contact Infrahub, because the server holds no credentials. | `{"status":"healthy","auth_mode":"<mode>"}` |
+| `none`, `oidc` | That Infrahub responds to the server's shared credentials. | `{"status":"healthy"}` |
+
+In the `none` and `oidc` modes, `/health` returns HTTP 503 when Infrahub cannot be reached or rejects the shared token. The liveness probe then fails, and Kubernetes restarts the MCP server pod until Infrahub responds again. In the passthrough modes, the pod stays ready while Infrahub is down, and tool calls fail instead.
+
+The `/health` path is not reachable through the ingress, because the ingress only routes `/mcp` to the MCP server.
+
+## Connect an MCP client
+
+Clients connect to the ingress hostname followed by `/mcp`, for example `https://infrahub.example.com/mcp`. Use `/mcp` without a trailing slash: a request to `/mcp/` returns an HTTP 307 redirect.
+
+In `token-passthrough` mode, each user adds their own Infrahub API token to the client configuration. For Claude Code, in `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "infrahub": {
+      "type": "http",
+      "url": "https://infrahub.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer <your-infrahub-api-token>"
+      }
+    }
+  }
+}
+```
+
+For the configuration of Cursor, VS Code and Claude Desktop, see [Streamable HTTP with authentication](./installation.mdx#streamable-http-with-authentication) and replace the URL with yours.
+
+## Upgrade and remove the MCP server
+
+To upgrade, change `--version` or your values and run the same `helm upgrade --install` command again.
+
+To remove the MCP server:
+
+- **Standalone release:** run `helm uninstall infrahub-mcp --namespace infrahub`.
+- **Part of the `infrahub` chart:** set `infrahub-mcp.enabled: false` and run `helm upgrade` on the Infrahub release.
+
+The chart defines no persistent volumes, so removing the MCP server deletes no Infrahub data. A Secret you created for `infrahub.apiToken.existingSecret` stays in the namespace until you delete it.
+
+## Troubleshooting
+
+To read the server logs, run `kubectl logs --namespace infrahub deploy/<fullname>`. For more detail, set `mcp.logLevel: debug`.
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Tool calls fail with `Authentication required: no Infrahub API token in request header.` | The client sends no token, or sends it in a header other than `mcp.tokenPassthroughHeader`. | Add `Authorization: Bearer <token>` to the client configuration. |
+| Tool calls fail with `401 Unauthorized` from Infrahub. | The client's token is not a valid Infrahub API token. | Create a new API token in Infrahub and update the client configuration. |
+| The client receives HTTP 307 or 404. | The client URL is not `https://<hostname>/mcp`, for example it ends in `/mcp/` or `/mcp/mcp`. | Set the URL to the hostname followed by `/mcp`. |
+| The client lists no write tools. | `mcp.readOnly` is `true`. | Set `mcp.readOnly: false` if clients need to make changes. |
+| The MCP server pod restarts repeatedly in `none` or `oidc` mode. | `/health` returns 503 because Infrahub cannot be reached or rejects the shared token. | Check `infrahub.address` and the token in the Secret, and look for `Health check failed` in the pod logs. |
+| In `none` or `oidc` mode, the MCP server stops at startup with an error about `INFRAHUB_API_TOKEN` or `INFRAHUB_USERNAME`. | The server needs exactly one set of shared credentials, and none or both are set. | Set either `infrahub.apiToken`, or `infrahub.username` with `infrahub.password`. |
+
+## Related reading
+
+- [Set up authentication](../getting-started/authentication.mdx): each authentication mode, and the settings for Google, Okta, Microsoft Entra and Keycloak.
+- [Configuration reference](../references/configuration.mdx): the environment variables the server reads, which the chart sets from its values.
+- [`infrahub-mcp` chart](https://github.com/opsmill/infrahub-helm/tree/stable/charts/infrahub-mcp): every chart value and its default.
