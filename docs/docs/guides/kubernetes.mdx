@@ -59,7 +59,7 @@ A client can connect and list the tools without a token. The MCP server checks t
 - With no token, every tool call fails with `Authentication required: no Infrahub API token in request header.`
 - With an invalid token, tool calls that query Infrahub fail with the `401 Unauthorized` response from Infrahub.
 
-For the other modes (`basic-passthrough` and `oidc`) and the values they need under `mcp.oidc`, see [Set up authentication](../getting-started/authentication.mdx).
+For the other modes (`basic-passthrough` and `oidc`) and their required configuration, see [Set up authentication](../getting-started/authentication.mdx).
 
 ## Provide a shared API token from a Secret
 
@@ -86,7 +86,7 @@ In `token-passthrough` mode the MCP server never reads this token. Leave it unse
 
 ## Block write operations
 
-Set `mcp.readOnly: true` to make the MCP server hide its write tools (`node_upsert`, `node_delete`, `propose_changes` and `mutate_graphql`) and refuse calls to them:
+Set `mcp.readOnly: true` to make the MCP server hide its write tools (`node_upsert`, `node_delete`, `propose_changes`, `mutate_graphql` and `reset_session_branch`) and refuse calls to them:
 
 ```yaml
 mcp:
@@ -275,7 +275,7 @@ To read the server logs, run `kubectl logs --namespace infrahub deploy/<fullname
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| Tool calls fail with `Authentication required: no Infrahub API token in request header.` | The client sends no token, or sends it in a header other than `mcp.tokenPassthroughHeader`. | Add `Authorization: Bearer <token>` to the client configuration. |
+| Tool calls fail with `Authentication required: no Infrahub API token in request header.` | The client sends no token, or sends it in a header other than `mcp.tokenPassthroughHeader`. | Send the token in the configured header, or set `mcp.tokenPassthroughHeader` to `Authorization`. |
 | Tool calls fail with `401 Unauthorized` from Infrahub. | The client's token is not a valid Infrahub API token. | Create a new API token in Infrahub and update the client configuration. |
 | The client receives HTTP 307 or 404. | The client URL is not `https://<hostname>/mcp`, for example it ends in `/mcp/` or `/mcp/mcp`. | Set the URL to the hostname followed by `/mcp`. |
 | The client lists no write tools. | `mcp.readOnly` is `true`. | Set `mcp.readOnly: false` if clients need to make changes. |
