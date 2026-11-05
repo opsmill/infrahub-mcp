@@ -1,0 +1,40 @@
+---
+# yamllint disable rule:truthy rule:line-length
+name: SBOM smoke test
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ci-docker-image.yml"
+      - ".github/workflows/ci-sbom.yml"
+      - "scripts/test_sbom.sh"
+      - "tests/unit/test_sbom_workflow.py"
+  push:
+    branches: [stable]
+    paths:
+      - ".github/workflows/ci-docker-image.yml"
+      - ".github/workflows/ci-sbom.yml"
+      - "scripts/test_sbom.sh"
+      - "tests/unit/test_sbom_workflow.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sbom-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sbom-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Keep this aligned with the release job; test_sbom_workflow.py enforces it.
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0.24.3
+      - name: Verify image scanning and both release SBOM formats
+        run: bash scripts/test_sbom.sh
