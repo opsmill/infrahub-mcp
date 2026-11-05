@@ -54,6 +54,7 @@ Defined in `src/infrahub_mcp/middleware.py`. Composed once at startup
 via `configure_middleware()`.
 
 **Built-in FastMCP middleware:**
+
 - `StructuredLoggingMiddleware` — structured log output
 - `DetailedTimingMiddleware` — request duration tracking
 - `ErrorHandlingMiddleware` — exception-to-MCP-error translation
@@ -66,6 +67,10 @@ via `configure_middleware()`.
 - `AuthMiddleware` — OAuth scope enforcement
 
 **Custom middleware:**
+
+- `ToolResultErrorHandlingMiddleware` — subclass of `ErrorHandlingMiddleware`
+  that returns a `ToolError` from `tools/call` as a tool result with
+  `isError: true` instead of a JSON-RPC error
 - `ReadOnlyMiddleware` — blocks tools tagged `"write"` in read-only mode
 - `AuditMiddleware` — structured audit log with request IDs
 - `InfrahubErrorMiddleware` — translates SDK exceptions to MCP errors
@@ -79,7 +84,7 @@ propagate request IDs through the middleware stack.
 Tools live in `src/infrahub_mcp/tools/`, each as a sub-application:
 
 | Module | Purpose |
-|--------|---------|
+| -------- | --------- |
 | `gql.py` | Raw GraphQL queries and mutations |
 | `nodes.py` | Typed node CRUD (get, search, list) |
 | `schema.py` | Schema introspection tools |
@@ -94,7 +99,7 @@ Write tools are tagged `"write"` so `ReadOnlyMiddleware` and
 Resources in `src/infrahub_mcp/resources/`:
 
 | Module | Purpose |
-|--------|---------|
+| -------- | --------- |
 | `branches.py` | Branch listing and metadata |
 | `schema.py` | Schema definitions as MCP resources |
 
@@ -103,7 +108,7 @@ Resources in `src/infrahub_mcp/resources/`:
 Prompts in `src/infrahub_mcp/prompts/`:
 
 | Module | Purpose |
-|--------|---------|
+| -------- | --------- |
 | `prompts.py` | System prompts and workflow guides |
 
 ## Authentication Modes
@@ -111,7 +116,7 @@ Prompts in `src/infrahub_mcp/prompts/`:
 Configured via `INFRAHUB_MCP_AUTH_MODE`:
 
 | Mode | How it works |
-|------|-------------|
+| ------ | ------------- |
 | `none` | No MCP-level auth. Infrahub credentials from env vars. |
 | `oidc` | Full OAuth 2.0/OIDC flow via `OIDCProxy`. MCP-level access control. |
 | `token-passthrough` | Per-request Bearer token via HTTP header → `ContextVar`. |
