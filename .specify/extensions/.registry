@@ -209,67 +209,6 @@
       "registered_skills": [],
       "installed_at": "2026-05-01T05:42:46.360580+00:00"
     },
-    "review": {
-      "version": "1.0.0",
-      "source": "local",
-      "manifest_hash": "sha256:0cbd39c71fbf9274e2d313d2ec8470c758759dea9e15ca162be2ae94612fc3f8",
-      "enabled": true,
-      "priority": 10,
-      "registered_commands": {
-        "agy": [
-          "speckit.review.run",
-          "speckit.review",
-          "speckit.review.code",
-          "speckit.review.comments",
-          "speckit.review.tests",
-          "speckit.review.errors",
-          "speckit.review.types",
-          "speckit.review.simplify"
-        ],
-        "amp": [
-          "speckit.review.run",
-          "speckit.review",
-          "speckit.review.code",
-          "speckit.review.comments",
-          "speckit.review.tests",
-          "speckit.review.errors",
-          "speckit.review.types",
-          "speckit.review.simplify"
-        ],
-        "claude": [
-          "speckit.review.run",
-          "speckit.review",
-          "speckit.review.code",
-          "speckit.review.comments",
-          "speckit.review.tests",
-          "speckit.review.errors",
-          "speckit.review.types",
-          "speckit.review.simplify"
-        ],
-        "codex": [
-          "speckit.review.run",
-          "speckit.review",
-          "speckit.review.code",
-          "speckit.review.comments",
-          "speckit.review.tests",
-          "speckit.review.errors",
-          "speckit.review.types",
-          "speckit.review.simplify"
-        ],
-        "copilot": [
-          "speckit.review.run",
-          "speckit.review",
-          "speckit.review.code",
-          "speckit.review.comments",
-          "speckit.review.tests",
-          "speckit.review.errors",
-          "speckit.review.types",
-          "speckit.review.simplify"
-        ]
-      },
-      "registered_skills": [],
-      "installed_at": "2026-05-01T06:13:24.937001+00:00"
-    },
     "checkpoint": {
       "version": "1.0.0",
       "source": "local",
@@ -375,35 +314,24 @@
       "installed_at": "2026-05-02T14:49:35.534746+00:00"
     },
     "opsmill": {
-      "version": "1.0.0",
+      "version": "1.4.1",
       "source": "local",
-      "manifest_hash": "sha256:1728f48f4f44275cb5b96b4bc1b322f323ccc4ad7e50511db61f0e963fea7bfb",
+      "manifest_hash": "sha256:8d2d95bcc835b1febff8aef37dc6065e0dc4ad7bbea132adfbdbf4dce17ceabf",
       "enabled": true,
       "priority": 10,
       "registered_commands": {
-        "agy": [
-          "speckit.opsmill.extract",
-          "speckit.opsmill.retrospect",
-          "speckit.opsmill.summary"
-        ],
-        "amp": [
-          "speckit.opsmill.extract",
-          "speckit.opsmill.retrospect",
-          "speckit.opsmill.summary"
-        ],
         "claude": [
           "speckit.opsmill.extract",
           "speckit.opsmill.retrospect",
-          "speckit.opsmill.summary"
-        ],
-        "codex": [
-          "speckit.opsmill.extract",
-          "speckit.opsmill.retrospect",
-          "speckit.opsmill.summary"
+          "speckit.opsmill.summary",
+          "speckit.opsmill.qa",
+          "speckit.opsmill.auto",
+          "speckit.opsmill.prep",
+          "speckit.opsmill.implement"
         ]
       },
       "registered_skills": [],
-      "installed_at": "2026-06-15T08:41:37.441100+00:00"
+      "installed_at": "2026-11-08T18:36:09.614567+00:00"
     }
   }
 }

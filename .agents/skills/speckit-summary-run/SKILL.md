@@ -1,11 +1,9 @@
 ---
 name: speckit-summary-run
-description: Produce a flow-level summary of the current Claude Code session — executive
-  summary, chronological timeline, and outcomes — written into the active feature
-  directory next to spec.md / plan.md.
+description: Produce a flow-level summary of the current Claude Code session — executive summary, chronological timeline, and outcomes — written into the active feature directory next to spec.md / plan.md.
 compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
-  author: github-spec-kit
+  author: opsmill
   source: summary:commands/run.md
 ---
 
@@ -58,7 +56,7 @@ previously generated session files when composing the new one.
 
 ## Outline
 
-1. Run `.specify/scripts/bash/check-prerequisites.sh --json --paths-only` from repo root and parse `FEATURE_DIR` from the JSON
+1. Run `.specify/extensions/summary/scripts/bash/check-prerequisites.sh --json --paths-only` from repo root and parse `FEATURE_DIR` from the JSON
    output. All paths must be absolute.
 
    - If `FEATURE_DIR` is missing, empty, or the resolved directory does
