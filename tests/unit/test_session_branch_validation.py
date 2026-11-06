@@ -297,8 +297,18 @@ class TestCallerIdentity:
 
         assert self._identity(first) == self._identity(refreshed)
 
-    def test_oidc_tokens_without_subject_never_collide(self) -> None:
-        """Without ``sub``, client id and issuer are the same for every user: use the token."""
+    def test_oidc_without_subject_uses_stable_user_claim(self) -> None:
+        """Without ``sub``, a user claim keeps the identity across token refreshes."""
+        claims = {"iss": "https://idp.example", "preferred_username": "alice"}
+        first = self._identity(_access_token("tok-1", claims))
+        refreshed = self._identity(_access_token("tok-2", claims))
+        other = self._identity(_access_token("tok-3", {**claims, "preferred_username": "bob"}))
+
+        assert first == refreshed
+        assert first != other
+
+    def test_oidc_tokens_without_user_claim_never_collide(self) -> None:
+        """Without any user claim, client id and issuer are the same for every user: use the token."""
         claims = {"iss": "https://idp.example"}
         user_a = _access_token("tok-a", claims)
         user_b = _access_token("tok-b", claims)

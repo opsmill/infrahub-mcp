@@ -20,7 +20,7 @@ As a result, the server never found the branch that a previous call stored:
 
 Key the session branch and its lock on a string returned by `_session_key()` in `utils.py`. The key joins these parts, in this order:
 
-1. `caller:<sha256>` from `get_caller_identity()` in `auth.py`: the OIDC principal (client id, issuer, subject), else the passthrough API token, else the passthrough Basic credentials. An OIDC token without a `sub` claim uses the token itself, because client id and issuer alone are the same for every user of the application. The value is hashed so that credentials are never held as dictionary keys.
+1. `caller:<sha256>` from `get_caller_identity()` in `auth.py`: the OIDC principal (client id, issuer, subject), else the passthrough API token, else the passthrough Basic credentials. An OIDC token without a `sub` claim uses the first of `oid`, `preferred_username` or `email` that it carries. With none of them it uses the token itself, because client id and issuer alone are the same for every user of the application. The value is hashed so that credentials are never held as dictionary keys.
 2. `session:<id>` from `Connection.session_id`, which the MCP SDK sets only for a stateful streamable-HTTP session (older protocol versions). The session manager generates that id and rejects a request whose credentials differ from the ones that created the session, so these clients keep one branch per session. The raw `mcp-session-id` header is not used: on the 2026-07-28 protocol and in stateless mode the transport does not validate it, so a client could send random ids to fill the shared maps and evict the branches of other callers.
 
 The caller comes first so that a session id used by one caller can never address another caller's branch. When neither part is present, the key is `process`: one key for the server process. With stdio, one process serves one client, so this matches one client session.
@@ -38,6 +38,7 @@ The maps are `OrderedDict`s. Storing or reading a key's branch marks the key as 
 ### Negative
 
 - Without a session id, isolation is per caller, not per conversation. Two conversations by the same user, or with the same passthrough token, share one branch.
+- An OIDC token with none of `sub`, `oid`, `preferred_username` or `email` gets a new identity each time it is refreshed, so the caller then starts a new branch and earlier writes stay on the old one.
 - Unauthenticated HTTP clients (`auth_mode=none` over streamable HTTP) that do not send a session id share the `process` branch.
 - Rotating a passthrough token or password starts a new branch for that caller.
 - A key that is dropped by the limit loses its branch reference. One authenticated caller that opens many stateful sessions, or many callers, can push out the keys of others. The branch still exists in Infrahub and can be selected again with `reset_session_branch`.

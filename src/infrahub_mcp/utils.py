@@ -3,7 +3,7 @@ import re
 import secrets
 import string
 from collections import OrderedDict
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -188,7 +188,7 @@ def _get_cached_session_branch(app_ctx: AppContext, key: str) -> str | None:
 
 
 @asynccontextmanager
-async def _session_lock(app_ctx: AppContext, key: str) -> AsyncIterator[None]:
+async def _session_lock(app_ctx: AppContext, key: str) -> AsyncGenerator[None]:
     """Hold the per-key branch lock, creating it on first use.
 
     Each task that holds or waits for the lock is counted in ``_session_lock_users``.
