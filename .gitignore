@@ -35,3 +35,6 @@ venv/
 
 # Speckit local feature pointer
 .specify/feature.json
+
+# Local bug-pipeline handoffs
+.bug-analysis-*.md

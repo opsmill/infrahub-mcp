@@ -61,7 +61,20 @@ jobs:
       # bumped here — a sed over opsmill/infrahub* would wrongly rewrite that tag.
       - name: Update testcontainers to workflow version ${{ env.INFRAHUB_VERSION }}
         run: |
-          uv add --group dev "infrahub-testcontainers==${INFRAHUB_VERSION}"
+          # Declare a bounded range (e.g. >=1.11.3,<2) rather than an exact `==` pin,
+          # but lock exactly the requested release: on its own a `>=` floor lets uv
+          # resolve the newest match, and tests/integration/conftest.py launches the
+          # Infrahub image named by the locked infrahub-testcontainers version.
+          # A leading `v` is dropped, as PEP 440 normalization did for the old `==` pin.
+          VERSION="${INFRAHUB_VERSION#v}"
+          MAJOR="${VERSION%%.*}"
+          if [[ ! "${MAJOR}" =~ ^[0-9]+$ ]]; then
+            echo "::error::Cannot derive a numeric major version from INFRAHUB_VERSION: '${INFRAHUB_VERSION}'"
+            exit 1
+          fi
+          uv add --no-sync --group dev \
+            "infrahub-testcontainers>=${VERSION},<$((10#${MAJOR} + 1))" \
+            --upgrade-package "infrahub-testcontainers==${VERSION}"
 
       - name: Prepare the branch for the update
         id: prepare-branch
