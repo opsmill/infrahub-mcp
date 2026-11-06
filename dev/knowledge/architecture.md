@@ -32,11 +32,14 @@ session branch must **not** be a single value on it. Instead it is held in two
 `OrderedDict` maps (branch name, and a per-key `asyncio.Lock`) keyed by the
 string from `_session_key()`. From MCP protocol version 2026-07-28 each request
 gets a new session object, so the key joins a SHA-256 hash of the authenticated
-caller (`get_caller_identity()` in `auth.py`) and the `mcp-session-id` header,
+caller (`get_caller_identity()` in `auth.py`) and the session id that the
+transport issued and validated (`Connection.session_id`, set only for stateful
+streamable-HTTP sessions; the raw `mcp-session-id` header is not trusted),
 caller first so one caller's session id never reaches another caller's branch.
 With neither, the key is `process` (correct for stdio, where one process serves
-one client). The maps keep at most 1024 keys and drop the
-least recently used key first. A reset/recovery for one key never touches
+one client). Storing or reading a branch marks its key as most recently used.
+The branch map keeps at most 1024 keys and drops the least recently used key
+first; the lock map drops only locks that no task holds or waits for. A reset/recovery for one key never touches
 another. See [ADR 0009](../adr/0009-session-branch-key-without-mcp-sessions.md).
 
 `get_or_create_session_branch()` validates the cached branch before reuse via a
