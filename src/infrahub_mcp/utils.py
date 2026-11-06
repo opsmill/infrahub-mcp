@@ -7,6 +7,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from itertools import islice
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -56,7 +57,6 @@ class AppContext:
     _session_locks: OrderedDict[str, asyncio.Lock] = field(default_factory=OrderedDict)
     # Number of tasks holding or waiting for each key's lock; a key is absent when unused.
     _session_lock_users: dict[str, int] = field(default_factory=dict)
-    _session_locks_guard: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 def get_client(ctx: Context) -> InfrahubClient:
@@ -127,10 +127,10 @@ def _session_key(ctx: Context) -> str:
     connection object, so those objects cannot hold state between calls. The key
     is built from:
 
-    - ``caller:<sha256>``: the authenticated caller (OIDC principal, or the
+    - ``caller:<digest>``: the authenticated caller (OIDC principal, or the
       passthrough token or Basic credentials), when there is one.
-    - ``session:<id>``: the MCP session id, only when the transport issued and
-      validated it (a stateful streamable-HTTP session, older protocol versions).
+    - ``session:<id>``: the MCP session id, only when the transport issued it
+      (a stateful streamable-HTTP session, older protocol versions).
       The raw ``mcp-session-id`` header is not used: on the 2026-07-28 protocol
       and in stateless mode the transport does not validate it, so a client could
       send any value.
@@ -158,10 +158,14 @@ def _validated_session_id(ctx: Context) -> str | None:
     """Return the MCP session id that the transport issued for this connection, or ``None``.
 
     The MCP SDK sets ``Connection.session_id`` only for a stateful streamable-HTTP
-    session: the session manager generated the id and checked that the request's
-    credentials match the ones that created the session. It is ``None`` for stdio,
-    stateless HTTP and the 2026-07-28 protocol. The SDK exposes the connection on
-    the session only as ``_connection`` (FastMCP reads it the same way).
+    session whose id the session manager generated. The manager checks that the
+    request's credentials match the ones that created the session only when an MCP
+    auth provider authenticated the request (``auth_mode=oidc``). In the passthrough
+    modes it does not, so any caller can send another caller's session id;
+    ``_session_key`` puts the caller identity first for that reason. The id is
+    ``None`` for stdio, stateless HTTP and the 2026-07-28 protocol. The SDK exposes
+    the connection on the session only as ``_connection`` (FastMCP reads it the
+    same way).
     """
     session = getattr(ctx.request_context, "session", None)
     connection = getattr(session, "_connection", None)
@@ -197,20 +201,20 @@ async def _session_lock(app_ctx: AppContext, key: str) -> AsyncGenerator[None]:
     ``release()`` and the woken waiter resuming, and dropping the lock then would
     give a new task for the same key a second, unrelated lock.
     """
+    # No await until ``async with lock``: the event loop runs this lookup, count and
+    # trim without switching tasks, so no separate guard lock is needed.
     locks = app_ctx._session_locks  # noqa: SLF001
     users = app_ctx._session_lock_users  # noqa: SLF001
-    async with app_ctx._session_locks_guard:  # noqa: SLF001
-        lock = locks.get(key)
-        if lock is None:
-            lock = asyncio.Lock()
-            locks[key] = lock
-        locks.move_to_end(key)
-        users[key] = users.get(key, 0) + 1
-        if len(locks) > _MAX_SESSION_ENTRIES:
-            for unused_key in [k for k in locks if k not in users]:
-                if len(locks) <= _MAX_SESSION_ENTRIES:
-                    break
-                del locks[unused_key]
+    lock = locks.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        locks[key] = lock
+    locks.move_to_end(key)
+    users[key] = users.get(key, 0) + 1
+    excess = len(locks) - _MAX_SESSION_ENTRIES
+    if excess > 0:
+        for unused_key in list(islice((k for k in locks if k not in users), excess)):
+            del locks[unused_key]
     try:
         async with lock:
             yield
@@ -446,7 +450,7 @@ async def recover_if_session_branch_stale(ctx: Context) -> str | None:
     app_ctx: AppContext = ctx.request_context.lifespan_context
     key = _session_key(ctx)
     async with _session_lock(app_ctx, key):
-        branch = app_ctx._session_branches.get(key)  # noqa: SLF001
+        branch = _get_cached_session_branch(app_ctx, key)
         if branch is None:
             return None
         reason = await _stale_branch_reason(get_client(ctx), branch)
@@ -464,7 +468,9 @@ async def reset_or_switch_session_branch(ctx: Context, branch: str | None) -> di
       read-only/merged branches. If the branch does not exist and the name conforms
       to ``branch_pattern``, it is created; otherwise an actionable error is raised.
 
-    Affects only the calling session.
+    Affects only the calling key (see ``_session_key``). Conversations that share
+    the key, such as two conversations of one caller without an MCP session, see
+    the change too.
     """
     if ctx.request_context is None:
         msg = "request_context must not be None"
@@ -472,7 +478,7 @@ async def reset_or_switch_session_branch(ctx: Context, branch: str | None) -> di
     app_ctx: AppContext = ctx.request_context.lifespan_context
     key = _session_key(ctx)
     async with _session_lock(app_ctx, key):
-        previous = app_ctx._session_branches.get(key)  # noqa: SLF001
+        previous = _get_cached_session_branch(app_ctx, key)
 
         if branch is None:
             app_ctx._session_branches.pop(key, None)  # noqa: SLF001

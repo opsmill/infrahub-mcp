@@ -19,6 +19,8 @@ import pytest
 from fastmcp.server.auth import AccessToken
 from infrahub_sdk.branch import BranchStatus
 from infrahub_sdk.exceptions import BranchNotFoundError
+from mcp.server.connection import Connection
+from mcp.server.session import ServerSession
 
 from infrahub_mcp.auth import get_caller_identity, reset_passthrough_token, set_passthrough_token
 from infrahub_mcp.config import ServerConfig
@@ -205,6 +207,26 @@ class TestSessionKey:
 
         assert _session_key(ctx) == "session:abc"
 
+    @pytest.mark.parametrize(
+        ("protocol_version", "session_id", "expected"),
+        [("2025-06-18", "abc", "session:abc"), ("2026-07-28", None, "process")],
+    )
+    def test_reads_session_id_from_real_sdk_session(
+        self, protocol_version: str, session_id: str | None, expected: str
+    ) -> None:
+        """The key reads the session id where the MCP SDK stores it.
+
+        The other tests mock ``session._connection.session_id``. This one builds the
+        SDK's own objects, so a rename in the SDK fails here instead of silently
+        moving every stateful session onto the shared ``process`` key.
+        """
+        app_ctx = AppContext(client=MagicMock(), config=ServerConfig(auth_mode="none"))
+        ctx = _make_ctx(app_ctx)
+        connection = Connection(MagicMock(), protocol_version=protocol_version, session_id=session_id)
+        ctx.request_context.session = ServerSession(MagicMock(), connection)
+
+        assert _session_key(ctx) == expected
+
     def test_ignores_unvalidated_session_id_header(self) -> None:
         """A raw ``mcp-session-id`` header is not part of the key.
 
@@ -273,8 +295,8 @@ class TestSessionKey:
         assert get_session_branch(_make_sessionless_ctx(app_ctx)) == created
 
 
-def _access_token(value: str, claims: dict[str, str]) -> AccessToken:
-    return AccessToken(token=value, client_id="app", scopes=[], claims=claims)
+def _access_token(value: str, claims: dict[str, str], *, subject: str | None = None) -> AccessToken:
+    return AccessToken(token=value, client_id="app", scopes=[], subject=subject, claims=claims)
 
 
 class TestCallerIdentity:
@@ -296,6 +318,15 @@ class TestCallerIdentity:
         refreshed = _access_token("tok-2", claims)
 
         assert self._identity(first) == self._identity(refreshed)
+
+    def test_oidc_identity_uses_token_subject_without_sub_claim(self) -> None:
+        """A verifier that sets ``subject`` but no ``sub`` claim keeps one identity across refreshes."""
+        claims = {"iss": "https://idp.example"}
+        first = _access_token("tok-1", claims, subject="alice")
+        refreshed = _access_token("tok-2", claims, subject="alice")
+        from_claim = _access_token("tok-3", {**claims, "sub": "alice"})
+
+        assert self._identity(first) == self._identity(refreshed) == self._identity(from_claim)
 
     def test_oidc_without_subject_uses_stable_user_claim(self) -> None:
         """Without ``sub``, a user claim keeps the identity across token refreshes."""
@@ -375,21 +406,24 @@ class TestSessionStateLifecycle:
                 pass
 
         waiter_task = asyncio.create_task(waiter())
-        await asyncio.sleep(0)
-        # Fill the map so that "key" is the least recently used lock.
-        for index in range(_MAX_SESSION_ENTRIES - 1):
-            async with _session_lock(app_ctx, f"session:{index}"):
-                pass
-        assert next(iter(locks)) == "key"
-        key_lock = locks["key"]
+        try:
+            await asyncio.sleep(0)
+            # Fill the map so that "key" is the least recently used lock.
+            for index in range(_MAX_SESSION_ENTRIES - 1):
+                async with _session_lock(app_ctx, f"session:{index}"):
+                    pass
+            assert next(iter(locks)) == "key"
+            key_lock = locks["key"]
 
-        await holder.aclose()
-        # The holder released the lock; the waiter has not resumed yet.
-        assert not key_lock.locked()
-        assert not waiter_task.done()
-        async with _session_lock(app_ctx, "other"):
-            assert locks.get("key") is key_lock
-        await waiter_task
+            await holder.aclose()
+            # The holder released the lock; the waiter has not resumed yet.
+            assert not key_lock.locked()
+            assert not waiter_task.done()
+            async with _session_lock(app_ctx, "other"):
+                assert locks.get("key") is key_lock
+        finally:
+            await holder.aclose()
+            await waiter_task
 
 
 class TestBranchNameConforms:

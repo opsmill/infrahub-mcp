@@ -31,11 +31,13 @@ FastMCP's dependency injection.
 session branch must **not** be a single value on it. Instead it is held in two
 `OrderedDict` maps (branch name, and a per-key `asyncio.Lock`) keyed by the
 string from `_session_key()`. From MCP protocol version 2026-07-28 each request
-gets a new session object, so the key joins a SHA-256 hash of the authenticated
-caller (`get_caller_identity()` in `auth.py`) and the session id that the
-transport issued and validated (`Connection.session_id`, set only for stateful
+gets a new session object, so the key joins an HMAC-SHA-256 digest of the
+authenticated caller (`get_caller_identity()` in `auth.py`) and the session id
+that the transport issued (`Connection.session_id`, set only for stateful
 streamable-HTTP sessions; the raw `mcp-session-id` header is not trusted),
 caller first so one caller's session id never reaches another caller's branch.
+The transport checks the session owner only in `oidc` mode, so the caller part
+is what isolates passthrough callers.
 With neither, the key is `process` (correct for stdio, where one process serves
 one client). Storing or reading a branch marks its key as most recently used.
 The branch map keeps at most 1024 keys and drops the least recently used key
