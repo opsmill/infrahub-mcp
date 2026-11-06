@@ -1,10 +1,9 @@
 ---
 name: speckit-auto-run
-description: Run the full speckit workflow end-to-end — specify, plan, critique, tasks,
-  implement, review, extract — making all decisions autonomously.
+description: Run the full speckit workflow end-to-end — specify, plan, critique, tasks, implement, review, extract — making all decisions autonomously.
 compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
-  author: github-spec-kit
+  author: OpsMill
   source: auto:commands/run.md
 ---
 

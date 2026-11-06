@@ -1,11 +1,10 @@
 ---
 name: speckit-reconcile-run
-description: Reconcile implementation drift by updating the feature's own spec, plan,
-  and tasks
+description: Reconcile implementation drift by updating the feature's own spec, plan, and tasks
 compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
   author: github-spec-kit
-  source: reconcile:commands/reconcile.md
+  source: reconcile-opsmill:commands/speckit.reconcile.run.md
 ---
 
 Act as the **Chief Software Architect** and **Implementation Auditor**.
@@ -50,15 +49,19 @@ Derive absolute paths for:
 > ⚠️ Missing required files in `FEATURE_DIR`. Expected: spec.md, plan.md.
 > Run `/speckit.specify` and `/speckit.plan` first.
 
-If `tasks.md` does not exist, create it with a `## Remediation: Gaps` heading before appending tasks.
+If `tasks.md` does not exist, create it with a `## Phase 1: Remediation — Gap Report` heading before appending tasks.
 
 ### 0.2 Load Context
 
 Read `FEATURE_SPEC`, `IMPL_PLAN`, and `TASKS_FILE`.
 
-Also read `.specify/memory/constitution.md` if it exists. If found, extract MUST-level constraints and Architecture Standards. These are enforced in Step 1 — any remediation item that conflicts with a MUST principle is flagged as CRITICAL:
+Also read `.specify/memory/constitution.md` if it exists. If found, extract MUST-level constraints and Architecture Standards.
+
+Additionally load the OpsMill documentation system if present: MUST/MUST NOT rules from `dev/guidelines/*.md` and accepted decisions from `dev/adr/*.md`. Treat these as the same class of constraints as constitution MUSTs.
+
+All loaded constraints are enforced in Step 1 — any remediation item that conflicts with a MUST principle is flagged as CRITICAL:
 ```
-🔴 CONSTITUTION CONFLICT: [remediation item] conflicts with [principle]
+🔴 CONSTITUTION CONFLICT: [remediation item] conflicts with [principle / guideline / ADR]
 → This must be resolved in Step 2 clarification before edits proceed.
 ```
 
@@ -76,7 +79,7 @@ Analyze the user's **Gap Report** and normalize it into structured remediation i
 | **Test Coverage** | New wiring/navigation without verification | Add task for Integration Test |
 | **Logic/UX** | Success toasts missing, error handling gaps | Add tasks for implementation |
 
-For each normalized item, verify it does not conflict with any MUST-level constitution constraint loaded in Step 0.2. Flag any conflicts as CRITICAL and include them in Step 2 clarification.
+For each normalized item, verify it does not conflict with any MUST-level constraint loaded in Step 0.2 (constitution, `dev/guidelines/`, `dev/adr/`). Flag any conflicts as CRITICAL and include them in Step 2 clarification.
 
 ---
 
@@ -119,7 +122,11 @@ Before making any edits, produce a brief impact map:
 
 ## Step 4: Reconciliation (Surgical Edits)
 
+**Gate**: If any 🔴 CRITICAL conflict raised in Step 0.2 / Step 1 is still unresolved after Step 2, **STOP** — do not edit any artifact. Output the unresolved conflict(s) and instruct the user to amend the gap report or the conflicting constraint (constitution / `dev/guidelines/` / `dev/adr/`), then re-run.
+
 **Constraint**: Operate strictly in place. Do not create branches, switch branches, or run feature-creation scripts. All edits target existing files in `FEATURE_DIR`.
+
+**Scope**: If a scope flag was parsed from `$ARGUMENTS`, restrict edits to that artifact and skip the others — `--spec-only` runs only 4.1, `--plan-only` only 4.2, `--tasks-only` only 4.3. Omit the skipped artifacts from the Impact Map (Step 3) and the Sync Impact Report (Step 5). With no flag, run all three subsections.
 
 ### 4.1 Update Specification (`spec.md`)
 - **Acceptance Criteria**: Amend existing criteria or add new ones to reflect the shipped reality.
@@ -140,13 +147,13 @@ Before making any edits, produce a brief impact map:
 This is the most critical step. Create remediation tasks to close the drift.
 
 **Task Formatting**:
-`- [ ] T{NNN} [P] [{story}] {action verb} {what} in {exact/file/path.ext} [Sync: Gap Report]`
+`- [ ] T{NNN} [P] [US<N>] [Sync: Gap Report] {action verb} {what} in {exact/file/path.ext}`
 
-Where `[P]` is an optional priority flag — include it only for tasks that are blocking or high-urgency. Omit for normal priority. The `[Sync: Gap Report]` tag is always appended for traceability.
+Where `[P]` keeps its core spec-kit meaning — the task can run in parallel (different files, no dependencies on other remediation tasks). Omit it whenever ordering matters; never use it as a priority or urgency marker. `[US<N>]` is the optional user-story tag (same convention as core spec-kit and the `taskstoissues-jira` fan-out) — include it only when the remediation maps to an existing user story, otherwise omit it. The `[Sync: Gap Report]` tag is always included for traceability; place it among the leading bracket tags (as shown), keeping the file path last.
 
 **Rules for Tasks**:
-1. **Increment IDs**: Find the highest `T###` in `tasks.md`. Start new tasks from `max + 1`. Never reuse or renumber.
-2. **Phase Placement**: Place new tasks under the relevant User Story phase (e.g., `## [US2] Settings Dashboard`). If no phase fits, create a `## Remediation: Gaps` section at the end.
+1. **Increment IDs**: Find the highest `T###` in `tasks.md`. Start new tasks from `max + 1`. If `tasks.md` has no existing `T###` task (e.g. it was just created in Step 0.1), start at `T001`. Never reuse or renumber.
+2. **Phase Placement**: Place new tasks under the relevant existing `## Phase <N>: <title>` block (e.g., `## Phase 3: User Story 1 - Settings Dashboard`). If no phase fits, append a new `## Phase <max+1>: Remediation — Gap Report` block at the end, where `<max>` is the highest existing phase number. Never introduce non-`## Phase` headings for tasks — downstream fan-out only processes `## Phase <N>:` blocks, so anything else is skipped.
 3. **Exact Paths**: Every task MUST include an exact file path where the change is needed.
 4. **Mandatory Integration Test**: If you identified a **Wiring & Navigation** gap, you MUST add a task for an Integration Test to verify it.
 
@@ -167,10 +174,11 @@ Output the final report:
 | `/absolute/path/to/tasks.md` | Added [N] remediation tasks |
 
 ## New Remediation Tasks
-[List the new tasks added, e.g.]
-- **T045**: Add sidebar link in `src/components/Sidebar.tsx`
-- **T046**: Update router in `src/router/index.ts`
-- **T047**: Integration test: navigate to Settings in `tests/integration/navigation.test.ts`
+[List the new tasks added in the Step 4.3 line format, e.g.]
+- `T045` [P] [Sync: Gap Report] Add sidebar link in `src/components/Sidebar.tsx`
+- `T046` [Sync: Gap Report] Update router in `src/router/index.ts`
+- `T047` [Sync: Gap Report] Integration test: navigate to Settings in `tests/integration/navigation.test.ts`
+[T046 and T047 omit `[P]` — the router change and its integration test depend on the wiring above them.]
 
 ## Outstanding Decisions
 [List any `NEEDS CLARIFICATION` items or "None"]
@@ -178,6 +186,7 @@ Output the final report:
 ## Next Step
 [Recommend based on what changed:]
 - If remediation tasks were added → `/speckit.implement` to execute them
+- If remediation tasks were added and `dev/jira.yml` exists → the remediation tasks have no Jira issue yet. Do **not** blindly re-run `/speckit.taskstoissues` — it is not idempotent, so a full re-run duplicates existing phase issues. Create the remediation phase's issue manually (or scope a run to that phase only).
 - If plan was significantly updated → `/speckit.plan` to review architecture
 - If only spec was updated → Review changes and proceed with implementation
 ```
@@ -186,6 +195,7 @@ Output the final report:
 
 ## Done Criteria
 - Gap report parsed and categorized.
+- Remediation items checked against constitution / `dev/guidelines/` / `dev/adr/` MUSTs, with any CRITICAL conflict resolved before edits.
 - Feature's own `spec.md` and `plan.md` surgically updated.
 - `tasks.md` updated with incremented `T###` IDs and exact file paths.
 - Mandatory integration test task added for wiring gaps.

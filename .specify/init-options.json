@@ -1,10 +1,12 @@
 {
   "ai": "claude",
+  "ai_skills": true,
   "branch_numbering": "timestamp",
   "force": false,
   "ignore_agent_tools": false,
+  "integration": "claude",
   "no_git": false,
   "preset": null,
   "script": "sh",
-  "speckit_version": "0.8.1"
+  "speckit_version": "1.2.5"
 }

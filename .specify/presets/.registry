@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "presets": {
+    "critique-opsmill": {
+      "version": "1.0.0",
+      "source": "local",
+      "manifest_hash": "sha256:0dfb76ba3f29dc941a01ed43cda981777fb1463466a9ebaedc796fd85962ffff",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "claude": [
+          "speckit.critique.run"
+        ]
+      },
+      "registered_skills": {},
+      "installed_at": "2026-11-06T08:45:37.809409+00:00"
+    },
+    "reconcile-opsmill": {
+      "version": "1.1.0",
+      "source": "local",
+      "manifest_hash": "sha256:288607659c748bb8e0031b61418d9e6a43931121e4204b5e2cf3506aed5f37b0",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "claude": [
+          "speckit.reconcile.run"
+        ]
+      },
+      "registered_skills": {},
+      "installed_at": "2026-11-06T08:45:55.149000+00:00"
+    }
+  }
+}

@@ -3,7 +3,7 @@ name: speckit-tinyspec-implement
 description: Implement a small change directly from its tinyspec file
 compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
-  author: github-spec-kit
+  author: Quratulain-bilal
   source: tinyspec:commands/speckit.tinyspec.implement.md
 ---
 

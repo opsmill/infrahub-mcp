@@ -1,10 +1,9 @@
 ---
 name: speckit-extract-run
-description: Extract knowledge, guidelines, and ADRs from one or more completed spec
-  directories into the project documentation system.
+description: Extract knowledge, guidelines, and ADRs from one or more completed spec directories into the project documentation system.
 compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
-  author: github-spec-kit
+  author: OpsMill
   source: extract:commands/extract.md
 ---
 
