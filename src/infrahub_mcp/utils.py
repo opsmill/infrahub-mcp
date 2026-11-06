@@ -3,6 +3,8 @@ import re
 import secrets
 import string
 from collections import OrderedDict
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,8 +43,9 @@ class AppContext:
     branch name and its lock are keyed by the string from ``_session_key``
     (authenticated caller and MCP session id, else the server process). The maps
     keep at most ``_MAX_SESSION_ENTRIES`` keys and drop the least recently used
-    key first, so memory stays bounded. A reset/recovery for one key never
-    disturbs another. ``default_branch`` stays instance-wide.
+    key first, so memory stays bounded. A lock that a task holds or waits for is
+    never dropped. A reset/recovery for one key never disturbs another.
+    ``default_branch`` stays instance-wide.
     """
 
     client: InfrahubClient | None
@@ -51,6 +54,8 @@ class AppContext:
     _default_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     _session_branches: OrderedDict[str, str] = field(default_factory=OrderedDict)
     _session_locks: OrderedDict[str, asyncio.Lock] = field(default_factory=OrderedDict)
+    # Number of tasks holding or waiting for each key's lock; a key is absent when unused.
+    _session_lock_users: dict[str, int] = field(default_factory=dict)
     _session_locks_guard: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
@@ -124,8 +129,11 @@ def _session_key(ctx: Context) -> str:
 
     - ``caller:<sha256>``: the authenticated caller (OIDC principal, or the
       passthrough token or Basic credentials), when there is one.
-    - ``session:<id>``: the ``mcp-session-id`` header, sent by clients that use a
-      stateful streamable-HTTP session (older protocol versions).
+    - ``session:<id>``: the MCP session id, only when the transport issued and
+      validated it (a stateful streamable-HTTP session, older protocol versions).
+      The raw ``mcp-session-id`` header is not used: on the 2026-07-28 protocol
+      and in stateless mode the transport does not validate it, so a client could
+      send any value.
 
     The caller always comes first, so a session id sent by one caller can never
     address another caller's branch. With neither, the key is ``process``: one
@@ -140,12 +148,25 @@ def _session_key(ctx: Context) -> str:
     identity = get_caller_identity()
     if identity is not None:
         parts.append(f"caller:{identity}")
-    request = getattr(ctx.request_context, "request", None)
-    if request is not None:
-        session_id = request.headers.get("mcp-session-id")
-        if session_id:
-            parts.append(f"session:{session_id}")
+    session_id = _validated_session_id(ctx)
+    if session_id is not None:
+        parts.append(f"session:{session_id}")
     return "|".join(parts) or _PROCESS_SESSION_KEY
+
+
+def _validated_session_id(ctx: Context) -> str | None:
+    """Return the MCP session id that the transport issued for this connection, or ``None``.
+
+    The MCP SDK sets ``Connection.session_id`` only for a stateful streamable-HTTP
+    session: the session manager generated the id and checked that the request's
+    credentials match the ones that created the session. It is ``None`` for stdio,
+    stateless HTTP and the 2026-07-28 protocol. The SDK exposes the connection on
+    the session only as ``_connection`` (FastMCP reads it the same way).
+    """
+    session = getattr(ctx.request_context, "session", None)
+    connection = getattr(session, "_connection", None)
+    session_id = getattr(connection, "session_id", None)
+    return session_id if isinstance(session_id, str) and session_id else None
 
 
 def _set_session_branch(app_ctx: AppContext, key: str, branch: str) -> None:
@@ -157,22 +178,48 @@ def _set_session_branch(app_ctx: AppContext, key: str, branch: str) -> None:
         branches.popitem(last=False)
 
 
-async def _get_session_lock(app_ctx: AppContext, key: str) -> asyncio.Lock:
-    """Return the per-key branch lock, creating it on first use."""
+def _get_cached_session_branch(app_ctx: AppContext, key: str) -> str | None:
+    """Return the branch stored for ``key`` and mark ``key`` as most recently used."""
+    branches = app_ctx._session_branches  # noqa: SLF001
+    branch = branches.get(key)
+    if branch is not None:
+        branches.move_to_end(key)
+    return branch
+
+
+@asynccontextmanager
+async def _session_lock(app_ctx: AppContext, key: str) -> AsyncIterator[None]:
+    """Hold the per-key branch lock, creating it on first use.
+
+    Each task that holds or waits for the lock is counted in ``_session_lock_users``.
+    Only locks with no such task are dropped past ``_MAX_SESSION_ENTRIES``, oldest
+    first. ``asyncio.Lock.locked()`` is not enough: it is ``False`` between a
+    ``release()`` and the woken waiter resuming, and dropping the lock then would
+    give a new task for the same key a second, unrelated lock.
+    """
+    locks = app_ctx._session_locks  # noqa: SLF001
+    users = app_ctx._session_lock_users  # noqa: SLF001
     async with app_ctx._session_locks_guard:  # noqa: SLF001
-        locks = app_ctx._session_locks  # noqa: SLF001
         lock = locks.get(key)
         if lock is None:
             lock = asyncio.Lock()
             locks[key] = lock
         locks.move_to_end(key)
-        # Never drop a lock that is held: a waiter would otherwise get a new, unrelated lock.
-        while len(locks) > _MAX_SESSION_ENTRIES:
-            oldest_key, oldest_lock = next(iter(locks.items()))
-            if oldest_lock.locked() or oldest_key == key:
-                break
-            locks.popitem(last=False)
-        return lock
+        users[key] = users.get(key, 0) + 1
+        if len(locks) > _MAX_SESSION_ENTRIES:
+            for unused_key in [k for k in locks if k not in users]:
+                if len(locks) <= _MAX_SESSION_ENTRIES:
+                    break
+                del locks[unused_key]
+    try:
+        async with lock:
+            yield
+    finally:
+        remaining = users[key] - 1
+        if remaining:
+            users[key] = remaining
+        else:
+            del users[key]
 
 
 def get_session_branch(ctx: Context) -> str | None:
@@ -181,7 +228,7 @@ def get_session_branch(ctx: Context) -> str | None:
         msg = "request_context must not be None"
         raise RuntimeError(msg)
     app_ctx: AppContext = ctx.request_context.lifespan_context
-    return app_ctx._session_branches.get(_session_key(ctx))  # noqa: SLF001
+    return _get_cached_session_branch(app_ctx, _session_key(ctx))
 
 
 _BRANCH_CHARSET = re.compile(r"[A-Za-z0-9._/-]+")
@@ -366,9 +413,8 @@ async def get_or_create_session_branch(ctx: Context) -> str:
         raise RuntimeError(msg)
     app_ctx: AppContext = ctx.request_context.lifespan_context
     key = _session_key(ctx)
-    lock = await _get_session_lock(app_ctx, key)
-    async with lock:
-        current = app_ctx._session_branches.get(key)  # noqa: SLF001
+    async with _session_lock(app_ctx, key):
+        current = _get_cached_session_branch(app_ctx, key)
         stale_reason: str | None = None
         if current is not None:
             stale_reason = await _stale_branch_reason(get_client(ctx), current)
@@ -399,8 +445,7 @@ async def recover_if_session_branch_stale(ctx: Context) -> str | None:
         raise RuntimeError(msg)
     app_ctx: AppContext = ctx.request_context.lifespan_context
     key = _session_key(ctx)
-    lock = await _get_session_lock(app_ctx, key)
-    async with lock:
+    async with _session_lock(app_ctx, key):
         branch = app_ctx._session_branches.get(key)  # noqa: SLF001
         if branch is None:
             return None
@@ -426,8 +471,7 @@ async def reset_or_switch_session_branch(ctx: Context, branch: str | None) -> di
         raise RuntimeError(msg)
     app_ctx: AppContext = ctx.request_context.lifespan_context
     key = _session_key(ctx)
-    lock = await _get_session_lock(app_ctx, key)
-    async with lock:
+    async with _session_lock(app_ctx, key):
         previous = app_ctx._session_branches.get(key)  # noqa: SLF001
 
         if branch is None:

@@ -186,9 +186,11 @@ def get_caller_identity() -> str | None:
     Used to keep per-caller state between tool calls when the MCP protocol has no
     session (2026-07-28 and later). Checked in order: the OIDC principal
     (client id, issuer, subject), the passthrough API token, then the passthrough
-    Basic credentials. The value is a SHA-256 digest so secrets are never held
-    as dictionary keys. Returns ``None`` when the request carries no credentials
-    (stdio transport or ``auth_mode=none``).
+    Basic credentials. An OIDC token without a ``sub`` claim falls back to the
+    token itself: client id and issuer alone are the same for every user of the
+    application, so two users would share one branch. The value is a SHA-256
+    digest so secrets are never held as dictionary keys. Returns ``None`` when
+    the request carries no credentials (stdio transport or ``auth_mode=none``).
     """
     material: str | None = None
     try:
@@ -200,7 +202,11 @@ def get_caller_identity() -> str | None:
     if token is not None:
         issuer = (token.claims or {}).get("iss")
         subject = (token.claims or {}).get("sub")
-        material = "oidc:" + json.dumps([token.client_id, issuer, subject], default=str)
+        material = (
+            "oidc:" + json.dumps([token.client_id, issuer, subject], default=str)
+            if subject
+            else f"oidc-token:{token.token}"
+        )
     elif (passthrough_token := get_passthrough_token()) is not None:
         material = f"token:{passthrough_token}"
     elif (credentials := get_passthrough_basic()) is not None:

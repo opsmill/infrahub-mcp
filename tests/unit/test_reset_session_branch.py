@@ -27,7 +27,7 @@ _PATTERN = "mcp/session-{date}-{hex}"
 def _make_ctx(app_ctx: AppContext) -> MagicMock:
     ctx = MagicMock()
     ctx.request_context.lifespan_context = app_ctx
-    ctx.request_context.request.headers = {"mcp-session-id": uuid4().hex}
+    ctx.request_context.session._connection.session_id = uuid4().hex  # noqa: SLF001
     ctx.info = AsyncMock()
     ctx.warning = AsyncMock()
     ctx.debug = AsyncMock()
