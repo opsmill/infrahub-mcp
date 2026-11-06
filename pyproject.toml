@@ -71,6 +71,8 @@ exclude = [
     "build",
     "dist",
     "examples",
+    ".specify",
+    ".agents/skills/speckit-*",
 ]
 
 [tool.ruff.lint]
