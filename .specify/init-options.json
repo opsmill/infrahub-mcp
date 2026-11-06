@@ -1,7 +1,7 @@
 {
   "ai": "claude",
   "ai_skills": true,
-  "branch_numbering": "timestamp",
+  "feature_numbering": "sequential",
   "force": false,
   "ignore_agent_tools": false,
   "integration": "claude",
