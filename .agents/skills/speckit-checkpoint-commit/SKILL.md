@@ -3,7 +3,7 @@ name: speckit-checkpoint-commit
 description: Commit changes at meaningful checkpoints throughout the workflow
 compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
-  author: github-spec-kit
+  author: Aaron Sun
   source: checkpoint:commands/commit.md
 ---
 

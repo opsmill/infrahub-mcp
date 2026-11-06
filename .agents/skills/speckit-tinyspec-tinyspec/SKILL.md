@@ -1,10 +1,9 @@
 ---
 name: speckit-tinyspec-tinyspec
-description: Generate a single lightweight spec file with context, plan, and tasks
-  for small changes
+description: Generate a single lightweight spec file with context, plan, and tasks for small changes
 compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
-  author: github-spec-kit
+  author: Quratulain-bilal
   source: tinyspec:commands/speckit.tinyspec.md
 ---
 
