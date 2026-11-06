@@ -892,7 +892,7 @@ dev = [
 requires-dist = [
     { name = "authlib", specifier = ">=1.9.1" },
     { name = "fastmcp", specifier = ">=4.0.0" },
-    { name = "infrahub-sdk", specifier = ">=1.22.0" },
+    { name = "infrahub-sdk", specifier = "==1.24.0b1" },
     { name = "mcp", specifier = ">=2.0" },
     { name = "pydantic", specifier = ">=2.10,<3" },
     { name = "pydantic-settings", specifier = ">=2.6,<3" },
@@ -919,21 +919,26 @@ dev = [
 
 [[package]]
 name = "infrahub-sdk"
-version = "1.23.2"
+version = "1.24.0b1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "anyio" },
     { name = "dulwich" },
     { name = "graphql-core" },
     { name = "httpx" },
+    { name = "jinja2" },
     { name = "netutils" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pyyaml" },
+    { name = "rich" },
+    { name = "typing-extensions" },
     { name = "ujson" },
     { name = "whenever" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/75/db/daf79ea8beeab2cc942746f0651e5d0b86af9f7b801d4f605553ca2b57c0/infrahub_sdk-1.23.2.tar.gz", hash = "sha256:7c7bbc99d37cc234b6bf944606919505efc7aef98ec07482b773202b336088ca", size = 1490189, upload-time = "2026-09-09T07:34:30.573Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/78/8d/03c4927c3cb55928f036c13344e9db4d2ce09e1754b3faab677c97352bc5/infrahub_sdk-1.24.0b1.tar.gz", hash = "sha256:c280b7b08559f57cd371cce822fa6a0d62c3e72918370c5f06b798b2f3995ea2", size = 1838180, upload-time = "2026-11-06T11:06:51.369Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7e/6a/f76f98bfca198cb022d5778b847cb4c2c6597ab2cb40f8cf2551f8060e4a/infrahub_sdk-1.23.2-py3-none-any.whl", hash = "sha256:d132286033183dd9783f432938e27ca65e3c836405e002d95154059aa78d3e7d", size = 320353, upload-time = "2026-09-09T07:34:29.205Z" },
+    { url = "https://files.pythonhosted.org/packages/41/07/a61ca55f9b051f68565125d954502c64e6640c97b64199b92e885df84977/infrahub_sdk-1.24.0b1-py3-none-any.whl", hash = "sha256:524f586bf21a533516f9f5032dc51b5c1459461c54337795b4e6dd6a70cfdbcb", size = 365520, upload-time = "2026-11-06T11:06:49.492Z" },
 ]
 
 [[package]]
