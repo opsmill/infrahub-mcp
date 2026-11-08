@@ -1,0 +1,25 @@
+changelog/+session-branch-key.fixed.md
+  s_5a7b5a28719b34::t_f5bb092f0e27a2 1
+dev/adr/0009-session-branch-key-without-mcp-sessions.md
+  s_5a7b5a28719b34::t_f5bb092f0e27a2 23-24,26,28,43
+docs/docs/use-cases/safe-changes-branch-isolation.mdx
+  s_5a7b5a28719b34::t_f5bb092f0e27a2 38-42
+dev/knowledge/architecture.md
+  s_5a7b5a28719b34::t_f5bb092f0e27a2 35-37,40-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9eee7a769723ae2e4a5c4f0e91728a37b63d2b78",
+  "prompts": {},
+  "sessions": {
+    "s_5a7b5a28719b34": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9c09008-5bc7-4d0c-ba37-4b4218de1812",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}

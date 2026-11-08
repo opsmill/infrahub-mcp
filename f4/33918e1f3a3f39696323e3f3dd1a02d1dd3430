@@ -1,0 +1,27 @@
+src/infrahub_mcp/auth.py
+  s_5a7b5a28719b34::t_63f13b67cc45f3 183-186
+  s_5a7b5a28719b34::t_af738d8424f790 193-197
+  s_5a7b5a28719b34::t_5f665102ca5e02 209-217
+dev/adr/0009-session-branch-key-without-mcp-sessions.md
+  s_5a7b5a28719b34::t_7bb9273fc5c790 23,41
+tests/unit/test_session_branch_validation.py
+  s_5a7b5a28719b34::t_702e25bbefb1de 300-311
+src/infrahub_mcp/utils.py
+  s_5a7b5a28719b34::t_0fce99a863d747 6,191
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f433918e1f3a3f39696323e3f3dd1a02d1dd3430",
+  "prompts": {},
+  "sessions": {
+    "s_5a7b5a28719b34": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9c09008-5bc7-4d0c-ba37-4b4218de1812",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}

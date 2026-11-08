@@ -1,0 +1,50 @@
+src/infrahub_mcp/auth.py
+  s_d04ff02361922b::t_cbcdf3c7fa945a 196-198,202-206,211,218-219,221-222,224,233
+  s_d04ff02361922b::t_3bf6d335f92f43 6,10
+  s_d04ff02361922b::t_a141a73dbd01cb 185-188
+docs/docs/getting-started/make-a-change.mdx
+  s_d04ff02361922b::t_e00231cefc04b7 21
+src/infrahub_mcp/tools/write.py
+  s_d04ff02361922b::t_314c13121c4ba5 491,498,506-509
+  s_d04ff02361922b::t_b22c1513434c54 485
+tests/unit/test_session_branch_validation.py
+  s_d04ff02361922b::t_ef1c007c0fcb55 22-23
+  s_d04ff02361922b::t_e675c26cf3e507 322-324,327-330
+  s_d04ff02361922b::t_0eca0ed76b1f48 298-299
+  s_d04ff02361922b::t_aa3fe4e8e1f536 325-326
+  s_d04ff02361922b::t_05466fbf0af61a 409-426
+  s_d04ff02361922b::t_9fa4f4f2556529 210-229
+src/infrahub_mcp/utils.py
+  s_d04ff02361922b::t_8132c55f81be53 130,132-133
+  s_d04ff02361922b::t_41163794214406 204-205,208-217
+  s_d04ff02361922b::t_b4d4a75019817c 453
+  s_d04ff02361922b::t_11a5099309066d 471-473
+  s_d04ff02361922b::t_2e70a2caa3212c 481
+  s_d04ff02361922b::t_72ee202bd8e4e3 161-168
+  s_d04ff02361922b::t_d5a50fae81648a 10
+dev/knowledge/architecture.md
+  s_d04ff02361922b::t_ed64eb87a9ef3b 34-36,39-40
+CAPABILITIES.md
+  s_d04ff02361922b::t_b4a728040d079d 202
+dev/adr/0009-session-branch-key-without-mcp-sessions.md
+  s_d04ff02361922b::t_cb6d163c9f561c 23-24,26
+docs/docs/references/methods.mdx
+  s_d04ff02361922b::t_faee2bacf1daeb 179
+  s_d04ff02361922b::t_8a2e40e0cf01fc 275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ae38bf12bccc04915edf49927119b945a10d124f",
+  "prompts": {},
+  "sessions": {
+    "s_d04ff02361922b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1c4e0d70-afa2-4d63-9de5-aa3fb7886931",
+        "model": "unknown"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
