@@ -1,0 +1,19 @@
+docs/docs/getting-started/make-a-change.mdx
+  s_4bed0fbe4f82f1::t_c6758534c8b319 61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3cbcc21bfbea4a8455adc78d2e0a5747de0794c2",
+  "prompts": {},
+  "sessions": {
+    "s_4bed0fbe4f82f1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b10ffb8a-8448-4729-821f-ed0086e7f99a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
