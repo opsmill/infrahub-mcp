@@ -82,8 +82,10 @@ via `configure_middleware()`.
   `isError: true` instead of a JSON-RPC error
 - `ReadOnlyMiddleware` — blocks tools tagged `"write"` in read-only mode
 - `AuditMiddleware` — structured audit log with request IDs
-- `InfrahubErrorMiddleware` — translates SDK exceptions to MCP errors
-- `PrometheusMiddleware` — Prometheus `/metrics` endpoint
+- `InfrahubConnectionMiddleware` — translates Infrahub SDK connection and
+  authentication exceptions to MCP errors
+- `MetricsMiddleware` — request, error and latency counters for the
+  `/metrics` endpoint
 
 Request correlation uses a `ContextVar` (`current_request_id`) to
 propagate request IDs through the middleware stack.

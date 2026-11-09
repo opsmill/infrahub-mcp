@@ -9,7 +9,9 @@ dependencies = [
     # which lets pip/uvx installs resolve releases affected by GHSA-6v38-4h7w-rj9h,
     # GHSA-7vr2-2fgp-9w7p and GHSA-8m4g-j4wp-wgcg (fixed in 1.9.1).
     "authlib>=1.9.1",
-    "fastmcp>=4.0.0",
+    # 4.1.0 is the first release whose ErrorHandlingMiddleware re-raises an
+    # untransformed error as-is; ToolResultErrorHandlingMiddleware relies on it.
+    "fastmcp>=4.1.0",
     "mcp>=2.0",
     "infrahub-sdk>=1.22.0",
     "pydantic>=2.10,<3",

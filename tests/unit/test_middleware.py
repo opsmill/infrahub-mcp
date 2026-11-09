@@ -1389,6 +1389,20 @@ class TestToolResultErrorHandlingMiddleware:
         assert middleware.get_error_stats() == {"ToolError:tools/call": 1}
         assert any("Error in tools/call: ToolError: Schema not found" in r.message for r in caplog.records)
 
+    async def test_tool_error_keeps_its_cause(self) -> None:
+        """The ToolError is re-raised as-is, so the exception that caused it stays attached for tracing."""
+        middleware = ToolResultErrorHandlingMiddleware()
+        ctx = _make_tool_context("get_nodes")
+        cause = ServerNotReachableError(address="http://infrahub:8000")
+
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
+            msg = "Error calling tool 'get_nodes'"
+            raise ToolError(msg) from cause
+
+        with pytest.raises(ToolError) as exc_info:
+            await middleware.on_message(ctx, call_next)
+        assert exc_info.value.__cause__ is cause
+
     async def test_tool_error_outside_tool_call_is_transformed(self) -> None:
         middleware = ToolResultErrorHandlingMiddleware()
         ctx = _make_resource_context("infrahub://schema")
