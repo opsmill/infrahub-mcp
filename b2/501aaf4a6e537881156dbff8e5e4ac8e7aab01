@@ -1,0 +1,19 @@
+docs/docs/guides/kubernetes.mdx
+  s_e681df0a2ebaaf::t_656bdab2f799b1 68,72-73,76-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b2501aaf4a6e537881156dbff8e5e4ac8e7aab01",
+  "prompts": {},
+  "sessions": {
+    "s_e681df0a2ebaaf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "760a3154-daef-410e-bb0f-1ad07742db73",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}

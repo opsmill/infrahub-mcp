@@ -1,0 +1,19 @@
+tests/unit/test_read_only_prompts.py
+  s_7564ab7214f758::t_c460e5026eb82e 37-38,40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a9fd8ec020a0f6c805ec3c5199b3c0cb248b465c",
+  "prompts": {},
+  "sessions": {
+    "s_7564ab7214f758": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3490d414-85da-4855-8d24-a077b146d402",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
