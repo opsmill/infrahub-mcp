@@ -1,0 +1,19 @@
+tests/unit/test_token_passthrough.py
+  s_cfb1f403c0571c::t_e9507dc38521d2 502-518
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "64c6844d6b91b6e25972f8fc24cf09b90e720c3c",
+  "prompts": {},
+  "sessions": {
+    "s_cfb1f403c0571c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "427e2abf-64ad-4839-bc29-e2fe0f76375f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
