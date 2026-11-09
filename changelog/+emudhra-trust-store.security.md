@@ -1,1 +1,0 @@
-The container image rejects certificates that chain through the compromised eMudhra intermediate CAs ([incident page](https://emudhra.we-have-a-problem.com/)). The build stage moves to uv 0.13.6 on Debian trixie. The runtime stage upgrades `ca-certificates`.
