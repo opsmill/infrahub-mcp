@@ -1,5 +1,5 @@
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from importlib.metadata import version
 from typing import TYPE_CHECKING, Any
@@ -85,7 +85,7 @@ def _validate_env() -> None:
 
 
 @asynccontextmanager
-async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:  # noqa: ARG001
+async def app_lifespan(server: FastMCP) -> AsyncGenerator[AppContext]:  # noqa: ARG001
     """Manage the application lifecycle: load .env, validate config, create client, yield context."""
     _prime_env_from_dotenv()
     _validate_env()
@@ -286,6 +286,9 @@ mcp.mount(traversal_mcp)
 # Write tools — hidden in read-only mode
 if not _config.read_only:
     mcp.mount(write_mcp)
+else:
+    # Also hides write prompts (make_infra_change) that would point at missing tools.
+    mcp.disable(tags={"write"})
 
 
 # ---------------------------------------------------------------------------

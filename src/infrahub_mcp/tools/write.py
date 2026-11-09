@@ -483,20 +483,20 @@ async def reset_session_branch(
             default=None,
             description=(
                 "Target branch. Omit to drop the cached session branch so the next write "
-                "creates a fresh one. Provide a name to switch this session to that branch "
+                "creates a fresh one. Provide a name to make that branch the session branch "
                 "(created if it does not exist and the name matches the configured pattern)."
             ),
         ),
     ] = None,
 ) -> dict[str, Any]:
-    """Reset or switch the active session branch for the current MCP session.
+    """Reset or switch the active session branch for the calling client.
 
     Use this to recover or take control of which branch your writes target:
 
     - **No ``branch``** — clears the cached session branch; the next write
       auto-creates a fresh one. Useful after you have merged your work and want
       to start a new change set.
-    - **With ``branch``** — points this session at the named branch. If it does
+    - **With ``branch``** — makes the named branch the session branch. If it does
       not exist and the name matches the configured branch pattern, it is created
       and reported. The instance default branch and merged/read-only branches are
       rejected.
@@ -504,7 +504,10 @@ async def reset_session_branch(
     Note: a merged or deleted session branch is recovered **automatically** on the
     next write — this tool is the explicit override on top of that.
 
-    Affects only the calling session; other sessions are unaffected.
+    Scope: the session branch is kept per authenticated caller, and per MCP session
+    when the client has one. Without credentials or an MCP session, all clients of
+    the server share one session branch. A reset or switch applies to every
+    conversation that shares the session branch.
 
     Parameters:
         branch: Target branch name, or omit to reset to a fresh auto-created branch.

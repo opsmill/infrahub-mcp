@@ -176,7 +176,7 @@ Find nodes of the given kinds reachable from a source node — impact and depend
 
 Write tools target the **active session branch**, auto-created on the first write of a session (`mcp/session-YYYYMMDD-<hex>`). Use `propose_changes` to open a review once your changes are ready. Write tools are hidden when the server runs in read-only mode.
 
-The session branch is tracked per session. If it has been merged or deleted, the next write automatically recovers onto a fresh branch — no server restart is needed. Use `reset_session_branch` to reset or switch branches deliberately.
+The session branch is tracked per authenticated caller, and per MCP session when the client has one. Without credentials or an MCP session, all clients of the server share one session branch. If it has been merged or deleted, the next write automatically recovers onto a fresh branch — no server restart is needed. Use `reset_session_branch` to reset or switch branches deliberately.
 
 <!-- vale off -->
 ### node_upsert
@@ -272,7 +272,7 @@ Execute a GraphQL mutation against Infrahub — use only for complex writes that
 - non-idempotent
 - non-destructive
 
-Reset or switch the active session branch for the current session. Call with no arguments to clear the cached branch so the next write creates a fresh one (for example, after merging your work). Pass a branch name to switch this session to it — the branch is created when it does not exist and the name matches the configured branch pattern. The instance default branch and merged or read-only branches are rejected. Affects only the calling session.
+Reset or switch the active session branch for the calling client. Call with no arguments to clear the cached branch so the next write creates a fresh one (for example, after merging your work). Pass a branch name to make it the session branch — the branch is created when it does not exist and the name matches the configured branch pattern. The instance default branch and merged or read-only branches are rejected. A reset or switch applies to every conversation that shares the session branch: all conversations of one authenticated caller that have no MCP session, or all clients without credentials or an MCP session.
 
 A merged or deleted session branch is recovered automatically on the next write; this tool is the explicit override on top of that.
 

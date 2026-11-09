@@ -1,4 +1,4 @@
-## Infrahub MCP Server 1.1.8
+## Infrahub MCP Server 1.2.1
 
 | ✔ Tools (12) | ✔ Prompts (4) | ✔ Resources (3) | ✔ Logging | ~~<span style="opacity:0.6" class="error">✘ Completions</span>~~ | ~~<span style="opacity:0.6" class="error">✘ Tasks</span>~~ |
 | --- | --- | --- | --- | --- | --- |
@@ -102,7 +102,7 @@
             <td>
                 <code><b>get_session_info</b></code>
             </td>
-            <td>Return the current MCP session state — call before writes to know which branch they target.<br/><br/>Reports the active session branch (if any) and the Infrahub instance address.<br/>A session branch is lazily auto-created on the first write tool call<br/>(`<code>node_upsert</code>` / `<code>node_delete</code>` / `<code>mutate_graphql</code>`) and is named<br/>``mcp/session-YYYYMMDD-<hex>``. Before that first write, `<code>session_branch</code>`<br/>is `<code>None</code>` and all read tools target the default branch.<br/><br/>Typical uses:<br/><br/>- Confirm which branch a proposed change would merge from.<br/>- Decide whether a write is about to open a new session branch.<br/>- Display the active branch to the user.<br/><br/>Returns:<br/>    Dict with `<code>session_branch</code>` (str or null), `<code>infrahub_address</code>`, and `<code>has_session_branch</code>`.</td>
+            <td>Return the current MCP session state — call before writes to know which branch they target.<br/><br/>Reports the active session branch (if any) and the Infrahub instance address.<br/>A session branch is lazily auto-created on the first write tool call<br/>(`<code>node_upsert</code>` / `<code>node_delete</code>` / `<code>mutate_graphql</code>`) and is named<br/>``mcp/session-YYYYMMDD-<hex>``. Before that first write, `<code>session_branch</code>`<br/>is `<code>None</code>` and all read tools target the default branch.<br/><br/>Typical uses:<br/><br/>- Confirm which branch a proposed change would merge from.<br/>- Decide whether a write is about to open a new session branch.<br/>- Display the active branch to the user.</td>
             <td>
                 <ul>
                 </ul>
@@ -199,7 +199,7 @@
             <td>
                 <code><b>reset_session_branch</b></code>
             </td>
-            <td>Reset or switch the active session branch for the current MCP session.<br/><br/>Use this to recover or take control of which branch your writes target:<br/><br/>- **No `<code>branch</code>`** — clears the cached session branch; the next write<br/>  auto-creates a fresh one. Useful after you have merged your work and want<br/>  to start a new change set.<br/>- **With `<code>branch</code>`** — points this session at the named branch. If it does<br/>  not exist and the name matches the configured branch pattern, it is created<br/>  and reported. The instance default branch and merged/read-only branches are<br/>  rejected.<br/><br/>Note: a merged or deleted session branch is recovered **automatically** on the<br/>next write — this tool is the explicit override on top of that.<br/><br/>Affects only the calling session; other sessions are unaffected.</td>
+            <td>Reset or switch the active session branch for the calling client.<br/><br/>Use this to recover or take control of which branch your writes target:<br/><br/>- **No `<code>branch</code>`** — clears the cached session branch; the next write<br/>  auto-creates a fresh one. Useful after you have merged your work and want<br/>  to start a new change set.<br/>- **With `<code>branch</code>`** — makes the named branch the session branch. If it does<br/>  not exist and the name matches the configured branch pattern, it is created<br/>  and reported. The instance default branch and merged/read-only branches are<br/>  rejected.<br/><br/>Note: a merged or deleted session branch is recovered **automatically** on the<br/>next write — this tool is the explicit override on top of that.<br/><br/>Scope: the session branch is kept per authenticated caller, and per MCP session<br/>when the client has one. Without credentials or an MCP session, all clients of<br/>the server share one session branch. A reset or switch applies to every<br/>conversation that shares the session branch.</td>
             <td>
                 <ul>
                     <li> <code>branch</code> : string | null<br /></li>

@@ -11,7 +11,7 @@ from infrahub_sdk.exceptions import SchemaNotFoundError
 from infrahub_mcp.schema import get_schema_detail
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Generator
 
 
 def _make_attribute(name: str, kind: str = "Text", optional: bool = False) -> MagicMock:
@@ -44,7 +44,7 @@ def _make_schema_node(
 
 
 @contextlib.contextmanager
-def _patch_cached_kind(schemas: dict[str, MagicMock]) -> Iterator[tuple[AsyncMock, AsyncMock, MagicMock]]:
+def _patch_cached_kind(schemas: dict[str, MagicMock]) -> Generator[tuple[AsyncMock, AsyncMock, MagicMock]]:
     """Stub the schema-cache reads and the client resolution ``get_schema_detail`` uses.
 
     ``get_schema_detail`` takes a FastMCP ``Context``, resolves one client for

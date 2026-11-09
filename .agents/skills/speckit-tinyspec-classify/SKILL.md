@@ -3,7 +3,7 @@ name: speckit-tinyspec-classify
 description: Classify task complexity and recommend tinyspec or full SDD workflow
 compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
-  author: github-spec-kit
+  author: Quratulain-bilal
   source: tinyspec:commands/speckit.tinyspec.classify.md
 ---
 

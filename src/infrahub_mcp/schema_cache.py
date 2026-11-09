@@ -68,7 +68,7 @@ schema hash returned from ``GET /api/schema/summary``:
   mints one per session, so without a bound a long-lived server keeps one
   full ``BranchSchema`` — and its SDL — for every session it ever served. An
   eviction costs only a cold fetch on that branch's next read; a branch with
-  a fetch in flight is never the victim. This reverses ADR 0009's rejection
+  a fetch in flight is never the victim. This reverses ADR 0010's rejection
   of eviction (see :func:`_evict_lru`).
 - A rejected credential (HTTP 401/403, or the SDK's ``AuthenticationError``)
   is not a transient failure. In passthrough modes the credential belongs
@@ -118,7 +118,7 @@ from infrahub_mcp.constants import AUTH_MODE_BASIC_PASSTHROUGH, AUTH_MODE_TOKEN_
 from infrahub_mcp.utils import AppContext, get_app_ctx, get_default_branch, resolve_client
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
     from typing import Any, NoReturn
 
     from fastmcp import Context
@@ -431,7 +431,7 @@ def _is_forced_probe_debounced(entry: CachedSchemaEntry, *, now: float) -> bool:
 
 
 @asynccontextmanager
-async def _branch_lock(app_ctx: AppContext, branch: str) -> AsyncIterator[None]:
+async def _branch_lock(app_ctx: AppContext, branch: str) -> AsyncGenerator[None]:
     """Hold *branch*'s cache lock for the block, creating it on first use.
 
     The structured read (:func:`_ensure_entry`) and the lazy SDL fill
@@ -457,7 +457,7 @@ async def _branch_lock(app_ctx: AppContext, branch: str) -> AsyncIterator[None]:
     waits on it, so two readers of one branch can never sit on two locks
     and fetch it twice.
 
-    No guard lock, unlike ``utils._get_session_lock``: there is no ``await``
+    No guard lock, as in ``utils._session_lock``: there is no ``await``
     between the lookup and the count increment, nor between the release
     (``asyncio.Lock.__aexit__`` does not suspend) and the decrement and drop,
     and asyncio runs one task at a time on the loop, so neither step can
@@ -845,7 +845,7 @@ async def _cold_fetch_under_lock(
     surfaces as ``AuthenticationError`` and the next caller probes with its
     own credential instead of being failed fast by the marker. Every other
     failure — network, timeout, other 4xx, 5xx — is treated uniformly,
-    matching the revalidation path (ADR 0009). An SDL-only failure never
+    matching the revalidation path (ADR 0010). An SDL-only failure never
     reaches this handler: :func:`_full_fetch` absorbs it and the entry is
     stored with ``graphql_sdl=None``, so the marker is not armed for it.
 

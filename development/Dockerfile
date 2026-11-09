@@ -2,7 +2,7 @@
 # STAGE 1: Builder — install dependencies with uv
 # ****************************************************************
 ARG PYTHON_VER=3.13
-FROM ghcr.io/astral-sh/uv:0.7-python${PYTHON_VER}-bookworm-slim AS builder
+FROM ghcr.io/astral-sh/uv:0.13.6-python${PYTHON_VER}-trixie-slim AS builder
 
 WORKDIR /app
 
@@ -30,7 +30,7 @@ LABEL io.modelcontextprotocol.server.name="infrahub-mcp"
 # 8.14.1-2+deb13u4), so an exact pin breaks the build on the next security update.
 # hadolint ignore=DL3008
 RUN apt-get update && \
-    apt-get install --no-install-recommends -y curl && \
+    apt-get install --no-install-recommends -y ca-certificates curl && \
     rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1

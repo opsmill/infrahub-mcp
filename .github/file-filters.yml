@@ -31,3 +31,13 @@ markdown_all: &markdown_all
 documentation_all:
   - *doc_files
   - *markdown_all
+
+# Inputs the unit tests read besides Python sources: the workflow guards in
+# tests/unit/test_release_pipeline.py and the curated release-notes pages
+# rendered by tests/unit/test_release_body.py. Changing only these must still
+# run pytest, or those regression tests never see the change they guard.
+unit_tests_all:
+  - *python_all
+  - *ci_config
+  - *github_workflows
+  - "docs/docs/release-notes/**"

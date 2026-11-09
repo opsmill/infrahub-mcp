@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -12,7 +13,9 @@ if TYPE_CHECKING:
 
 import mcp.types as mt
 import pytest
+from fastmcp import Client, FastMCP
 from fastmcp.exceptions import ToolError
+from fastmcp.server.auth import AccessToken
 from fastmcp.server.middleware.caching import ResponseCachingMiddleware
 from fastmcp.server.middleware.error_handling import RetryMiddleware
 from fastmcp.server.middleware.middleware import MiddlewareContext
@@ -20,6 +23,7 @@ from fastmcp.tools.base import ToolResult
 from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
 from mcp import MCPError
 from mcp.types import TextContent
+from opentelemetry import trace
 
 import infrahub_mcp.middleware as middleware_module
 from infrahub_mcp.auth import _passthrough_token, set_passthrough_token
@@ -35,11 +39,13 @@ from infrahub_mcp.middleware import (
     SafeRetryMiddleware,
     StrictResponseLimitingMiddleware,
     TokenPassthroughMiddleware,
+    ToolResultErrorHandlingMiddleware,
     configure_middleware,
     get_caching_middleware,
     get_error_handling,
     get_metrics,
 )
+from infrahub_mcp.prompts.prompts import mcp as prompts_mcp
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -140,6 +146,25 @@ class TestRequestIdMiddleware:
 
 
 class TestReadOnlyMiddleware:
+    async def test_resolves_write_tags_through_mounted_server(self) -> None:
+        """Mounted tags override the fallback name allowlist before executing a tool."""
+        child = FastMCP("mounted-write-tool")
+
+        @child.tool(tags={WRITE_TAG})
+        def get_schema() -> str:
+            # The name is deliberately on the fallback read allowlist. Resolving
+            # mounted tags must prevent the call from reaching this body.
+            msg = "write-tagged tool executed"
+            raise AssertionError(msg)
+
+        server = FastMCP("read-only-parent")
+        server.mount(child)
+        server.add_middleware(ReadOnlyMiddleware())
+        async with Client(server) as client:
+            assert "get_schema" not in {tool.name for tool in await client.list_tools()}
+            with pytest.raises(MCPError, match="read-only mode"):
+                await client.call_tool("get_schema", {})
+
     @pytest.mark.anyio
     async def test_filters_write_tagged_tools_from_listing(self) -> None:
         middleware = ReadOnlyMiddleware()
@@ -395,15 +420,57 @@ class TestOTelTracingMiddleware:
     @pytest.mark.anyio
     async def test_passes_through_when_otel_unavailable(self) -> None:
         """When opentelemetry is not installed, middleware is a no-op."""
-        middleware = OTelTracingMiddleware()
+        with patch.dict("sys.modules", {"opentelemetry.trace": None}):
+            middleware = OTelTracingMiddleware()
         ctx = _make_tool_context("get_schema")
 
         async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
             return "ok"
 
-        # Even if otel is not installed, this should work
         result = await middleware.on_message(ctx, call_next)
         assert result == "ok"
+
+    @pytest.mark.parametrize("fails", [False, True], ids=["success", "error"])
+    async def test_span_lifecycle_uses_real_api_context(self, fails: bool) -> None:
+        """Keep API context management real while observing our span annotations."""
+        tracer = trace.NoOpTracer()
+        span = MagicMock(wraps=trace.NonRecordingSpan(trace.INVALID_SPAN_CONTEXT), spec=trace.Span)
+        previous_span = trace.get_current_span()
+        failure = RuntimeError("test request failed")
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(context: MiddlewareContext[Any]) -> str:
+            assert trace.get_current_span() is span
+            await asyncio.sleep(0)
+            assert trace.get_current_span() is span
+            if fails:
+                raise failure
+            return "ok"
+
+        with (
+            patch("opentelemetry.trace.get_tracer", return_value=tracer),
+            patch.object(tracer, "start_span", return_value=span) as start_span,
+        ):
+            middleware = OTelTracingMiddleware()
+            if fails:
+                with pytest.raises(RuntimeError, match="test request failed") as caught:
+                    await middleware.on_message(ctx, call_next)
+                assert caught.value is failure
+            else:
+                assert await middleware.on_message(ctx, call_next) == "ok"
+
+        assert start_span.call_args.kwargs["name"] == "mcp.tools/call"
+        span.set_attribute.assert_any_call("mcp.method", "tools/call")
+        span.set_attribute.assert_any_call("mcp.status", "error" if fails else "ok")
+        if fails:
+            span.set_attribute.assert_any_call("mcp.error.type", "RuntimeError")
+            span.record_exception.assert_called_once_with(failure)
+            span.set_status.assert_called_once_with(trace.StatusCode.ERROR, str(failure))
+        else:
+            span.record_exception.assert_not_called()
+            span.set_status.assert_not_called()
+        span.end.assert_called_once_with()
+        assert trace.get_current_span() is previous_span
 
     @pytest.mark.anyio
     async def test_propagates_errors(self) -> None:
@@ -455,7 +522,7 @@ class TestConfigureMiddleware:
         assert "RequestIdMiddleware" in types
         assert "MetricsMiddleware" in types
         assert "AuditMiddleware" in types
-        assert "ErrorHandlingMiddleware" in types
+        assert any(isinstance(m, ToolResultErrorHandlingMiddleware) for m in mock_mcp.middleware)
 
     def test_registers_middleware_read_only_mode(self) -> None:
         mock_mcp = MagicMock()
@@ -484,7 +551,7 @@ class TestConfigureMiddleware:
         config = ServerConfig(log_level="debug")
         configure_middleware(mock_mcp, config)
 
-        error_mw = next(m for m in mock_mcp.middleware if type(m).__name__ == "ErrorHandlingMiddleware")
+        error_mw = next(m for m in mock_mcp.middleware if isinstance(m, ToolResultErrorHandlingMiddleware))
         assert error_mw.include_traceback is True
 
     def test_rate_limiting_enabled(self) -> None:
@@ -948,6 +1015,50 @@ class TestConfigureMiddlewareOidc:
         assert "AuthMiddleware" in types
 
 
+class TestOidcWriteScopeGatesWritePrompt:
+    """The write scope also gates the ``write``-tagged ``make_infra_change`` prompt (#192)."""
+
+    @staticmethod
+    def _server_with_oidc_auth() -> FastMCP:
+        """Mount the real prompts behind the AuthMiddleware that configure_middleware builds."""
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+        mock_mcp.add_middleware.side_effect = mock_mcp.middleware.append
+        configure_middleware(mock_mcp, ServerConfig(auth_mode="oidc", auth_scopes_write="infrahub:write"))
+        auth_middleware = next(m for m in mock_mcp.middleware if type(m).__name__ == "AuthMiddleware")
+
+        server = FastMCP(name="oidc-prompts")
+        server.mount(prompts_mcp)
+        server.add_middleware(auth_middleware)
+        return server
+
+    @staticmethod
+    async def _list_and_get(server: FastMCP, scopes: list[str]) -> tuple[set[str], bool]:
+        token = AccessToken(token="test-token", client_id="test-client", scopes=scopes)  # noqa: S106
+        with patch("fastmcp.server.middleware.authorization.get_access_token", return_value=token):
+            async with Client(server) as client:
+                names = {p.name for p in await client.list_prompts()}
+                try:
+                    await client.get_prompt("make_infra_change", arguments={"description": "add a VLAN"})
+                    fetchable = True
+                except MCPError:
+                    fetchable = False
+        return names, fetchable
+
+    @pytest.mark.asyncio
+    async def test_token_without_write_scope_cannot_list_or_get_make_infra_change(self) -> None:
+        names, fetchable = await self._list_and_get(self._server_with_oidc_auth(), scopes=["openid"])
+        assert "make_infra_change" not in names
+        assert {"answer_infra_question", "explore_schema"} <= names
+        assert fetchable is False
+
+    @pytest.mark.asyncio
+    async def test_token_with_write_scope_can_list_and_get_make_infra_change(self) -> None:
+        names, fetchable = await self._list_and_get(self._server_with_oidc_auth(), scopes=["openid", "infrahub:write"])
+        assert "make_infra_change" in names
+        assert fetchable is True
+
+
 # ---------------------------------------------------------------------------
 # SafeRetryMiddleware — on_call_tool routing
 # ---------------------------------------------------------------------------
@@ -1241,6 +1352,135 @@ class TestInfrahubConnectionMiddleware:
 
         types = [type(m).__name__ for m in mock_mcp.middleware]
         assert "InfrahubConnectionMiddleware" in types
+
+
+# ---------------------------------------------------------------------------
+# ToolResultErrorHandlingMiddleware
+# ---------------------------------------------------------------------------
+
+
+def _error_handling_server() -> FastMCP:
+    """Build a server whose only middleware is the error handler under test."""
+    server = FastMCP("error-handling")
+
+    @server.tool
+    def get_schema(kind: str) -> str:
+        msg = f"Schema not found for kind: {kind}.\n\nRemediation: Call get_schema() for the full catalog."
+        raise ToolError(msg)
+
+    server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
+    return server
+
+
+class TestToolResultErrorHandlingMiddleware:
+    async def test_tool_error_reaches_client_as_error_result(self) -> None:
+        """A ToolError comes back with isError so the model can read the remediation and retry."""
+        async with Client(_error_handling_server()) as client:
+            result = await client.call_tool("get_schema", {"kind": "Missing"}, raise_on_error=False)
+        assert result.is_error
+        text = result.content[0].text
+        assert text.startswith("Schema not found for kind: Missing.")
+        assert "Remediation:" in text
+
+    async def test_unknown_tool_stays_protocol_error(self) -> None:
+        async with Client(_error_handling_server()) as client:
+            with pytest.raises(MCPError, match="Unknown tool: 'does_not_exist'"):
+                await client.call_tool("does_not_exist", {})
+
+    async def test_invalid_arguments_stay_protocol_error(self) -> None:
+        async with Client(_error_handling_server()) as client:
+            with pytest.raises(MCPError, match="Input should be a valid string"):
+                await client.call_tool("get_schema", {"kind": 42})
+
+    async def test_error_from_tool_code_reaches_client_as_error_result(self) -> None:
+        """FastMCP wraps an exception from the tool body in a ToolError, so it also becomes an isError result."""
+        server = FastMCP("tool-code-error")
+
+        @server.tool
+        def get_schema() -> str:
+            raise ServerNotReachableError(address="http://infrahub:8000")
+
+        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
+        async with Client(server) as client:
+            result = await client.call_tool("get_schema", {}, raise_on_error=False)
+        assert result.is_error
+        assert result.content[0].text.startswith("Error calling tool 'get_schema':")
+
+    async def test_oversized_response_reaches_client_as_error_result(self) -> None:
+        """The response-size ToolError keeps its remediation hint and reaches the model as an isError result."""
+        server = FastMCP("oversized-response")
+
+        @server.tool
+        def get_nodes() -> str:
+            return "x" * 1_000
+
+        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
+        server.add_middleware(StrictResponseLimitingMiddleware(max_size=200))
+        async with Client(server) as client:
+            result = await client.call_tool("get_nodes", {}, raise_on_error=False)
+        assert result.is_error
+        text = result.content[0].text
+        assert "over the 200-byte limit" in text
+        assert "Remediation:" in text
+
+    async def test_oversized_write_response_says_not_to_call_again(self) -> None:
+        """A write tool has already applied its change, so the error must not ask the model to repeat the call."""
+        server = FastMCP("oversized-write-response")
+
+        @server.tool(tags={"write"})
+        def node_upsert() -> str:
+            return "x" * 1_000
+
+        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
+        server.add_middleware(StrictResponseLimitingMiddleware(max_size=200))
+        async with Client(server) as client:
+            result = await client.call_tool("node_upsert", {}, raise_on_error=False)
+        assert result.is_error
+        text = result.content[0].text
+        assert "applied the change" in text
+        assert "Do not call 'node_upsert' again" in text
+        assert "Remediation:" not in text
+
+    async def test_tool_error_is_logged_and_counted(self, caplog: pytest.LogCaptureFixture) -> None:
+        middleware = ToolResultErrorHandlingMiddleware(logger=logging.getLogger("infrahub_mcp.errors"))
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
+            msg = "Schema not found for kind: Missing."
+            raise ToolError(msg)
+
+        with (
+            caplog.at_level(logging.ERROR, logger="infrahub_mcp.errors"),
+            pytest.raises(ToolError, match="Schema not found"),
+        ):
+            await middleware.on_message(ctx, call_next)
+        assert middleware.get_error_stats() == {"ToolError:tools/call": 1}
+        assert any("Error in tools/call: ToolError: Schema not found" in r.message for r in caplog.records)
+
+    async def test_tool_error_keeps_its_cause(self) -> None:
+        """The ToolError is re-raised as-is, so the exception that caused it stays attached for tracing."""
+        middleware = ToolResultErrorHandlingMiddleware()
+        ctx = _make_tool_context("get_nodes")
+        cause = ServerNotReachableError(address="http://infrahub:8000")
+
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
+            msg = "Error calling tool 'get_nodes'"
+            raise ToolError(msg) from cause
+
+        with pytest.raises(ToolError) as exc_info:
+            await middleware.on_message(ctx, call_next)
+        assert exc_info.value.__cause__ is cause
+
+    async def test_tool_error_outside_tool_call_is_transformed(self) -> None:
+        middleware = ToolResultErrorHandlingMiddleware()
+        ctx = _make_resource_context("infrahub://schema")
+
+        async def call_next(context: MiddlewareContext[Any]) -> str:  # noqa: RUF029
+            msg = "boom"
+            raise ToolError(msg)
+
+        with pytest.raises(MCPError, match="Internal error: boom"):
+            await middleware.on_message(ctx, call_next)
 
 
 # ---------------------------------------------------------------------------

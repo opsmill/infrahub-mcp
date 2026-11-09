@@ -18,6 +18,7 @@ const sidebars: SidebarsConfig = {
       label: 'Deployment',
       items: [
         'guides/docker-compose',
+        'guides/kubernetes',
       ],
     },
     {
@@ -63,6 +64,8 @@ const sidebars: SidebarsConfig = {
         slug: 'release-notes',
       },
       items: [
+        'release-notes/release-1_2_1',
+        'release-notes/release-1_2_0',
         'release-notes/release-1_1_7',
         'release-notes/release-1_1_6',
         'release-notes/release-1_1_5',

@@ -3,11 +3,13 @@ import re
 import secrets
 import string
 from collections import OrderedDict
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from itertools import islice
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn
-from weakref import WeakKeyDictionary
 
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
@@ -20,6 +22,7 @@ from infrahub_sdk.node import Attribute, InfrahubNode, RelatedNode, Relationship
 
 from infrahub_mcp.auth import (
     assert_writable_branch,
+    get_caller_identity,
     get_passthrough_basic,
     get_passthrough_token,
     get_user_from_token,
@@ -40,11 +43,13 @@ _UNWRITABLE_STATUSES = frozenset({BranchStatus.MERGED, BranchStatus.DELETING})
 class AppContext:  # pylint: disable=too-many-instance-attributes  # context aggregate, not behaviour
     """Application context shared for the lifetime of the MCP server process.
 
-    The active session branch is tracked **per MCP session/connection**, not
-    process-wide: the branch name and its lock are keyed by the per-session
-    object in ``WeakKeyDictionary`` maps. Entries are released automatically when
-    a session ends (no unbounded growth), and a reset/recovery in one session
-    never disturbs another. ``default_branch`` stays instance-wide.
+    The active session branch is tracked **per caller**, not process-wide: the
+    branch name and its lock are keyed by the string from ``_session_key``
+    (authenticated caller and MCP session id, else the server process). The maps
+    keep at most ``_MAX_SESSION_ENTRIES`` keys and drop the least recently used
+    key first, so memory stays bounded. A lock that a task holds or waits for is
+    never dropped. A reset/recovery for one key never disturbs another.
+    ``default_branch`` stays instance-wide.
 
     The schema cache (``schema_cache``) is process-wide and keyed by branch
     name, and so are its locks: ``_schema_cache_locks`` holds one
@@ -60,9 +65,10 @@ class AppContext:  # pylint: disable=too-many-instance-attributes  # context agg
     config: ServerConfig
     default_branch: str | None = field(default=None)
     _default_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    _session_branches: WeakKeyDictionary[object, str] = field(default_factory=WeakKeyDictionary)
-    _session_locks: WeakKeyDictionary[object, asyncio.Lock] = field(default_factory=WeakKeyDictionary)
-    _session_locks_guard: asyncio.Lock = field(default_factory=asyncio.Lock)
+    _session_branches: OrderedDict[str, str] = field(default_factory=OrderedDict)
+    _session_locks: OrderedDict[str, asyncio.Lock] = field(default_factory=OrderedDict)
+    # Number of tasks holding or waiting for each key's lock; a key is absent when unused.
+    _session_lock_users: dict[str, int] = field(default_factory=dict)
     schema_cache: OrderedDict[str, "CachedSchemaEntry"] = field(default_factory=OrderedDict)
     """Branch name → that branch's cached schema snapshot, in least-recently-used order.
 
@@ -184,34 +190,120 @@ def get_config(ctx: Context) -> ServerConfig:
     return get_app_ctx(ctx).config
 
 
-def _session_obj(ctx: Context) -> object:
-    """Return the per-MCP-session object used to scope session-branch state.
+_MAX_SESSION_ENTRIES = 1024
+_PROCESS_SESSION_KEY = "process"
 
-    The session object is stable across tool calls within one client session and
-    distinct across sessions, for every transport. Used as the key for the
-    per-session ``WeakKeyDictionary`` maps on ``AppContext`` so state is isolated
-    per session and released when the session ends.
+
+def _session_key(ctx: Context) -> str:
+    """Return the key that keeps a caller's session branch between tool calls.
+
+    From MCP protocol version 2026-07-28, every request gets a new session and
+    connection object, so those objects cannot hold state between calls. The key
+    is built from:
+
+    - ``caller:<digest>``: the authenticated caller (OIDC principal, or the
+      passthrough token or Basic credentials), when there is one.
+    - ``session:<id>``: the MCP session id, only when the transport issued it
+      (a stateful streamable-HTTP session, older protocol versions).
+      The raw ``mcp-session-id`` header is not used: on the 2026-07-28 protocol
+      and in stateless mode the transport does not validate it, so a client could
+      send any value.
+
+    The caller always comes first, so a session id sent by one caller can never
+    address another caller's branch. With neither, the key is ``process``: one
+    key for the server process. With stdio one process serves one client, so this
+    is the client's session. Unauthenticated HTTP clients without a session id
+    share this key.
     """
-    if ctx.request_context is None or getattr(ctx.request_context, "session", None) is None:
-        msg = "request_context.session must not be None"
+    if ctx.request_context is None:
+        msg = "request_context must not be None"
         raise RuntimeError(msg)
-    return ctx.request_context.session
+    parts: list[str] = []
+    identity = get_caller_identity()
+    if identity is not None:
+        parts.append(f"caller:{identity}")
+    session_id = _validated_session_id(ctx)
+    if session_id is not None:
+        parts.append(f"session:{session_id}")
+    return "|".join(parts) or _PROCESS_SESSION_KEY
 
 
-async def _get_session_lock(app_ctx: AppContext, session: object) -> asyncio.Lock:
-    """Return the per-session branch lock, creating it on first use."""
-    async with app_ctx._session_locks_guard:  # noqa: SLF001
-        lock = app_ctx._session_locks.get(session)  # noqa: SLF001
-        if lock is None:
-            lock = asyncio.Lock()
-            app_ctx._session_locks[session] = lock  # noqa: SLF001
-        return lock
+def _validated_session_id(ctx: Context) -> str | None:
+    """Return the MCP session id that the transport issued for this connection, or ``None``.
+
+    The MCP SDK sets ``Connection.session_id`` only for a stateful streamable-HTTP
+    session whose id the session manager generated. The manager checks that the
+    request's credentials match the ones that created the session only when an MCP
+    auth provider authenticated the request (``auth_mode=oidc``). In the passthrough
+    modes it does not, so any caller can send another caller's session id;
+    ``_session_key`` puts the caller identity first for that reason. The id is
+    ``None`` for stdio, stateless HTTP and the 2026-07-28 protocol. The SDK exposes
+    the connection on the session only as ``_connection`` (FastMCP reads it the
+    same way).
+    """
+    session = getattr(ctx.request_context, "session", None)
+    connection = getattr(session, "_connection", None)
+    session_id = getattr(connection, "session_id", None)
+    return session_id if isinstance(session_id, str) and session_id else None
+
+
+def _set_session_branch(app_ctx: AppContext, key: str, branch: str) -> None:
+    """Store ``branch`` for ``key``, dropping the least recently used key past the limit."""
+    branches = app_ctx._session_branches  # noqa: SLF001
+    branches[key] = branch
+    branches.move_to_end(key)
+    while len(branches) > _MAX_SESSION_ENTRIES:
+        branches.popitem(last=False)
+
+
+def _get_cached_session_branch(app_ctx: AppContext, key: str) -> str | None:
+    """Return the branch stored for ``key`` and mark ``key`` as most recently used."""
+    branches = app_ctx._session_branches  # noqa: SLF001
+    branch = branches.get(key)
+    if branch is not None:
+        branches.move_to_end(key)
+    return branch
+
+
+@asynccontextmanager
+async def _session_lock(app_ctx: AppContext, key: str) -> AsyncGenerator[None]:
+    """Hold the per-key branch lock, creating it on first use.
+
+    Each task that holds or waits for the lock is counted in ``_session_lock_users``.
+    Only locks with no such task are dropped past ``_MAX_SESSION_ENTRIES``, oldest
+    first. ``asyncio.Lock.locked()`` is not enough: it is ``False`` between a
+    ``release()`` and the woken waiter resuming, and dropping the lock then would
+    give a new task for the same key a second, unrelated lock.
+    """
+    # No await until ``async with lock``: the event loop runs this lookup, count and
+    # trim without switching tasks, so no separate guard lock is needed.
+    locks = app_ctx._session_locks  # noqa: SLF001
+    users = app_ctx._session_lock_users  # noqa: SLF001
+    lock = locks.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        locks[key] = lock
+    locks.move_to_end(key)
+    users[key] = users.get(key, 0) + 1
+    excess = len(locks) - _MAX_SESSION_ENTRIES
+    if excess > 0:
+        for unused_key in list(islice((k for k in locks if k not in users), excess)):
+            del locks[unused_key]
+    try:
+        async with lock:
+            yield
+    finally:
+        remaining = users[key] - 1
+        if remaining:
+            users[key] = remaining
+        else:
+            del users[key]
 
 
 def get_session_branch(ctx: Context) -> str | None:
     """Return the calling session's active branch, or ``None`` if none is set."""
     app_ctx = get_app_ctx(ctx)
-    return app_ctx._session_branches.get(_session_obj(ctx))  # noqa: SLF001
+    return _get_cached_session_branch(app_ctx, _session_key(ctx))
 
 
 _BRANCH_CHARSET = re.compile(r"[A-Za-z0-9._/-]+")
@@ -377,7 +469,7 @@ async def _provision_session_branch(app_ctx: AppContext, ctx: Context) -> str:
 async def get_or_create_session_branch(ctx: Context) -> str:
     """Return this session's branch, auto-creating it on the first write of the session.
 
-    Scoped per MCP session (keyed by the session object). Uses the branch pattern
+    Scoped per caller (keyed by ``_session_key``). Uses the branch pattern
     from ``ServerConfig.branch_pattern``:
     - Patterns with placeholders ({date}, {hex}, {user}) are expanded.
       If creation fails due to a name conflict, a new {hex} is generated (up to max retries).
@@ -389,18 +481,17 @@ async def get_or_create_session_branch(ctx: Context) -> str:
     new branch — so writes recover without a server restart.
     """
     app_ctx = get_app_ctx(ctx)
-    session = _session_obj(ctx)
-    lock = await _get_session_lock(app_ctx, session)
-    async with lock:
-        current = app_ctx._session_branches.get(session)  # noqa: SLF001
+    key = _session_key(ctx)
+    async with _session_lock(app_ctx, key):
+        current = _get_cached_session_branch(app_ctx, key)
         stale_reason: str | None = None
         if current is not None:
             stale_reason = await _stale_branch_reason(get_client(ctx), current)
             if stale_reason is not None:
-                app_ctx._session_branches.pop(session, None)  # noqa: SLF001
+                app_ctx._session_branches.pop(key, None)  # noqa: SLF001
         if current is None or stale_reason is not None:
             created = await _provision_session_branch(app_ctx, ctx)
-            app_ctx._session_branches[session] = created  # noqa: SLF001
+            _set_session_branch(app_ctx, key, created)
             if stale_reason is not None:
                 await ctx.warning(
                     f"Session branch {current!r} {stale_reason}; recovered onto a new branch {created!r}."
@@ -419,16 +510,15 @@ async def recover_if_session_branch_stale(ctx: Context) -> str | None:
     was stale and has now been cleared, or ``None`` when it is still writable.
     """
     app_ctx = get_app_ctx(ctx)
-    session = _session_obj(ctx)
-    lock = await _get_session_lock(app_ctx, session)
-    async with lock:
-        branch = app_ctx._session_branches.get(session)  # noqa: SLF001
+    key = _session_key(ctx)
+    async with _session_lock(app_ctx, key):
+        branch = _get_cached_session_branch(app_ctx, key)
         if branch is None:
             return None
         reason = await _stale_branch_reason(get_client(ctx), branch)
         if reason is None:
             return None
-        app_ctx._session_branches.pop(session, None)  # noqa: SLF001
+        app_ctx._session_branches.pop(key, None)  # noqa: SLF001
         return f"{branch!r} {reason}"
 
 
@@ -440,16 +530,17 @@ async def reset_or_switch_session_branch(ctx: Context, branch: str | None) -> di
       read-only/merged branches. If the branch does not exist and the name conforms
       to ``branch_pattern``, it is created; otherwise an actionable error is raised.
 
-    Affects only the calling session.
+    Affects only the calling key (see ``_session_key``). Conversations that share
+    the key, such as two conversations of one caller without an MCP session, see
+    the change too.
     """
     app_ctx = get_app_ctx(ctx)
-    session = _session_obj(ctx)
-    lock = await _get_session_lock(app_ctx, session)
-    async with lock:
-        previous = app_ctx._session_branches.get(session)  # noqa: SLF001
+    key = _session_key(ctx)
+    async with _session_lock(app_ctx, key):
+        previous = _get_cached_session_branch(app_ctx, key)
 
         if branch is None:
-            app_ctx._session_branches.pop(session, None)  # noqa: SLF001
+            app_ctx._session_branches.pop(key, None)  # noqa: SLF001
             await ctx.info(f"Session branch reset (was {previous!r}); next write will create a new one.")
             return {"session_branch": None, "previous_branch": previous, "created": False, "action": "reset"}
 
@@ -499,7 +590,7 @@ async def reset_or_switch_session_branch(ctx: Context, branch: str | None) -> di
                     remediation="Choose a writable branch, or omit 'branch' to create a fresh session branch.",
                 )
 
-        app_ctx._session_branches[session] = branch  # noqa: SLF001
+        _set_session_branch(app_ctx, key, branch)
         return {
             "session_branch": branch,
             "previous_branch": previous,

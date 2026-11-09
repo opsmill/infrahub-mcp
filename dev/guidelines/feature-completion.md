@@ -51,12 +51,12 @@ specs/<timestamp>-<name>/    →    dev/adr/<NNNN>-<name>.md  +  specs/archive/<
 
 After the implementation lands and tests are green, do the following before merging the PR:
 
-1. **Extract an ADR** under `dev/adr/<NNNN>-<short-name>.md` using the existing template (see ADRs 0001–0009). The ADR captures *why* — the load-bearing decisions, the alternatives considered, the constraints. It does **not** repeat the spec's user-story narrative or implementation details.
+1. **Extract an ADR** under `dev/adr/<NNNN>-<short-name>.md` using the existing template (see ADRs 0001–0010). The ADR captures *why* — the load-bearing decisions, the alternatives considered, the constraints. It does **not** repeat the spec's user-story narrative or implementation details.
 2. **Move the spec to `specs/archive/`**. Use `git mv specs/<timestamp>-<name>/ specs/archive/<timestamp>-<name>/`. Update any cross-references (the new ADR, AGENTS.md SPECKIT pointer if it referenced the spec) to the new path.
 3. **Drop `.specify/feature.json`** so the next `/speckit-specify` session starts clean.
 4. **Reset the AGENTS.md SPECKIT pointer** to its generic placeholder (the bare instruction sentence between `<!-- SPECKIT START -->` and `<!-- SPECKIT END -->`).
 
-Precedent: ADR 0009 (`hash-validated schema cache`) was extracted from `specs/archive/20260504-203256-schema-cache/`; ADR-extraction-then-archival pattern was established by INFP-411 (`specs/archive/20260421-144953-production-ready-mcp-server/`).
+Precedent: ADR 0010 (`hash-validated schema cache`) was extracted from `specs/archive/20260504-203256-schema-cache/`; ADR-extraction-then-archival pattern was established by INFP-411 (`specs/archive/20260421-144953-production-ready-mcp-server/`).
 
 ### What goes in the ADR vs the spec
 

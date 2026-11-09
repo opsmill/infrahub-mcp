@@ -8,6 +8,8 @@ on:
     paths:
       - "src/infrahub_mcp/**"
       - "CAPABILITIES.md"
+      - "pyproject.toml"
+      - "uv.lock"
 
 permissions:
   contents: read

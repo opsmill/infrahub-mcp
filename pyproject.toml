@@ -1,16 +1,22 @@
 [project]
 name = "infrahub-mcp"
-version = "1.1.8"
+version = "1.2.1"
 description = "MCP server to interact with Infrahub"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "fastmcp>=4.0.0",
+    # Security floor, not a direct import: fastmcp-slim only requires authlib>=1.6.11,
+    # which lets pip/uvx installs resolve releases affected by GHSA-6v38-4h7w-rj9h,
+    # GHSA-7vr2-2fgp-9w7p and GHSA-8m4g-j4wp-wgcg (fixed in 1.9.1).
+    "authlib>=1.9.1",
+    # 4.1.0 is the first release whose ErrorHandlingMiddleware re-raises an
+    # untransformed error as-is; ToolResultErrorHandlingMiddleware relies on it.
+    "fastmcp>=4.1.0",
     "mcp>=2.0",
     "infrahub-sdk>=1.22.0",
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.6,<3",
-    "python-dotenv>=1.0,<2",
+    "python-dotenv>=1.2.4,<2",
     "toonify>=0.1.2",
 ]
 
@@ -28,7 +34,8 @@ dev = [
     "ruff>=0.15.11",
     "pylint>=4.0.5",
     "yamllint>=1.37.1",
-    "infrahub-testcontainers>=1.11.3,<2",
+    "pyyaml>=6.0",
+    "infrahub-testcontainers>=1.11.11,<2",
     "towncrier>=25.8.0",
     "pre-commit>=4.6.1",
 ]
@@ -37,7 +44,7 @@ dev = [
 asyncio_mode = "auto"
 testpaths = ["tests"]
 filterwarnings = []
-# Default run = unit only: exclude the integration marker and disable the
+# Default run = unit and transport tests: exclude the integration marker and disable the
 # infrahub-sdk / testcontainers pytest plugins (pulled in by the
 # infrahub-testcontainers dev dependency) so the fast loop stays Docker-free.
 # Run the integration suite with:  uv run pytest -m integration
@@ -66,6 +73,8 @@ exclude = [
     "build",
     "dist",
     "examples",
+    ".specify",
+    ".agents/skills/speckit-*",
 ]
 
 [tool.ruff.lint]

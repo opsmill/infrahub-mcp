@@ -1,87 +1,63 @@
-"""Tests for read-only mode enforcement via query_graphql mutation detection."""
+"""Exercise the real GraphQL read tool's parser and SDK boundary."""
 
-from __future__ import annotations
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from graphql import OperationType
-from graphql import parse as gql_parse
-from graphql.error import GraphQLSyntaxError
+from fastmcp.exceptions import ToolError
+
+from infrahub_mcp.tools.gql import query_graphql
 
 
-def _contains_mutation(query: str) -> bool:
-    """Return True if the GraphQL document contains a mutation operation.
+@pytest.mark.parametrize(
+    "query",
+    [
+        "mutation { createNode { id } }",
+        "mutation CreateNode { createNode { id } }",
+        "  \n  mutation { createNode { id } }",
+        "# Read-only request\n# Another comment\nmutation { createNode { id } }",
+        "fragment NodeFields on Node { id } mutation { createNode { ...NodeFields } }",
+        "query GetNodes { allNodes { id } } mutation Delete { deleteNode { id } }",
+        "mutation Delete { deleteNode { id } } query GetNodes { allNodes { id } }",
+    ],
+    ids=["anonymous", "named", "whitespace", "comments", "fragment-first", "mutation-last", "mutation-first"],
+)
+async def test_query_rejects_mutations_before_accessing_sdk(query: str) -> None:
+    """No operation in a mixed or comment-prefixed document can bypass the read guard."""
+    with patch("infrahub_mcp.tools.gql.get_client") as get_client:
+        with pytest.raises(ToolError, match="Mutations are not allowed"):
+            await query_graphql(ctx=MagicMock(), query=query)
 
-    Mirrors the check in ``query_graphql`` (``gql.py``).
-    """
-    try:
-        document = gql_parse(query)
-    except GraphQLSyntaxError:
-        return False
-    return any(hasattr(defn, "operation") and defn.operation == OperationType.MUTATION for defn in document.definitions)
+    get_client.assert_not_called()
 
 
-class TestMutationDetection:
-    """Test GraphQL-parse-based mutation detection in query_graphql."""
+@pytest.mark.parametrize("query", ["", "# comment only", "{{{invalid", "query { allNodes( }"])
+async def test_query_reports_invalid_syntax_before_accessing_sdk(query: str) -> None:
+    with patch("infrahub_mcp.tools.gql.get_client") as get_client:
+        with pytest.raises(ToolError, match="Invalid GraphQL syntax"):
+            await query_graphql(ctx=MagicMock(), query=query)
 
-    def test_simple_mutation(self) -> None:
-        assert _contains_mutation("mutation { createNode { id } }")
+    get_client.assert_not_called()
 
-    def test_mutation_with_name(self) -> None:
-        assert _contains_mutation("mutation CreateNode { createNode { id } }")
 
-    def test_mutation_with_leading_whitespace(self) -> None:
-        assert _contains_mutation("  \n  mutation { createNode { id } }")
+@pytest.mark.parametrize(
+    "query",
+    [
+        "{ allNodes { id } }",
+        "query Named { allNodes { id } }",
+        "# mutation is just a comment\nquery { allNodes { id } }",
+        "fragment NodeFields on Node { id } query { allNodes { ...NodeFields } }",
+        'query { mutation_log(filter: "mutation { createNode }") { id } }',
+    ],
+    ids=["shorthand", "named", "comment", "fragment", "mutation-in-string-and-field"],
+)
+@pytest.mark.parametrize("branch", [None, "candidate"])
+async def test_query_forwards_valid_document_and_branch_unchanged(query: str, branch: str | None) -> None:
+    expected = {"allNodes": [{"id": "node-1"}]}
+    client = MagicMock()
+    client.execute_graphql = AsyncMock(return_value=expected)
 
-    def test_mutation_with_leading_comment(self) -> None:
-        assert _contains_mutation("# This is a comment\nmutation { createNode { id } }")
+    with patch("infrahub_mcp.tools.gql.get_client", return_value=client):
+        result = await query_graphql(ctx=MagicMock(), query=query, branch=branch)
 
-    def test_mutation_with_multiple_comments(self) -> None:
-        assert _contains_mutation("# Comment 1\n# Comment 2\nmutation { createNode { id } }")
-
-    def test_query_not_detected(self) -> None:
-        assert not _contains_mutation("query { allNodes { id } }")
-
-    def test_query_with_mutation_in_body(self) -> None:
-        assert not _contains_mutation("query { mutation_log { id } }")
-
-    def test_empty_string(self) -> None:
-        assert not _contains_mutation("")
-
-    def test_subscription_not_detected(self) -> None:
-        assert not _contains_mutation("subscription { nodeUpdated { id } }")
-
-    def test_fragment_prefixed_mutation_blocked(self) -> None:
-        """A document with a fragment followed by a mutation must be detected."""
-        query = """
-        fragment NodeFields on Node {
-            id
-            name
-        }
-        mutation CreateNode {
-            createNode { ...NodeFields }
-        }
-        """
-        assert _contains_mutation(query)
-
-    def test_multiple_operations_with_mutation(self) -> None:
-        """A document mixing queries and mutations detects the mutation."""
-        query = """
-        query GetNodes { allNodes { id } }
-        mutation Delete { deleteNode(id: "1") { id } }
-        """
-        assert _contains_mutation(query)
-
-    def test_invalid_syntax_not_detected(self) -> None:
-        """Invalid GraphQL should not be treated as a mutation."""
-        assert not _contains_mutation("{{{invalid")
-
-    @pytest.mark.parametrize(
-        "query",
-        [
-            "{ allNodes { id } }",
-            "query { allNodes { id } }",
-            "query Named { allNodes { id } }",
-        ],
-    )
-    def test_pure_queries_pass(self, query: str) -> None:
-        assert not _contains_mutation(query)
+    assert result == expected
+    client.execute_graphql.assert_awaited_once_with(query=query, branch_name=branch)

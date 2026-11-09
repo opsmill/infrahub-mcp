@@ -1,7 +1,8 @@
 """Tests for per-session branch resolution, recovery, and name conformance.
 
-The active session branch is tracked per MCP session (keyed by the session
-object) on ``AppContext``. The cached branch is validated against Infrahub
+The active session branch is tracked per caller (keyed by ``_session_key``:
+authenticated caller and validated MCP session id, else the server process) on
+``AppContext``. The cached branch is validated against Infrahub
 before reuse; if it was deleted (``BranchNotFoundError``) or merged / is being
 removed (``status`` MERGED/DELETING — still present but read-only), the cache is
 cleared and a fresh branch is provisioned without a server restart.
@@ -10,16 +11,25 @@ cleared and a fresh branch is provisioned without a server restart.
 from __future__ import annotations
 
 import asyncio
-import gc
+from contextlib import AsyncExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
+from fastmcp.server.auth import AccessToken
 from infrahub_sdk.branch import BranchStatus
 from infrahub_sdk.exceptions import BranchNotFoundError
+from mcp.server.connection import Connection
+from mcp.server.session import ServerSession
 
+from infrahub_mcp.auth import get_caller_identity, reset_passthrough_token, set_passthrough_token
 from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.utils import (
+    _MAX_SESSION_ENTRIES,
     AppContext,
+    _session_key,
+    _session_lock,
+    _set_session_branch,
     branch_name_conforms,
     get_or_create_session_branch,
     get_session_branch,
@@ -27,9 +37,10 @@ from infrahub_mcp.utils import (
 
 
 def _make_ctx(app_ctx: AppContext) -> MagicMock:
-    """Create a mock FastMCP Context with a stable per-session object."""
+    """Create a mock FastMCP Context with its own transport-validated MCP session id."""
     ctx = MagicMock()
     ctx.request_context.lifespan_context = app_ctx
+    ctx.request_context.session._connection.session_id = uuid4().hex  # noqa: SLF001
     ctx.info = AsyncMock()
     ctx.warning = AsyncMock()
     ctx.debug = AsyncMock()
@@ -49,7 +60,7 @@ class TestGetOrCreateSessionBranch:
         config = ServerConfig(auth_mode="none")
         app_ctx = AppContext(client=MagicMock(), config=config)
         ctx = _make_ctx(app_ctx)
-        app_ctx._session_branches[ctx.request_context.session] = "mcp/session-existing"  # noqa: SLF001
+        app_ctx._session_branches[_session_key(ctx)] = "mcp/session-existing"  # noqa: SLF001
 
         client = MagicMock()
         client.branch.get = AsyncMock(return_value=_branch(BranchStatus.OPEN))
@@ -69,7 +80,7 @@ class TestGetOrCreateSessionBranch:
         config = ServerConfig(auth_mode="none")
         app_ctx = AppContext(client=MagicMock(), config=config)
         ctx = _make_ctx(app_ctx)
-        app_ctx._session_branches[ctx.request_context.session] = "mcp/session-reuse"  # noqa: SLF001
+        app_ctx._session_branches[_session_key(ctx)] = "mcp/session-reuse"  # noqa: SLF001
 
         client = MagicMock()
         client.branch.get = AsyncMock(return_value=_branch(status))
@@ -86,7 +97,7 @@ class TestGetOrCreateSessionBranch:
         config = ServerConfig(auth_mode="none", branch_pattern="mcp/session-{date}-{hex}")
         app_ctx = AppContext(client=MagicMock(), config=config)
         ctx = _make_ctx(app_ctx)
-        app_ctx._session_branches[ctx.request_context.session] = "mcp/session-stale"  # noqa: SLF001
+        app_ctx._session_branches[_session_key(ctx)] = "mcp/session-stale"  # noqa: SLF001
 
         client = MagicMock()
         client.branch.get = AsyncMock(side_effect=BranchNotFoundError(identifier="mcp/session-stale"))
@@ -107,7 +118,7 @@ class TestGetOrCreateSessionBranch:
         config = ServerConfig(auth_mode="none", branch_pattern="mcp/session-{date}-{hex}")
         app_ctx = AppContext(client=MagicMock(), config=config)
         ctx = _make_ctx(app_ctx)
-        app_ctx._session_branches[ctx.request_context.session] = "mcp/session-merged"  # noqa: SLF001
+        app_ctx._session_branches[_session_key(ctx)] = "mcp/session-merged"  # noqa: SLF001
 
         client = MagicMock()
         client.branch.get = AsyncMock(return_value=_branch(status))
@@ -146,8 +157,8 @@ class TestGetOrCreateSessionBranch:
         app_ctx = AppContext(client=MagicMock(), config=config)
         ctx_a = _make_ctx(app_ctx)
         ctx_b = _make_ctx(app_ctx)
-        app_ctx._session_branches[ctx_a.request_context.session] = "mcp/session-A"  # noqa: SLF001
-        app_ctx._session_branches[ctx_b.request_context.session] = "mcp/session-B"  # noqa: SLF001
+        app_ctx._session_branches[_session_key(ctx_a)] = "mcp/session-A"  # noqa: SLF001
+        app_ctx._session_branches[_session_key(ctx_b)] = "mcp/session-B"  # noqa: SLF001
 
         client = MagicMock()
         client.branch.get = AsyncMock(return_value=_branch(BranchStatus.MERGED))
@@ -180,22 +191,239 @@ class TestGetOrCreateSessionBranch:
         client.branch.create.assert_called_once()
 
 
-class TestSessionStateLifecycle:
-    def test_session_entry_released_when_session_collected(self) -> None:
-        """Per-session entries are weakly held and released at session end (no leak — FR-010)."""
+def _make_sessionless_ctx(app_ctx: AppContext) -> MagicMock:
+    """Create a mock Context as the 2026-07-28 protocol sends it: no MCP session id."""
+    ctx = _make_ctx(app_ctx)
+    ctx.request_context.session._connection.session_id = None  # noqa: SLF001
+    ctx.request_context.request.headers = {}
+    return ctx
+
+
+class TestSessionKey:
+    def test_uses_validated_session_id_when_present(self) -> None:
+        app_ctx = AppContext(client=MagicMock(), config=ServerConfig(auth_mode="none"))
+        ctx = _make_ctx(app_ctx)
+        ctx.request_context.session._connection.session_id = "abc"  # noqa: SLF001
+
+        assert _session_key(ctx) == "session:abc"
+
+    @pytest.mark.parametrize(
+        ("protocol_version", "session_id", "expected"),
+        [("2025-06-18", "abc", "session:abc"), ("2026-07-28", None, "process")],
+    )
+    def test_reads_session_id_from_real_sdk_session(
+        self, protocol_version: str, session_id: str | None, expected: str
+    ) -> None:
+        """The key reads the session id where the MCP SDK stores it.
+
+        The other tests mock ``session._connection.session_id``. This one builds the
+        SDK's own objects, so a rename in the SDK fails here instead of silently
+        moving every stateful session onto the shared ``process`` key.
+        """
+        app_ctx = AppContext(client=MagicMock(), config=ServerConfig(auth_mode="none"))
+        ctx = _make_ctx(app_ctx)
+        connection = Connection(MagicMock(), protocol_version=protocol_version, session_id=session_id)
+        ctx.request_context.session = ServerSession(MagicMock(), connection)
+
+        assert _session_key(ctx) == expected
+
+    def test_ignores_unvalidated_session_id_header(self) -> None:
+        """A raw ``mcp-session-id`` header is not part of the key.
+
+        On the 2026-07-28 protocol and in stateless mode the transport does not
+        validate the header, so a client could send random ids to fill the shared
+        map and evict other callers' branches.
+        """
+        app_ctx = AppContext(client=MagicMock(), config=ServerConfig(auth_mode="none"))
+        ctx = _make_sessionless_ctx(app_ctx)
+        ctx.request_context.request.headers = {"mcp-session-id": "attacker-chosen"}
+
+        assert _session_key(ctx) == "process"
+
+    def test_falls_back_to_process_key_without_session_or_credentials(self) -> None:
         app_ctx = AppContext(client=MagicMock(), config=ServerConfig(auth_mode="none"))
 
-        class _Session:
-            """Stand-in for a per-session object (weak-referenceable)."""
+        assert _session_key(_make_sessionless_ctx(app_ctx)) == "process"
 
-        sess = _Session()
-        app_ctx._session_branches[sess] = "mcp/session-x"  # noqa: SLF001
-        assert len(app_ctx._session_branches) == 1  # noqa: SLF001
+    def test_uses_hashed_caller_identity_without_session_id(self) -> None:
+        app_ctx = AppContext(client=MagicMock(), config=ServerConfig(auth_mode="none"))
+        reset_token = set_passthrough_token("secret-token-a")
+        try:
+            key_a = _session_key(_make_sessionless_ctx(app_ctx))
+        finally:
+            reset_passthrough_token(reset_token)
+        reset_token = set_passthrough_token("secret-token-b")
+        try:
+            key_b = _session_key(_make_sessionless_ctx(app_ctx))
+        finally:
+            reset_passthrough_token(reset_token)
 
-        del sess
-        gc.collect()
+        assert key_a.startswith("caller:")
+        assert key_a != key_b
+        assert "secret-token" not in key_a
 
-        assert len(app_ctx._session_branches) == 0  # noqa: SLF001
+    def test_session_id_cannot_cross_callers(self) -> None:
+        """Two callers sending the same session id get different keys."""
+        app_ctx = AppContext(client=MagicMock(), config=ServerConfig(auth_mode="none"))
+        keys = []
+        for token in ("secret-token-a", "secret-token-b"):
+            ctx = _make_ctx(app_ctx)
+            ctx.request_context.session._connection.session_id = "shared"  # noqa: SLF001
+            reset_token = set_passthrough_token(token)
+            try:
+                keys.append(_session_key(ctx))
+            finally:
+                reset_passthrough_token(reset_token)
+
+        assert keys[0] != keys[1]
+        assert all(key.endswith("|session:shared") for key in keys)
+
+    async def test_branch_survives_new_session_object_per_call(self) -> None:
+        """Regression: a new session object on every call must still find the branch.
+
+        From protocol 2026-07-28 each request gets a new session object, so keying on
+        it made ``propose_changes`` fail with "No session branch exists yet".
+        """
+        config = ServerConfig(auth_mode="none", branch_pattern="mcp/session-{date}-{hex}")
+        app_ctx = AppContext(client=MagicMock(), config=config)
+        client = MagicMock()
+        client.branch.create = AsyncMock()
+
+        with patch("infrahub_mcp.utils.get_client", return_value=client):
+            created = await get_or_create_session_branch(_make_sessionless_ctx(app_ctx))
+
+        assert get_session_branch(_make_sessionless_ctx(app_ctx)) == created
+
+
+def _access_token(value: str, claims: dict[str, str], *, subject: str | None = None) -> AccessToken:
+    return AccessToken(token=value, client_id="app", scopes=[], subject=subject, claims=claims)
+
+
+class TestCallerIdentity:
+    @staticmethod
+    def _identity(token: AccessToken) -> str | None:
+        with patch("fastmcp.server.dependencies.get_access_token", return_value=token):
+            return get_caller_identity()
+
+    def test_oidc_identity_differs_per_subject(self) -> None:
+        claims = {"iss": "https://idp.example"}
+        user_a = _access_token("tok-a", {**claims, "sub": "alice"})
+        user_b = _access_token("tok-b", {**claims, "sub": "bob"})
+
+        assert self._identity(user_a) != self._identity(user_b)
+
+    def test_oidc_identity_stable_across_tokens_of_one_subject(self) -> None:
+        claims = {"iss": "https://idp.example", "sub": "alice"}
+        first = _access_token("tok-1", claims)
+        refreshed = _access_token("tok-2", claims)
+
+        assert self._identity(first) == self._identity(refreshed)
+
+    def test_oidc_identity_uses_token_subject_without_sub_claim(self) -> None:
+        """A verifier that sets ``subject`` but no ``sub`` claim keeps one identity across refreshes."""
+        claims = {"iss": "https://idp.example"}
+        first = _access_token("tok-1", claims, subject="alice")
+        refreshed = _access_token("tok-2", claims, subject="alice")
+        from_claim = _access_token("tok-3", {**claims, "sub": "alice"})
+
+        assert self._identity(first) == self._identity(refreshed) == self._identity(from_claim)
+
+    def test_oidc_without_subject_uses_stable_user_claim(self) -> None:
+        """Without ``sub``, a user claim keeps the identity across token refreshes."""
+        claims = {"iss": "https://idp.example", "preferred_username": "alice"}
+        first = self._identity(_access_token("tok-1", claims))
+        refreshed = self._identity(_access_token("tok-2", claims))
+        other = self._identity(_access_token("tok-3", {**claims, "preferred_username": "bob"}))
+
+        assert first == refreshed
+        assert first != other
+
+    def test_oidc_tokens_without_user_claim_never_collide(self) -> None:
+        """Without any user claim, client id and issuer are the same for every user: use the token."""
+        claims = {"iss": "https://idp.example"}
+        user_a = _access_token("tok-a", claims)
+        user_b = _access_token("tok-b", claims)
+
+        identity_a = self._identity(user_a)
+        assert identity_a is not None
+        assert identity_a != self._identity(user_b)
+        assert "tok-a" not in identity_a
+
+
+class TestSessionStateLifecycle:
+    def test_least_recently_used_entry_dropped_past_limit(self) -> None:
+        """The branch map keeps at most ``_MAX_SESSION_ENTRIES`` keys (no unbounded growth)."""
+        app_ctx = AppContext(client=MagicMock(), config=ServerConfig(auth_mode="none"))
+
+        for index in range(_MAX_SESSION_ENTRIES + 1):
+            _set_session_branch(app_ctx, f"session:{index}", f"mcp/session-{index}")
+
+        assert len(app_ctx._session_branches) == _MAX_SESSION_ENTRIES  # noqa: SLF001
+        assert "session:0" not in app_ctx._session_branches  # noqa: SLF001
+        assert f"session:{_MAX_SESSION_ENTRIES}" in app_ctx._session_branches  # noqa: SLF001
+
+    def test_reading_a_branch_keeps_its_key_from_eviction(self) -> None:
+        """A key whose branch is read is the most recently used, so it is not dropped first."""
+        app_ctx = AppContext(client=MagicMock(), config=ServerConfig(auth_mode="none"))
+        ctx = _make_sessionless_ctx(app_ctx)
+        _set_session_branch(app_ctx, _session_key(ctx), "mcp/session-active")
+        for index in range(_MAX_SESSION_ENTRIES - 1):
+            _set_session_branch(app_ctx, f"session:{index}", f"mcp/session-{index}")
+
+        assert get_session_branch(ctx) == "mcp/session-active"
+        _set_session_branch(app_ctx, "session:new", "mcp/session-new")
+
+        assert get_session_branch(ctx) == "mcp/session-active"
+        assert "session:0" not in app_ctx._session_branches  # noqa: SLF001
+
+    async def test_lock_trim_skips_locks_in_use(self) -> None:
+        """Past the limit, unused locks are dropped even when the oldest lock is in use."""
+        app_ctx = AppContext(client=MagicMock(), config=ServerConfig(auth_mode="none"))
+        locks = app_ctx._session_locks  # noqa: SLF001
+        async with _session_lock(app_ctx, "busy"):
+            for index in range(_MAX_SESSION_ENTRIES + 5):
+                async with _session_lock(app_ctx, f"session:{index}"):
+                    pass
+
+            assert len(locks) == _MAX_SESSION_ENTRIES
+            assert "busy" in locks
+        assert app_ctx._session_lock_users == {}  # noqa: SLF001
+
+    async def test_lock_with_waiters_is_not_dropped_after_release(self) -> None:
+        """A lock whose waiter has not resumed yet stays in the map.
+
+        ``asyncio.Lock.locked()`` is ``False`` between ``release()`` and the waiter
+        resuming. Dropping the lock then would let a new task for the same key take
+        a second lock and create a second branch.
+        """
+        app_ctx = AppContext(client=MagicMock(), config=ServerConfig(auth_mode="none"))
+        locks = app_ctx._session_locks  # noqa: SLF001
+        holder = AsyncExitStack()
+        await holder.enter_async_context(_session_lock(app_ctx, "key"))
+
+        async def waiter() -> None:
+            async with _session_lock(app_ctx, "key"):
+                pass
+
+        waiter_task = asyncio.create_task(waiter())
+        try:
+            await asyncio.sleep(0)
+            # Fill the map so that "key" is the least recently used lock.
+            for index in range(_MAX_SESSION_ENTRIES - 1):
+                async with _session_lock(app_ctx, f"session:{index}"):
+                    pass
+            assert next(iter(locks)) == "key"
+            key_lock = locks["key"]
+
+            await holder.aclose()
+            # The holder released the lock; the waiter has not resumed yet.
+            assert not key_lock.locked()
+            assert not waiter_task.done()
+            async with _session_lock(app_ctx, "other"):
+                assert locks.get("key") is key_lock
+        finally:
+            await holder.aclose()
+            await waiter_task
 
 
 class TestBranchNameConforms:

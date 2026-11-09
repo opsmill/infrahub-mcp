@@ -322,6 +322,7 @@ AUTH_MODE_SPECIFIC_FIELDS: set[str] = {
     "oidc_config_url",
     "oidc_client_id",
     "oidc_client_secret",
+    "oidc_jwt_signing_key",
     "oidc_base_url",
     "oidc_audience",
     "oidc_user_claim",
@@ -333,6 +334,7 @@ OIDC_ONLY_FIELDS: set[str] = {
     "oidc_config_url",
     "oidc_client_id",
     "oidc_client_secret",
+    "oidc_jwt_signing_key",
     "oidc_base_url",
     "oidc_audience",
     "oidc_user_claim",
@@ -427,6 +429,7 @@ SECRET_ENV_VARS: set[str] = {
     "INFRAHUB_API_TOKEN",
     "INFRAHUB_PASSWORD",
     "INFRAHUB_MCP_OIDC_CLIENT_SECRET",
+    "INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY",
 }
 
 

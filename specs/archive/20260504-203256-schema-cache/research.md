@@ -82,7 +82,7 @@ Refactor the 12 `client.schema.*` call sites to obtain a `BranchSchema` (or look
 
 **Decision**: Single `_schema_cache_lock: asyncio.Lock` per cache type on `AppContext`. Double-checked locking (re-read cache after acquiring lock). Lock-free reads via storage of an immutable `(BranchSchema, hash, fetched_at, consecutive_failures)` tuple — atomic dict assignment in CPython under the GIL ensures readers never see a torn intermediate.
 
-*Amended 2026-09-09 (see [ADR 0009](../../../dev/adr/0009-hash-validated-schema-cache.md))*: superseded — the lock is now per branch (`_schema_cache_locks: dict[str, asyncio.Lock]` on `AppContext`). The single lock was held across the upstream call, so a cold fetch or probe for one branch queued every other branch's lock-path reads behind its upstream timeout; the per-branch lock map listed below as an alternative is the shipped design.
+*Amended 2026-09-09 (see [ADR 0010](../../../dev/adr/0010-hash-validated-schema-cache.md))*: superseded — the lock is now per branch (`_schema_cache_locks: dict[str, asyncio.Lock]` on `AppContext`). The single lock was held across the upstream call, so a cold fetch or probe for one branch queued every other branch's lock-path reads behind its upstream timeout; the per-branch lock map listed below as an alternative is the shipped design.
 
 **Rationale**:
 - Mirrors the `_default_branch_lock` pattern already in `AppContext`.

@@ -81,6 +81,13 @@ Constitution Principles IV (Type Safety) and VII (Simplicity).
 - Happy path + key edge cases for each feature.
 - Run the full suite: `uv run pytest`.
 
+Transport smoke tests in `tests/transport/` run with the default suite and can
+be selected with `uv run pytest tests/transport/`. They launch the production
+CLI over stdio and loopback HTTP, replacing only the Infrahub SDK boundary.
+They need permission to open local sockets, but no Docker, live Infrahub,
+or credentials. Each scenario verifies server shutdown; cancellation tests
+also verify that work is cleaned up and the same session remains usable.
+
 ## Quality Commands
 
 ```bash
