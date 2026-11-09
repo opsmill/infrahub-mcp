@@ -29,7 +29,9 @@ venv/
 
 .deepeval/
 .mcp.json
-.claude
+# Local Claude Code state; the shared settings hold the project hooks.
+.claude/*
+!.claude/settings.json
 **/worktrees
 .token-savior-cache.json
 
