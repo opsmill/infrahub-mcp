@@ -143,6 +143,16 @@ class TestRequestIdMiddleware:
 
 
 class TestReadOnlyMiddleware:
+    async def test_fallback_allowlist_matches_registered_read_tools(self) -> None:
+        """The fallback allowlist names every registered tool without the write tag, and no other tool."""
+        from infrahub_mcp.tools import gql, nodes, schema, session, traversal, write  # noqa: PLC0415
+
+        registered = [
+            tool for module in (gql, nodes, schema, session, traversal, write) for tool in await module.mcp.list_tools()
+        ]
+        read_tools = {tool.name for tool in registered if WRITE_TAG not in tool.tags}
+        assert read_tools == ReadOnlyMiddleware._KNOWN_READ_ONLY_TOOLS  # noqa: SLF001
+
     async def test_resolves_write_tags_through_mounted_server(self) -> None:
         """Mounted tags override the fallback name allowlist before executing a tool."""
         child = FastMCP("mounted-write-tool")
@@ -1447,88 +1457,50 @@ class TestToolResultErrorHandlingMiddleware:
         assert result.is_error
         assert result.content[0].text.startswith("Error calling tool 'get_schema':")
 
-    async def test_oversized_response_reaches_client_as_error_result(self) -> None:
-        """The response-size ToolError keeps its remediation hint and reaches the model as an isError result."""
+    @pytest.mark.parametrize(
+        ("tags", "returns_error_result", "expect_applied"),
+        [
+            pytest.param(set(), False, False, id="read-tool"),
+            pytest.param({"write"}, False, True, id="write-tool-success"),
+            pytest.param({"write"}, True, False, id="write-tool-error-result"),
+        ],
+    )
+    async def test_oversized_response_reaches_client_as_error_result(
+        self, tags: set[str], returns_error_result: bool, expect_applied: bool
+    ) -> None:
+        """An oversized response becomes an isError result.
+
+        Only a successful write says the change was applied and must not be repeated; every
+        other oversized response keeps the generic size-limit message.
+        """
         server = FastMCP("oversized-response")
 
-        @server.tool
-        def get_nodes() -> str:
-            return "x" * 1_000
+        @server.tool(tags=tags)
+        def big_tool() -> ToolResult:
+            return ToolResult(content=[TextContent(type="text", text="x" * 1_000)], is_error=returns_error_result)
 
         server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
         server.add_middleware(StrictResponseLimitingMiddleware(max_size=200))
         async with Client(server) as client:
-            result = await client.call_tool("get_nodes", {}, raise_on_error=False)
+            result = await client.call_tool("big_tool", {}, raise_on_error=False)
         assert result.is_error
         text = result.content[0].text
-        assert "over the 200-byte limit" in text
-        assert "Remediation:" in text
+        assert ("applied the change" in text) == expect_applied
+        if expect_applied:
+            assert "Do not call 'big_tool' again" in text
+            assert "Remediation:" not in text
+        else:
+            assert "over the 200-byte limit" in text
+            assert "Remediation:" in text
 
-    async def test_oversized_write_response_says_not_to_call_again(self) -> None:
-        """A write tool has already applied its change, so the error must not ask the model to repeat the call."""
-        server = FastMCP("oversized-write-response")
-
-        @server.tool(tags={"write"})
-        def node_upsert() -> str:
-            return "x" * 1_000
-
-        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
-        server.add_middleware(StrictResponseLimitingMiddleware(max_size=200))
-        async with Client(server) as client:
-            result = await client.call_tool("node_upsert", {}, raise_on_error=False)
-        assert result.is_error
-        text = result.content[0].text
-        assert "applied the change" in text
-        assert "Do not call 'node_upsert' again" in text
-        assert "Remediation:" not in text
-
-    async def test_oversized_write_error_result_keeps_generic_message(self) -> None:
-        """A write tool that returned an error result did not apply a change, so the error must not say it did."""
-        server = FastMCP("oversized-write-error-result")
-
-        @server.tool(tags={"write"})
-        def node_upsert() -> ToolResult:
-            return ToolResult(content=[TextContent(type="text", text="x" * 1_000)], is_error=True)
-
-        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
-        server.add_middleware(StrictResponseLimitingMiddleware(max_size=200))
-        async with Client(server) as client:
-            result = await client.call_tool("node_upsert", {}, raise_on_error=False)
-        assert result.is_error
-        text = result.content[0].text
-        assert "applied the change" not in text
-        assert "over the 200-byte limit" in text
-
-    async def test_tool_error_log_includes_traceback_in_debug(self, caplog: pytest.LogCaptureFixture) -> None:
-        """With include_traceback, the WARNING line for a tool call error keeps the traceback."""
+    @pytest.mark.parametrize("include_traceback", [False, True])
+    async def test_tool_error_is_logged_and_counted(
+        self, caplog: pytest.LogCaptureFixture, include_traceback: bool
+    ) -> None:
+        """A tool call error is counted and logged at WARNING, with the traceback only when include_traceback is set."""
         middleware = ToolResultErrorHandlingMiddleware(
-            logger=logging.getLogger("infrahub_mcp.errors"), include_traceback=True
+            logger=logging.getLogger("infrahub_mcp.errors"), include_traceback=include_traceback
         )
-        ctx = _make_tool_context("get_schema")
-
-        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
-            msg = "Schema not found for kind: Missing."
-            raise ToolError(msg)
-
-        with (
-            caplog.at_level(logging.WARNING, logger="infrahub_mcp.errors"),
-            pytest.raises(ToolError),
-        ):
-            await middleware.on_message(ctx, call_next)
-        record = next(r for r in caplog.records if r.name == "infrahub_mcp.errors")
-        assert record.exc_info is not None
-
-    async def test_unknown_tool_without_transform_is_left_to_fastmcp(self) -> None:
-        """With transform_errors=False, an unknown tool keeps FastMCP's own isError result."""
-        server = FastMCP("no-transform")
-        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=False))
-        async with Client(server) as client:
-            result = await client.call_tool("does_not_exist", {}, raise_on_error=False)
-        assert result.is_error
-        assert "Unknown tool: 'does_not_exist'" in result.content[0].text
-
-    async def test_tool_error_is_logged_and_counted(self, caplog: pytest.LogCaptureFixture) -> None:
-        middleware = ToolResultErrorHandlingMiddleware(logger=logging.getLogger("infrahub_mcp.errors"))
         ctx = _make_tool_context("get_schema")
 
         async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
@@ -1541,10 +1513,19 @@ class TestToolResultErrorHandlingMiddleware:
         ):
             await middleware.on_message(ctx, call_next)
         assert middleware.get_error_stats() == {"ToolError:tools/call": 1}
-        assert any(
-            r.levelno == logging.WARNING and "Error in tools/call: ToolError: Schema not found" in r.message
-            for r in caplog.records
-        )
+        record = next(r for r in caplog.records if r.name == "infrahub_mcp.errors")
+        assert record.levelno == logging.WARNING
+        assert "Error in tools/call: ToolError: Schema not found" in record.message
+        assert (record.exc_info is not None) == include_traceback
+
+    async def test_unknown_tool_without_transform_is_left_to_fastmcp(self) -> None:
+        """With transform_errors=False, an unknown tool keeps FastMCP's own isError result."""
+        server = FastMCP("no-transform")
+        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=False))
+        async with Client(server) as client:
+            result = await client.call_tool("does_not_exist", {}, raise_on_error=False)
+        assert result.is_error
+        assert "Unknown tool: 'does_not_exist'" in result.content[0].text
 
     async def test_tool_error_keeps_its_cause(self) -> None:
         """The ToolError is re-raised as-is, so the exception that caused it stays attached for tracing."""

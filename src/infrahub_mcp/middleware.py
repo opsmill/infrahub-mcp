@@ -396,12 +396,10 @@ class InfrahubConnectionMiddleware(Middleware):
         except MCPError:
             raise
         except Exception as exc:
-            original: BaseException = exc
-            found = _connection_error_message(exc)
-            if found is None and exc.__cause__ is not None:
-                original = exc.__cause__
-                found = _connection_error_message(original)
-            if found is None:
+            for original in (exc, exc.__cause__):
+                if original is not None and (found := _connection_error_message(original)) is not None:
+                    break
+            else:
                 raise
             code, message = found
             if context.method == "tools/call":
@@ -621,15 +619,10 @@ class SafeRetryMiddleware(RetryMiddleware):
         context: MiddlewareContext[mt.CallToolRequestParams],
         call_next: CallNext[mt.CallToolRequestParams, ToolResult],
     ) -> ToolResult:
-        # Check if the tool is marked idempotent before applying retries
+        # Retry only a tool annotated as idempotent or read-only
         tool = await _resolve_tool(context)
-
-        is_safe_to_retry = False
-        if tool is not None and tool.annotations is not None:
-            is_safe_to_retry = bool(tool.annotations.idempotent_hint or tool.annotations.read_only_hint)
-
-        if not is_safe_to_retry:
-            # Skip retry logic — call through directly
+        annotations = tool.annotations if tool is not None else None
+        if not (annotations and (annotations.idempotent_hint or annotations.read_only_hint)):
             return await call_next(context)
 
         # Run the parent retry loop around the rest of the tool call chain
@@ -668,8 +661,10 @@ class StrictResponseLimitingMiddleware(ResponseLimitingMiddleware):
     ) -> ToolResult:
         result = await call_next(context)
 
-        # As in the parent class: a multi-round-trip ask (SEP-2322) or a task
-        # acknowledgement carries no tool content to measure.
+        # Copied from ResponseLimitingMiddleware.on_call_tool, which has no hook
+        # before truncation (fastmcp/server/middleware/response_limiting.py):
+        # a multi-round-trip ask (SEP-2322) or a task acknowledgement carries no
+        # tool content to measure. Recheck that method on a FastMCP upgrade.
         if isinstance(result, InputRequiredToolResult) or not isinstance(result, ToolResult):
             return result
         if not self._limits_tool(context.message.name):
