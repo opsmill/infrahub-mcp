@@ -1,0 +1,29 @@
+src/infrahub_mcp/middleware.py
+  s_03148743a2ae79::t_e8b4e5063390b0 284,295-302
+  s_03148743a2ae79::t_2758f5108a9871 750-751
+  s_03148743a2ae79::t_1b9909f40389b5 354-360,362
+tests/unit/test_middleware.py
+  s_03148743a2ae79::t_36ec62824f341c 18
+  s_03148743a2ae79::t_3a8aad88979f73 47
+  s_03148743a2ae79::t_4cca217b7a059b 1030-1073
+  s_03148743a2ae79::t_be9f192a84152f 150-151,153-157,159-160
+  s_03148743a2ae79::t_674ae703951ec2 1341-1358
+dev/knowledge/architecture.md
+  s_03148743a2ae79::t_ab484ffcb93532 78-79,83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dd4081079e5f365591c78d3633d1b333960ec9ee",
+  "prompts": {},
+  "sessions": {
+    "s_03148743a2ae79": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "33f236c0-7958-4bb1-b970-49127033241a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
