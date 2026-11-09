@@ -58,7 +58,7 @@ Full documentation, including client configuration for Cursor, VS Code, Claude D
 
 ## About Infrahub
 
-[Infrahub](https://github.com/opsmill/infrahub) is an open source infrastructure data management and automation platform (AGPLv3), developed by [OpsMill](https://opsmill.com). It gives infrastructure and network teams a unified, schema-driven source of truth — devices, topology, IP space, configuration — with built-in version control, a generator framework for automation, and native integrations with Git, Ansible, Terraform, and CI/CD pipelines.
+[Infrahub](https://github.com/opsmill/infrahub) is an open source infrastructure data management and automation platform (AGPLv3), developed by [OpsMill](https://opsmill.com). It gives infrastructure and network teams a unified, schema-driven source of truth — devices, topology, IP space, configuration — with built-in version control, Generators for automation, and native integrations with Git, Ansible, Terraform, and CI/CD pipelines.
 
 ## License
 
