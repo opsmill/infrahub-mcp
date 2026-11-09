@@ -16,10 +16,11 @@ import contextvars
 import logging
 import secrets
 import time
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, override
 
 import pydantic_core
-from fastmcp.exceptions import ToolError
+from fastmcp.exceptions import DisabledError, FastMCPError, NotFoundError, ToolError, to_mcp_error
 from fastmcp.server.auth import restrict_tag
 from fastmcp.server.middleware.authorization import AuthMiddleware
 from fastmcp.server.middleware.caching import (
@@ -47,6 +48,7 @@ from fastmcp.server.middleware.response_limiting import (
     ResponseLimitingMiddleware,
 )
 from fastmcp.server.middleware.timing import DetailedTimingMiddleware
+from fastmcp.tools.base import InputRequiredToolResult, ToolResult
 from httpx import ConnectError as HttpxConnectError
 from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
 from mcp import MCPError
@@ -63,7 +65,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     import mcp.types as mt
-    from fastmcp.tools.base import Tool, ToolResult
+    from fastmcp.tools.base import Tool
 
     from infrahub_mcp.config import ServerConfig
 
@@ -76,6 +78,18 @@ WRITE_TAG = "write"
 
 # ContextVar for propagating the request ID to downstream middleware and log filters.
 current_request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_request_id", default=None)
+
+
+async def _resolve_tool(context: MiddlewareContext[mt.CallToolRequestParams]) -> Tool | None:
+    """Return the tool a ``tools/call`` request names, or ``None`` when it cannot be resolved."""
+    if context.fastmcp_context is None:
+        return None
+    return await context.fastmcp_context.fastmcp.get_tool(context.message.name)
+
+
+def _is_write_tool(tool: Tool) -> bool:
+    """Return whether ``tool`` is tagged ``"write"``."""
+    return WRITE_TAG in (tool.tags or set())
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +174,9 @@ class ReadOnlyMiddleware(Middleware):
             "query_graphql",
             "get_nodes",
             "search_nodes",
+            "get_session_info",
+            "find_paths",
+            "find_reachable",
         }
     )
 
@@ -170,7 +187,7 @@ class ReadOnlyMiddleware(Middleware):
         call_next: CallNext[mt.ListToolsRequest, Sequence[Tool]],
     ) -> Sequence[Tool]:
         tools = await call_next(context)
-        filtered = [t for t in tools if WRITE_TAG not in (t.tags or set())]
+        filtered = [t for t in tools if not _is_write_tool(t)]
         hidden = len(tools) - len(filtered)
         if hidden:
             logger.debug("read_only_filter hidden_tools=%d", hidden)
@@ -185,16 +202,9 @@ class ReadOnlyMiddleware(Middleware):
         tool_name = context.message.name
 
         # Resolve the tool to check its tags dynamically.
-        # Fall back to name-based check if resolution is unavailable.
-        is_write = False
-        if context.fastmcp_context is not None:
-            tool = await context.fastmcp_context.fastmcp.get_tool(tool_name)
-            is_write = (
-                WRITE_TAG in (tool.tags or set()) if tool is not None else tool_name not in self._KNOWN_READ_ONLY_TOOLS
-            )
-        else:
-            # Fail-closed: without context, only allow known read-only tools
-            is_write = tool_name not in self._KNOWN_READ_ONLY_TOOLS
+        # Fail-closed: when the tool cannot be resolved, only allow known read-only tools.
+        tool = await _resolve_tool(context)
+        is_write = _is_write_tool(tool) if tool is not None else tool_name not in self._KNOWN_READ_ONLY_TOOLS
 
         if is_write:
             logger.warning("read_only_blocked tool=%s", tool_name)
@@ -266,23 +276,65 @@ class TokenPassthroughMiddleware(Middleware):
 # ---------------------------------------------------------------------------
 
 
+def _is_tool_call_error(error: Exception, context: MiddlewareContext[Any]) -> bool:
+    """Return whether ``error`` on this request is one FastMCP reports to the client itself."""
+    return context.method == "tools/call" and isinstance(error, (FastMCPError, NotFoundError, DisabledError))
+
+
 class ToolResultErrorHandlingMiddleware(ErrorHandlingMiddleware):
-    """``ErrorHandlingMiddleware`` that lets a ``ToolError`` reach the client as a tool result.
+    """``ErrorHandlingMiddleware`` that keeps tool call errors as ``isError`` results.
 
     The MCP spec reports tool execution errors in the result with ``isError: true``
     so the model can read the message and correct its call. FastMCP builds that
-    result from a ``ToolError`` that leaves the middleware chain, but MCP SDK 2.x
-    sends any ``MCPError`` as a JSON-RPC error instead. The parent class would turn
-    the ``ToolError`` into ``MCPError(-32603)``, so it is re-raised unchanged here.
-    It is still logged and counted. Unknown tools, invalid arguments and every
-    other error keep the parent's mapping to a JSON-RPC error.
+    result from a ``FastMCPError`` that leaves the middleware chain: a ``ToolError``,
+    a ``ValidationError`` for invalid arguments, or an ``AuthorizationError`` for a
+    scope denial. MCP SDK 2.x sends any ``MCPError`` as a JSON-RPC error instead,
+    and the parent class would turn these errors into ``MCPError(-32603)``, so they
+    are re-raised unchanged here.
+
+    An unknown or disabled tool is a protocol error: ``to_mcp_error`` maps it to
+    ``-32602``, as SEP-2164 requires, instead of the ``isError`` result that
+    FastMCP's ``tools/call`` handler would return. Every other error keeps the
+    parent's mapping.
+
+    These tool call errors are logged here at ``WARNING`` at most, because they are
+    caused by the call, not by a server fault. FastMCP core logs an error raised
+    while the tool runs, but not an unknown tool or an error that a middleware
+    raises. They are still counted for ``/metrics``.
     """
 
     @override
     def _transform_error(self, error: Exception, context: MiddlewareContext[Any]) -> Exception:
-        if context.method == "tools/call" and isinstance(error, ToolError):
+        if _is_tool_call_error(error, context):
+            if self.transform_errors and isinstance(error, (NotFoundError, DisabledError)):
+                return to_mcp_error(error)
             return error
         return super()._transform_error(error, context)
+
+    @override
+    def _log_error(self, error: Exception, context: MiddlewareContext[Any]) -> None:
+        if not _is_tool_call_error(error, context):
+            super()._log_error(error, context)
+            return
+
+        error_type = type(error).__name__
+        method = context.method or "unknown"
+        error_key = f"{error_type}:{method}"
+        self.error_counts[error_key] = self.error_counts.get(error_key, 0) + 1
+        level = min(getattr(error, "log_level", logging.WARNING), logging.WARNING)
+        self.logger.log(
+            level,
+            "Error in %s: %s: %s",
+            method,
+            error_type,
+            error,
+            exc_info=error if self.include_traceback else None,
+        )
+        if self.error_callback:
+            try:
+                self.error_callback(error, context)
+            except Exception as callback_error:  # noqa: BLE001 — same guard as the parent class
+                self.logger.error("Error in error callback: %s", callback_error)
 
 
 # ---------------------------------------------------------------------------
@@ -290,13 +342,46 @@ class ToolResultErrorHandlingMiddleware(ErrorHandlingMiddleware):
 # ---------------------------------------------------------------------------
 
 
-class InfrahubConnectionMiddleware(Middleware):
-    """Catch Infrahub SDK connection errors and return clean MCP errors.
+def _connection_error_message(exc: BaseException) -> tuple[int, str] | None:
+    """Return the JSON-RPC code and actionable message for an Infrahub connection error."""
+    if isinstance(exc, ServerNotReachableError):
+        return -32002, f"Infrahub is unreachable at {exc.address}. Check that the instance is running."
+    if isinstance(exc, ServerNotResponsiveError):
+        return -32002, (
+            f"Infrahub is not responding: {str(exc).rstrip('.')}. "
+            "Check that the instance is running and not overloaded."
+        )
+    if isinstance(exc, AuthenticationError):
+        # The SDK raises AuthenticationError for both a 401 and a 403 response from Infrahub.
+        status_code = getattr(getattr(exc.__cause__, "response", None), "status_code", None)
+        if status_code == HTTPStatus.FORBIDDEN:
+            return -32001, (
+                f"Infrahub returned a 403 Forbidden error — {exc}. "
+                "Check that the account behind the credentials has permission for this operation."
+            )
+        return -32001, (
+            f"Infrahub returned a 401 Unauthorized error — {exc}. "
+            "Check your credentials (API token, username/password, or passthrough header)."
+        )
+    if isinstance(exc, (ConnectionError, HttpxConnectError)):
+        return -32002, (
+            f"Cannot connect to Infrahub: {exc}. Check that INFRAHUB_ADDRESS is correct and the instance is reachable."
+        )
+    return None
 
-    Converts ``ServerNotReachableError``, ``ServerNotResponsiveError``,
+
+class InfrahubConnectionMiddleware(Middleware):
+    """Catch Infrahub SDK connection errors and return actionable messages.
+
+    Handles ``ServerNotReachableError``, ``ServerNotResponsiveError``,
     ``AuthenticationError``, ``ConnectionError``, and ``HttpxConnectError``
-    into actionable ``MCPError`` messages instead of leaking raw stack traces
-    to the client.
+    instead of leaking raw SDK messages to the client.
+
+    FastMCP wraps an exception raised in a tool in ``ToolError(...) from exc``
+    before the middleware chain sees it, so the error's ``__cause__`` is checked
+    as well. On ``tools/call`` the message is raised as a ``ToolError``, which
+    reaches the client as a result with ``isError: true``. On other methods it
+    is raised as an ``MCPError``.
     """
 
     @override
@@ -319,28 +404,18 @@ class InfrahubConnectionMiddleware(Middleware):
     async def _wrap(call_next: CallNext[Any, Any], context: MiddlewareContext[Any]) -> Any:
         try:
             return await call_next(context)
-        except ServerNotReachableError as exc:
-            raise MCPError(
-                code=-32002, message=f"Infrahub is unreachable at {exc}. Check that the instance is running."
-            ) from exc
-        except ServerNotResponsiveError as exc:
-            raise MCPError(code=-32002, message=f"Infrahub is not responding: {exc}") from exc
-        except AuthenticationError as exc:
-            raise MCPError(
-                code=-32001,
-                message=(
-                    f"The Infrahub MCP server returned a 401 Unauthorized error — {exc}. "
-                    "Check your credentials (API token, username/password, or passthrough header)."
-                ),
-            ) from exc
-        except (ConnectionError, HttpxConnectError) as exc:
-            raise MCPError(
-                code=-32002,
-                message=(
-                    f"Cannot connect to Infrahub: {exc}. "
-                    "Check that INFRAHUB_ADDRESS is correct and the instance is reachable."
-                ),
-            ) from exc
+        except MCPError:
+            raise
+        except Exception as exc:
+            for original in (exc, exc.__cause__):
+                if original is not None and (found := _connection_error_message(original)) is not None:
+                    break
+            else:
+                raise
+            code, message = found
+            if context.method == "tools/call":
+                raise ToolError(message) from original
+            raise MCPError(code=code, message=message) from original
 
 
 # ---------------------------------------------------------------------------
@@ -537,7 +612,17 @@ class SafeRetryMiddleware(RetryMiddleware):
 
     Other MCP methods (resource reads, prompt gets, list operations) are
     always safe to retry and use the parent class behavior.
+
+    The parent class retries in ``on_request``, which wraps ``on_call_tool``,
+    so ``on_request`` passes a ``tools/call`` straight through and
+    ``on_call_tool`` runs the parent retry loop only for a safe tool.
     """
+
+    @override
+    async def on_request(self, context: MiddlewareContext[Any], call_next: CallNext[Any, Any]) -> Any:
+        if context.method == "tools/call":
+            return await call_next(context)
+        return await super().on_request(context, call_next)
 
     @override
     async def on_call_tool(
@@ -545,21 +630,14 @@ class SafeRetryMiddleware(RetryMiddleware):
         context: MiddlewareContext[mt.CallToolRequestParams],
         call_next: CallNext[mt.CallToolRequestParams, ToolResult],
     ) -> ToolResult:
-        # Check if the tool is marked idempotent before applying retries
-        tool = None
-        if context.fastmcp_context is not None:
-            tool = await context.fastmcp_context.fastmcp.get_tool(context.message.name)
-
-        is_safe_to_retry = False
-        if tool is not None and tool.annotations is not None:
-            is_safe_to_retry = bool(tool.annotations.idempotent_hint or tool.annotations.read_only_hint)
-
-        if not is_safe_to_retry:
-            # Skip retry logic — call through directly
+        # Retry only a tool annotated as idempotent or read-only
+        tool = await _resolve_tool(context)
+        annotations = tool.annotations if tool is not None else None
+        if not (annotations and (annotations.idempotent_hint or annotations.read_only_hint)):
             return await call_next(context)
 
-        # Delegate to parent retry logic
-        return await super().on_call_tool(context, call_next)
+        # Run the parent retry loop around the rest of the tool call chain
+        return await super().on_request(context, call_next)
 
 
 # ---------------------------------------------------------------------------
@@ -580,10 +658,10 @@ class StrictResponseLimitingMiddleware(ResponseLimitingMiddleware):
     ``limit``, narrow ``include_attributes``) rather than guessing at truncated
     data.
 
-    A tool tagged ``"write"`` has already applied its change when the size
-    check runs, so its error says the change was applied and tells the agent
-    not to call the tool again: repeating a write that is not idempotent can
-    create duplicates.
+    A tool tagged ``"write"`` that returned a result without ``isError`` has
+    already applied its change when the size check runs, so its error says the
+    change was applied and tells the agent not to call the tool again: repeating
+    a write that is not idempotent can create duplicates.
     """
 
     @override
@@ -594,7 +672,13 @@ class StrictResponseLimitingMiddleware(ResponseLimitingMiddleware):
     ) -> ToolResult:
         result = await call_next(context)
 
-        if self.tools is not None and context.message.name not in self.tools:
+        # Copied from ResponseLimitingMiddleware.on_call_tool, which has no hook
+        # before truncation (fastmcp/server/middleware/response_limiting.py):
+        # a multi-round-trip ask (SEP-2322) or a task acknowledgement carries no
+        # tool content to measure. Recheck that method on a FastMCP upgrade.
+        if isinstance(result, InputRequiredToolResult) or not isinstance(result, ToolResult):
+            return result
+        if not self._limits_tool(context.message.name):
             return result
 
         serialized = pydantic_core.to_json(result, fallback=str)
@@ -608,10 +692,8 @@ class StrictResponseLimitingMiddleware(ResponseLimitingMiddleware):
             len(serialized),
             self.max_size,
         )
-        tool = None
-        if context.fastmcp_context is not None:
-            tool = await context.fastmcp_context.fastmcp.get_tool(tool_name)
-        if tool is not None and WRITE_TAG in (tool.tags or set()):
+        tool = await _resolve_tool(context)
+        if tool is not None and _is_write_tool(tool) and not result.is_error:
             raise ToolError(
                 f"{tool_name!r} applied the change, but its response is "
                 f"{len(serialized)} bytes, over the {self.max_size}-byte limit, "
@@ -666,9 +748,11 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
     - **MetricsMiddleware** — request/error/latency counters
     - **OTelTracingMiddleware** — OpenTelemetry spans (conditional)
     - **ToolResultErrorHandlingMiddleware** — exception → MCP error mapping;
-      a ``ToolError`` stays an ``isError`` tool result
+      a tool call ``FastMCPError`` stays an ``isError`` tool result, and an
+      unknown tool returns JSON-RPC ``-32602``
     - **InfrahubConnectionMiddleware** — friendly Infrahub SDK error messages
-    - **RetryMiddleware** — exponential backoff for transient failures (conditional)
+    - **SafeRetryMiddleware** — exponential backoff for transient failures,
+      retrying only idempotent or read-only tools (conditional)
     - **RateLimitingMiddleware** — token bucket rate limiting (conditional)
     - **StructuredLoggingMiddleware** — JSON logs with token estimates
     - **DetailedTimingMiddleware** — per-operation timing breakdown

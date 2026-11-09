@@ -3,28 +3,32 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 import logging
+import pkgutil
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Sequence
 
+import httpx
 import mcp.types as mt
 import pytest
 from fastmcp import Client, FastMCP
-from fastmcp.exceptions import ToolError
+from fastmcp.exceptions import InsufficientScopeError, ToolError
 from fastmcp.server.auth import AccessToken
 from fastmcp.server.middleware.error_handling import RetryMiddleware
-from fastmcp.server.middleware.middleware import MiddlewareContext
+from fastmcp.server.middleware.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.base import ToolResult
 from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
 from mcp import MCPError
-from mcp.types import TextContent
+from mcp.types import INVALID_PARAMS, TextContent
 from opentelemetry import trace
 
 import infrahub_mcp.middleware as middleware_module
+import infrahub_mcp.tools
 from infrahub_mcp.auth import _passthrough_token, set_passthrough_token
 from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.middleware import (
@@ -145,6 +149,18 @@ class TestRequestIdMiddleware:
 
 
 class TestReadOnlyMiddleware:
+    async def test_fallback_allowlist_matches_registered_read_tools(self) -> None:
+        """The fallback allowlist names every registered tool without the write tag, and no other tool."""
+
+        modules = [
+            importlib.import_module(f"infrahub_mcp.tools.{info.name}")
+            for info in pkgutil.iter_modules(infrahub_mcp.tools.__path__)
+        ]
+        assert modules, "no tool modules found"
+        registered = [tool for module in modules for tool in await module.mcp.list_tools()]
+        read_tools = {tool.name for tool in registered if WRITE_TAG not in tool.tags}
+        assert read_tools == ReadOnlyMiddleware._KNOWN_READ_ONLY_TOOLS  # noqa: SLF001
+
     async def test_resolves_write_tags_through_mounted_server(self) -> None:
         """Mounted tags override the fallback name allowlist before executing a tool."""
         child = FastMCP("mounted-write-tool")
@@ -1097,7 +1113,7 @@ class TestSafeRetryMiddlewareRouting:
             call_next_called = True
             return ToolResult(content=[])
 
-        with patch.object(RetryMiddleware, "on_call_tool", return_value=ToolResult(content=[])) as mock_super:
+        with patch.object(RetryMiddleware, "on_request", return_value=ToolResult(content=[])) as mock_super:
             await mw.on_call_tool(ctx, call_next)
             assert mock_super.called, "Should delegate to parent retry logic"
             assert not call_next_called, "Should NOT call call_next directly"
@@ -1112,7 +1128,7 @@ class TestSafeRetryMiddlewareRouting:
         ctx = _make_retry_tool_context("some_idempotent_tool", tool)
         mw = SafeRetryMiddleware(max_retries=2, base_delay=0)
 
-        with patch.object(RetryMiddleware, "on_call_tool", return_value=ToolResult(content=[])) as mock_super:
+        with patch.object(RetryMiddleware, "on_request", return_value=ToolResult(content=[])) as mock_super:
             await mw.on_call_tool(ctx, call_next=MagicMock())
             assert mock_super.called
 
@@ -1148,6 +1164,29 @@ class TestSafeRetryMiddlewareRouting:
 
         result = await mw.on_call_tool(ctx, call_next)
         assert result is sentinel
+
+    async def test_server_retries_only_safe_tools(self) -> None:
+        """Through the real middleware chain, a write tool runs once and a read-only tool is retried."""
+        calls = {"node_upsert": 0, "get_nodes": 0}
+        server = FastMCP("safe-retry")
+
+        @server.tool(tags={"write"})
+        def node_upsert() -> str:
+            calls["node_upsert"] += 1
+            msg = "connection reset during the write"
+            raise ConnectionResetError(msg)
+
+        @server.tool(annotations=mt.ToolAnnotations(read_only_hint=True))
+        def get_nodes() -> str:
+            calls["get_nodes"] += 1
+            msg = "connection reset during the read"
+            raise ConnectionResetError(msg)
+
+        server.add_middleware(SafeRetryMiddleware(max_retries=2, base_delay=0.001))
+        async with Client(server) as client:
+            await client.call_tool("node_upsert", {}, raise_on_error=False)
+            await client.call_tool("get_nodes", {}, raise_on_error=False)
+        assert calls == {"node_upsert": 1, "get_nodes": 3}
 
 
 # ---------------------------------------------------------------------------
@@ -1263,7 +1302,9 @@ class TestInfrahubConnectionMiddleware:
         async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             raise ServerNotReachableError(address="http://infrahub:8000")
 
-        with pytest.raises(MCPError, match="Infrahub is unreachable"):
+        with pytest.raises(
+            ToolError, match=r"^Infrahub is unreachable at http://infrahub:8000\. Check that the instance is running\.$"
+        ):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
@@ -1285,7 +1326,7 @@ class TestInfrahubConnectionMiddleware:
         async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             raise ServerNotResponsiveError(url="http://infrahub:8000/api/schema")
 
-        with pytest.raises(MCPError, match="Infrahub is not responding"):
+        with pytest.raises(ToolError, match=r"Infrahub is not responding: .* Check that the instance is running"):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
@@ -1297,12 +1338,27 @@ class TestInfrahubConnectionMiddleware:
             msg = "Invalid API token"
             raise AuthenticationError(msg)
 
-        with pytest.raises(MCPError, match="401 Unauthorized"):
+        with pytest.raises(ToolError, match=r"^Infrahub returned a 401 Unauthorized error — Invalid API token\."):
+            await middleware.on_call_tool(ctx, call_next)
+
+    @pytest.mark.anyio
+    async def test_forbidden_authentication_error_names_permissions(self) -> None:
+        """The SDK raises AuthenticationError for a 403 too; that is a permission problem, not bad credentials."""
+
+        middleware = InfrahubConnectionMiddleware()
+        ctx = _make_tool_context("node_upsert")
+        request = httpx.Request("POST", "http://infrahub:8000/graphql")
+        response = httpx.Response(403, request=request)
+
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
+            msg = "You do not have permission"
+            raise AuthenticationError(msg) from httpx.HTTPStatusError("forbidden", request=request, response=response)
+
+        with pytest.raises(ToolError, match=r"^Infrahub returned a 403 Forbidden error .* has permission"):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
     async def test_catches_httpx_connect_error(self) -> None:
-        import httpx  # noqa: PLC0415
 
         middleware = InfrahubConnectionMiddleware()
         ctx = _make_tool_context("get_schema")
@@ -1311,7 +1367,7 @@ class TestInfrahubConnectionMiddleware:
             msg = "Connection refused"
             raise httpx.ConnectError(msg)
 
-        with pytest.raises(MCPError, match="Cannot connect to Infrahub"):
+        with pytest.raises(ToolError, match="Cannot connect to Infrahub"):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
@@ -1378,15 +1434,81 @@ class TestToolResultErrorHandlingMiddleware:
         assert text.startswith("Schema not found for kind: Missing.")
         assert "Remediation:" in text
 
-    async def test_unknown_tool_stays_protocol_error(self) -> None:
+    async def test_unknown_tool_is_invalid_params_protocol_error(self) -> None:
+        """SEP-2164: a request naming a tool that does not exist is a -32602 invalid-params error."""
         async with Client(_error_handling_server()) as client:
-            with pytest.raises(MCPError, match="Unknown tool: 'does_not_exist'"):
+            with pytest.raises(MCPError, match="Unknown tool: 'does_not_exist'") as exc_info:
                 await client.call_tool("does_not_exist", {})
+        assert exc_info.value.error.code == INVALID_PARAMS
 
-    async def test_invalid_arguments_stay_protocol_error(self) -> None:
+    async def test_invalid_arguments_reach_client_as_error_result(self) -> None:
+        """Input validation errors are tool execution errors, so the model can correct its arguments."""
         async with Client(_error_handling_server()) as client:
-            with pytest.raises(MCPError, match="Input should be a valid string"):
-                await client.call_tool("get_schema", {"kind": 42})
+            result = await client.call_tool("get_schema", {"kind": 42}, raise_on_error=False)
+        assert result.is_error
+        assert "Input should be a valid string" in result.content[0].text
+
+    async def test_scope_denial_reaches_client_as_error_result(self) -> None:
+        """An OIDC scope denial names the missing scopes in an isError result instead of -32603."""
+        server = FastMCP("scope-denial")
+
+        @server.tool(tags={"write"})
+        def node_upsert() -> str:
+            return "created"
+
+        class _DenyWrites(Middleware):
+            async def on_call_tool(
+                self,
+                context: MiddlewareContext[mt.CallToolRequestParams],
+                call_next: CallNext[mt.CallToolRequestParams, ToolResult],
+            ) -> ToolResult:
+                raise InsufficientScopeError(["infrahub:write"])
+
+        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
+        server.add_middleware(_DenyWrites())
+        async with Client(server) as client:
+            result = await client.call_tool("node_upsert", {}, raise_on_error=False)
+        assert result.is_error
+        assert "Insufficient scope. Required: infrahub:write" in result.content[0].text
+
+    async def test_connection_error_from_tool_code_reaches_client_with_hint(self) -> None:
+        """FastMCP wraps the SDK error in a ToolError; the connection middleware still matches its cause."""
+        server = FastMCP("unreachable")
+
+        @server.tool
+        def get_nodes() -> str:
+            raise ServerNotReachableError(address="http://infrahub:8000")
+
+        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
+        server.add_middleware(InfrahubConnectionMiddleware())
+        async with Client(server) as client:
+            result = await client.call_tool("get_nodes", {}, raise_on_error=False)
+        assert result.is_error
+        text = result.content[0].text
+        assert "Infrahub is unreachable" in text
+        assert "Check that the instance is running." in text
+
+    async def test_tool_call_error_is_logged_once_at_error_level(self, caplog: pytest.LogCaptureFixture) -> None:
+        """FastMCP core logs the tool error; the middleware adds a WARNING line, not a second ERROR line."""
+        server = FastMCP("logging")
+
+        @server.tool
+        def get_schema(kind: str) -> str:
+            msg = f"Schema not found for kind: {kind}."
+            raise ToolError(msg)
+
+        middleware = ToolResultErrorHandlingMiddleware(logger=logging.getLogger("infrahub_mcp.errors"))
+        server.add_middleware(middleware)
+        with caplog.at_level(logging.DEBUG):
+            async with Client(server) as client:
+                await client.call_tool("get_schema", {"kind": "Missing"}, raise_on_error=False)
+        error_lines = [r for r in caplog.records if r.levelno >= logging.ERROR]
+        assert len(error_lines) == 1, [r.getMessage() for r in error_lines]
+        assert any(
+            r.name == "infrahub_mcp.errors" and r.levelno == logging.WARNING and "Schema not found" in r.getMessage()
+            for r in caplog.records
+        )
+        assert middleware.get_error_stats() == {"ToolError:tools/call": 1}
 
     async def test_error_from_tool_code_reaches_client_as_error_result(self) -> None:
         """FastMCP wraps an exception from the tool body in a ToolError, so it also becomes an isError result."""
@@ -1402,43 +1524,50 @@ class TestToolResultErrorHandlingMiddleware:
         assert result.is_error
         assert result.content[0].text.startswith("Error calling tool 'get_schema':")
 
-    async def test_oversized_response_reaches_client_as_error_result(self) -> None:
-        """The response-size ToolError keeps its remediation hint and reaches the model as an isError result."""
+    @pytest.mark.parametrize(
+        ("tags", "returns_error_result", "expect_applied"),
+        [
+            pytest.param(set(), False, False, id="read-tool"),
+            pytest.param({"write"}, False, True, id="write-tool-success"),
+            pytest.param({"write"}, True, False, id="write-tool-error-result"),
+        ],
+    )
+    async def test_oversized_response_reaches_client_as_error_result(
+        self, tags: set[str], returns_error_result: bool, expect_applied: bool
+    ) -> None:
+        """An oversized response becomes an isError result.
+
+        Only a successful write says the change was applied and must not be repeated; every
+        other oversized response keeps the generic size-limit message.
+        """
         server = FastMCP("oversized-response")
 
-        @server.tool
-        def get_nodes() -> str:
-            return "x" * 1_000
+        @server.tool(tags=tags)
+        def big_tool() -> ToolResult:
+            return ToolResult(content=[TextContent(type="text", text="x" * 1_000)], is_error=returns_error_result)
 
         server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
         server.add_middleware(StrictResponseLimitingMiddleware(max_size=200))
         async with Client(server) as client:
-            result = await client.call_tool("get_nodes", {}, raise_on_error=False)
+            result = await client.call_tool("big_tool", {}, raise_on_error=False)
         assert result.is_error
         text = result.content[0].text
-        assert "over the 200-byte limit" in text
-        assert "Remediation:" in text
+        assert ("applied the change" in text) == expect_applied
+        if expect_applied:
+            assert "Do not call 'big_tool' again" in text
+            assert "Remediation:" not in text
+        else:
+            assert "over the 200-byte limit" in text
+            assert "Remediation:" in text
 
-    async def test_oversized_write_response_says_not_to_call_again(self) -> None:
-        """A write tool has already applied its change, so the error must not ask the model to repeat the call."""
-        server = FastMCP("oversized-write-response")
-
-        @server.tool(tags={"write"})
-        def node_upsert() -> str:
-            return "x" * 1_000
-
-        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
-        server.add_middleware(StrictResponseLimitingMiddleware(max_size=200))
-        async with Client(server) as client:
-            result = await client.call_tool("node_upsert", {}, raise_on_error=False)
-        assert result.is_error
-        text = result.content[0].text
-        assert "applied the change" in text
-        assert "Do not call 'node_upsert' again" in text
-        assert "Remediation:" not in text
-
-    async def test_tool_error_is_logged_and_counted(self, caplog: pytest.LogCaptureFixture) -> None:
-        middleware = ToolResultErrorHandlingMiddleware(logger=logging.getLogger("infrahub_mcp.errors"))
+    @pytest.mark.parametrize("include_traceback", [False, True])
+    async def test_tool_error_is_logged_and_counted(
+        self, caplog: pytest.LogCaptureFixture, include_traceback: bool
+    ) -> None:
+        """A tool call error is counted and logged at WARNING, with the traceback only when include_traceback is set."""
+        middleware = ToolResultErrorHandlingMiddleware(
+            logger=logging.getLogger("infrahub_mcp.errors"), include_traceback=include_traceback
+        )
         ctx = _make_tool_context("get_schema")
 
         async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
@@ -1446,12 +1575,24 @@ class TestToolResultErrorHandlingMiddleware:
             raise ToolError(msg)
 
         with (
-            caplog.at_level(logging.ERROR, logger="infrahub_mcp.errors"),
+            caplog.at_level(logging.WARNING, logger="infrahub_mcp.errors"),
             pytest.raises(ToolError, match="Schema not found"),
         ):
             await middleware.on_message(ctx, call_next)
         assert middleware.get_error_stats() == {"ToolError:tools/call": 1}
-        assert any("Error in tools/call: ToolError: Schema not found" in r.message for r in caplog.records)
+        record = next(r for r in caplog.records if r.name == "infrahub_mcp.errors")
+        assert record.levelno == logging.WARNING
+        assert "Error in tools/call: ToolError: Schema not found" in record.message
+        assert (record.exc_info is not None) == include_traceback
+
+    async def test_unknown_tool_without_transform_is_left_to_fastmcp(self) -> None:
+        """With transform_errors=False, an unknown tool keeps FastMCP's own isError result."""
+        server = FastMCP("no-transform")
+        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=False))
+        async with Client(server) as client:
+            result = await client.call_tool("does_not_exist", {}, raise_on_error=False)
+        assert result.is_error
+        assert "Unknown tool: 'does_not_exist'" in result.content[0].text
 
     async def test_tool_error_keeps_its_cause(self) -> None:
         """The ToolError is re-raised as-is, so the exception that caused it stays attached for tracing."""

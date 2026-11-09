@@ -66,11 +66,8 @@ via `configure_middleware()`.
 
 - `StructuredLoggingMiddleware` — structured log output
 - `DetailedTimingMiddleware` — request duration tracking
-- `ErrorHandlingMiddleware` — exception-to-MCP-error translation
-- `RetryMiddleware` — transient failure retry with backoff
 - `ResponseCachingMiddleware` — TTL-based caching for schema/list ops
 - `RateLimitingMiddleware` — token-bucket rate limiting
-- `ResponseLimitingMiddleware` — response size control
 - `PingMiddleware` — HTTP session keep-alive
 - `DereferenceRefsMiddleware` — JSON Schema `$ref` resolution
 - `AuthMiddleware` — OAuth scope enforcement
@@ -78,12 +75,25 @@ via `configure_middleware()`.
 **Custom middleware:**
 
 - `ToolResultErrorHandlingMiddleware` — subclass of `ErrorHandlingMiddleware`
-  that returns a `ToolError` from `tools/call` as a tool result with
-  `isError: true` instead of a JSON-RPC error
+  that keeps `tools/call` errors as tool results: a `ToolError`, invalid
+  arguments and an OIDC scope denial return a tool result with
+  `isError: true`, and an unknown tool returns JSON-RPC `-32602` (in OIDC
+  mode `AuthMiddleware` rejects it first as an `isError` result; in
+  read-only mode `ReadOnlyMiddleware` returns `-32601`). These errors are
+  logged at `WARNING`, because the call caused them, not a server fault
+- `SafeRetryMiddleware` — subclass of `RetryMiddleware` that retries only
+  tools annotated as idempotent or read-only
+- `StrictResponseLimitingMiddleware` — subclass of
+  `ResponseLimitingMiddleware` that rejects an oversized tool response with
+  a `ToolError` instead of truncating it; for a successful write result,
+  the error says the change was applied and the tool must not be called
+  again
 - `ReadOnlyMiddleware` — blocks tools tagged `"write"` in read-only mode
 - `AuditMiddleware` — structured audit log with request IDs
 - `InfrahubConnectionMiddleware` — translates Infrahub SDK connection and
-  authentication exceptions to MCP errors
+  authentication exceptions, including ones wrapped in a `ToolError`, to
+  messages with a remediation hint: an `isError` result on `tools/call`,
+  a JSON-RPC error on resource reads
 - `MetricsMiddleware` — request, error and latency counters for the
   `/metrics` endpoint
 
