@@ -1051,7 +1051,7 @@ class TestSafeRetryMiddlewareRouting:
             call_next_called = True
             return ToolResult(content=[])
 
-        with patch.object(RetryMiddleware, "on_call_tool", return_value=ToolResult(content=[])) as mock_super:
+        with patch.object(RetryMiddleware, "on_request", return_value=ToolResult(content=[])) as mock_super:
             await mw.on_call_tool(ctx, call_next)
             assert mock_super.called, "Should delegate to parent retry logic"
             assert not call_next_called, "Should NOT call call_next directly"
@@ -1066,7 +1066,7 @@ class TestSafeRetryMiddlewareRouting:
         ctx = _make_retry_tool_context("some_idempotent_tool", tool)
         mw = SafeRetryMiddleware(max_retries=2, base_delay=0)
 
-        with patch.object(RetryMiddleware, "on_call_tool", return_value=ToolResult(content=[])) as mock_super:
+        with patch.object(RetryMiddleware, "on_request", return_value=ToolResult(content=[])) as mock_super:
             await mw.on_call_tool(ctx, call_next=MagicMock())
             assert mock_super.called
 
@@ -1102,6 +1102,29 @@ class TestSafeRetryMiddlewareRouting:
 
         result = await mw.on_call_tool(ctx, call_next)
         assert result is sentinel
+
+    async def test_server_retries_only_safe_tools(self) -> None:
+        """Through the real middleware chain, a write tool runs once and a read-only tool is retried."""
+        calls = {"node_upsert": 0, "get_nodes": 0}
+        server = FastMCP("safe-retry")
+
+        @server.tool(tags={"write"})
+        def node_upsert() -> str:
+            calls["node_upsert"] += 1
+            msg = "connection reset during the write"
+            raise ConnectionResetError(msg)
+
+        @server.tool(annotations=mt.ToolAnnotations(read_only_hint=True))
+        def get_nodes() -> str:
+            calls["get_nodes"] += 1
+            msg = "connection reset during the read"
+            raise ConnectionResetError(msg)
+
+        server.add_middleware(SafeRetryMiddleware(max_retries=2, base_delay=0.001))
+        async with Client(server) as client:
+            await client.call_tool("node_upsert", {}, raise_on_error=False)
+            await client.call_tool("get_nodes", {}, raise_on_error=False)
+        assert calls == {"node_upsert": 1, "get_nodes": 3}
 
 
 # ---------------------------------------------------------------------------

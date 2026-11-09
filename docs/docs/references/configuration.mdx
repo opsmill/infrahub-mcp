@@ -167,7 +167,7 @@ The server applies middleware in registration order. The full stack when all fea
 | 3 | **OTelTracingMiddleware** — OpenTelemetry spans | no |
 | 4 | **ToolResultErrorHandlingMiddleware** — exception-to-MCP-error mapping with error tracking; an error raised while a tool runs, invalid arguments and an OIDC scope denial return a result with `isError: true`, and an unknown tool returns JSON-RPC `-32602` outside OIDC and read-only mode | yes |
 | 5 | **InfrahubConnectionMiddleware** — errors with a remediation hint when Infrahub is unreachable, not responding or rejects the credentials; on a tool call they return a result with `isError: true` | yes |
-| 6 | **RetryMiddleware** — exponential backoff for transient failures | no |
+| 6 | **SafeRetryMiddleware** — exponential backoff for transient failures; retries only tools annotated as idempotent or read-only | no |
 | 7 | **RateLimitingMiddleware** — token bucket rate limiting | no |
 | 8 | **StructuredLoggingMiddleware** — JSON logs with token estimates | yes |
 | 9 | **DetailedTimingMiddleware** — per-operation timing breakdown | yes |

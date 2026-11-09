@@ -173,6 +173,9 @@ class ReadOnlyMiddleware(Middleware):
             "query_graphql",
             "get_nodes",
             "search_nodes",
+            "get_session_info",
+            "find_paths",
+            "find_reachable",
         }
     )
 
@@ -340,7 +343,10 @@ def _connection_error_message(exc: BaseException) -> tuple[int, str] | None:
     if isinstance(exc, ServerNotReachableError):
         return -32002, f"Infrahub is unreachable at {exc.address}. Check that the instance is running."
     if isinstance(exc, ServerNotResponsiveError):
-        return -32002, f"Infrahub is not responding: {exc} Check that the instance is running and not overloaded."
+        return -32002, (
+            f"Infrahub is not responding: {str(exc).rstrip('.')}. "
+            "Check that the instance is running and not overloaded."
+        )
     if isinstance(exc, AuthenticationError):
         return -32001, (
             f"The Infrahub MCP server returned a 401 Unauthorized error — {exc}. "
@@ -597,7 +603,17 @@ class SafeRetryMiddleware(RetryMiddleware):
 
     Other MCP methods (resource reads, prompt gets, list operations) are
     always safe to retry and use the parent class behavior.
+
+    The parent class retries in ``on_request``, which wraps ``on_call_tool``,
+    so ``on_request`` passes a ``tools/call`` straight through and
+    ``on_call_tool`` runs the parent retry loop only for a safe tool.
     """
+
+    @override
+    async def on_request(self, context: MiddlewareContext[Any], call_next: CallNext[Any, Any]) -> Any:
+        if context.method == "tools/call":
+            return await call_next(context)
+        return await super().on_request(context, call_next)
 
     @override
     async def on_call_tool(
@@ -616,8 +632,8 @@ class SafeRetryMiddleware(RetryMiddleware):
             # Skip retry logic — call through directly
             return await call_next(context)
 
-        # Delegate to parent retry logic
-        return await super().on_call_tool(context, call_next)
+        # Run the parent retry loop around the rest of the tool call chain
+        return await super().on_request(context, call_next)
 
 
 # ---------------------------------------------------------------------------
@@ -728,7 +744,8 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
     - **ToolResultErrorHandlingMiddleware** — exception → MCP error mapping;
       a ``ToolError`` stays an ``isError`` tool result
     - **InfrahubConnectionMiddleware** — friendly Infrahub SDK error messages
-    - **RetryMiddleware** — exponential backoff for transient failures (conditional)
+    - **SafeRetryMiddleware** — exponential backoff for transient failures,
+      retrying only idempotent or read-only tools (conditional)
     - **RateLimitingMiddleware** — token bucket rate limiting (conditional)
     - **StructuredLoggingMiddleware** — JSON logs with token estimates
     - **DetailedTimingMiddleware** — per-operation timing breakdown
