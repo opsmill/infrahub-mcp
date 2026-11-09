@@ -91,7 +91,13 @@ def make_infra_change(
     ] = None,
     branch: Annotated[
         str | None,
-        Field(default=None, description="Existing branch to target. A session branch is auto-created if omitted."),
+        Field(
+            default=None,
+            description=(
+                "Branch to make the change on. The agent switches to it with `reset_session_branch` "
+                "before the first write. A session branch is auto-created if omitted."
+            ),
+        ),
     ] = None,
 ) -> list[Message]:
     """Write workflow for making infrastructure changes through Infrahub."""
@@ -102,6 +108,14 @@ def make_infra_change(
     catalog_hint = (
         "" if kind else "If you are unsure which kind to target, read `infrahub://schema` first to browse the catalog."
     )
+    branch_step = (
+        f"""### Step 0 — Select the branch
+Call `reset_session_branch(branch="{branch}")` so that every write in this change targets `{branch}`.
+
+"""
+        if branch
+        else ""
+    )
 
     body = f"""Make the following infrastructure change{kind_note}{branch_note}:
 
@@ -109,7 +123,7 @@ def make_infra_change(
 
 Follow these steps in order:
 
-### Step 1 — Understand the schema
+{branch_step}### Step 1 — Understand the schema
 Read `infrahub://schema/{kind_ref}` to confirm:
 - Required vs optional attributes
 - Valid attribute names and types
@@ -124,18 +138,20 @@ Read `infrahub://schema/{kind_ref}` to confirm:
   - **Always confirm with the user before deleting.**
 
 ### Step 3 — Verify the change
-Read back the affected nodes using `get_nodes` on the session branch \
-to confirm the change was applied correctly.
+Call `get_session_info` to get the session branch name, then read back the affected nodes with \
+`get_nodes(kind="{kind_ref}", branch=<session branch>)` to confirm the change was applied correctly. \
+Without `branch`, `get_nodes` reads the default branch, which does not contain the change yet.
 
 ### Step 4 — Propose for review
 Call `propose_changes(title=..., description=...)` to open a proposed change for human review.
 
 ### Safety reminders
-- All writes target a **session branch** (auto-created on first write as `mcp/session-YYYYMMDD-<hex>`).
+- All writes target a **session branch**, auto-created on the first write and named after the \
+server's configured branch pattern.
 - The default branch is **never modified directly**.
 - You can continue making changes after calling `propose_changes`.
 - Only scalar attributes are supported in `node_upsert` data — \
-use `query_graphql` for relationship mutations."""
+use `mutate_graphql` for relationship mutations."""
 
     return [Message(body)]
 

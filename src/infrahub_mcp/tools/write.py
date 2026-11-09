@@ -28,7 +28,6 @@ mcp: FastMCP = FastMCP(name="Infrahub Write")
 logger = logging.getLogger(__name__)
 
 _NO_IDENTIFIER_MSG = "Provide either 'id' (UUID) or 'hfid' (human-friendly ID list) to identify the node."
-_BRANCH_NOTE = "All writes target the active session branch, auto-created on the first write of a session."
 
 _READ_ONLY_MARKERS = ("read-only", "read only", "has been merged")
 
@@ -164,7 +163,8 @@ async def node_upsert(  # pylint: disable=too-many-locals
     """Create or update a node in Infrahub on the active session branch.
 
     The session branch is auto-created on the first write of the session
-    (``mcp/session-YYYYMMDD-<hex>``). Use ``propose_changes`` to open a
+    (named after ``INFRAHUB_MCP_BRANCH_PATTERN``, ``mcp/session-YYYYMMDD-<hex>``
+    by default). Use ``propose_changes`` to open a
     review once your changes are ready.
     To discover available kinds and attributes, read the ``infrahub://schema``
     resource. If your client does not support MCP resources, call the
@@ -433,7 +433,7 @@ async def mutate_graphql(
     not covered by the typed tools. For reads, use ``query_graphql``.
 
     The mutation always runs on the **active session branch** (auto-created on the
-    first write of the session, ``mcp/session-YYYYMMDD-<hex>``). There is no branch
+    first write of the session, ``mcp/session-YYYYMMDD-<hex>`` by default). There is no branch
     override — writes are isolated to the session, and changes reach the default
     branch only through ``propose_changes`` and human review. To target a different
     branch deliberately, switch the session with ``reset_session_branch`` first.

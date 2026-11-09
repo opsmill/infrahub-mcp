@@ -17,8 +17,9 @@ async def get_session_info(ctx: Context) -> dict[str, Any]:
 
     Reports the active session branch (if any) and the Infrahub instance address.
     A session branch is lazily auto-created on the first write tool call
-    (``node_upsert`` / ``node_delete`` / ``mutate_graphql``) and is named
-    ``mcp/session-YYYYMMDD-<hex>``. Before that first write, ``session_branch``
+    (``node_upsert`` / ``node_delete`` / ``mutate_graphql``), or set explicitly by
+    ``reset_session_branch(branch=...)``. Its name follows ``INFRAHUB_MCP_BRANCH_PATTERN``
+    (``mcp/session-YYYYMMDD-<hex>`` by default). Before that first write, ``session_branch``
     is ``None`` and all read tools target the default branch.
 
     Typical uses:
