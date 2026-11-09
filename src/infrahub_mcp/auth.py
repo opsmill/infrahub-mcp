@@ -52,7 +52,7 @@ def create_auth_provider(config: ServerConfig) -> OIDCProxy | None:
     else:
         # Public client: send only the client ID to the upstream token endpoint.
         # FastMCP before 4.1.3 defaults to client_secret_basic even without a secret
-        # (PrefectHQ/fastmcp#5879), and pyproject.toml allows fastmcp>=4.0.0.
+        # (PrefectHQ/fastmcp#5879), and pyproject.toml allows fastmcp>=4.1.0.
         kwargs["token_endpoint_auth_method"] = "none"  # noqa: S105
     if jwt_signing_key:
         kwargs["jwt_signing_key"] = jwt_signing_key

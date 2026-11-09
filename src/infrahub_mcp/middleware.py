@@ -262,6 +262,30 @@ class TokenPassthroughMiddleware(Middleware):
 
 
 # ---------------------------------------------------------------------------
+# Error handling — tool errors stay tool results
+# ---------------------------------------------------------------------------
+
+
+class ToolResultErrorHandlingMiddleware(ErrorHandlingMiddleware):
+    """``ErrorHandlingMiddleware`` that lets a ``ToolError`` reach the client as a tool result.
+
+    The MCP spec reports tool execution errors in the result with ``isError: true``
+    so the model can read the message and correct its call. FastMCP builds that
+    result from a ``ToolError`` that leaves the middleware chain, but MCP SDK 2.x
+    sends any ``MCPError`` as a JSON-RPC error instead. The parent class would turn
+    the ``ToolError`` into ``MCPError(-32603)``, so it is re-raised unchanged here.
+    It is still logged and counted. Unknown tools, invalid arguments and every
+    other error keep the parent's mapping to a JSON-RPC error.
+    """
+
+    @override
+    def _transform_error(self, error: Exception, context: MiddlewareContext[Any]) -> Exception:
+        if context.method == "tools/call" and isinstance(error, ToolError):
+            return error
+        return super()._transform_error(error, context)
+
+
+# ---------------------------------------------------------------------------
 # Infrahub connection errors — friendly messages
 # ---------------------------------------------------------------------------
 
@@ -555,6 +579,11 @@ class StrictResponseLimitingMiddleware(ResponseLimitingMiddleware):
     keeping the agent in its self-correction loop (tighten ``filters``, drop
     ``limit``, narrow ``include_attributes``) rather than guessing at truncated
     data.
+
+    A tool tagged ``"write"`` has already applied its change when the size
+    check runs, so its error says the change was applied and tells the agent
+    not to call the tool again: repeating a write that is not idempotent can
+    create duplicates.
     """
 
     @override
@@ -579,6 +608,18 @@ class StrictResponseLimitingMiddleware(ResponseLimitingMiddleware):
             len(serialized),
             self.max_size,
         )
+        tool = None
+        if context.fastmcp_context is not None:
+            tool = await context.fastmcp_context.fastmcp.get_tool(tool_name)
+        if tool is not None and WRITE_TAG in (tool.tags or set()):
+            raise ToolError(
+                f"{tool_name!r} applied the change, but its response is "
+                f"{len(serialized)} bytes, over the {self.max_size}-byte limit, "
+                "so it was not returned.\n"
+                f"Do not call {tool_name!r} again for this change. "
+                "To check the result, read the changed nodes with `get_nodes` "
+                "or `query_graphql`."
+            )
         raise ToolError(
             f"Response from {tool_name!r} is {len(serialized)} bytes, "
             f"over the {self.max_size}-byte limit.\n"
@@ -596,7 +637,7 @@ _MAX_RESPONSE_BYTES = 500_000  # 500 KB — generous for TOON-encoded data
 
 # Module-level references so server.py can access middleware instances from route handlers.
 _metrics: MetricsMiddleware | None = None
-_error_handling: ErrorHandlingMiddleware | None = None
+_error_handling: ToolResultErrorHandlingMiddleware | None = None
 _caching_middleware: Any | None = None  # ResponseCachingMiddleware (optional)
 
 
@@ -605,8 +646,8 @@ def get_metrics() -> MetricsMiddleware | None:
     return _metrics
 
 
-def get_error_handling() -> ErrorHandlingMiddleware | None:
-    """Return the active ErrorHandlingMiddleware instance, if configured."""
+def get_error_handling() -> ToolResultErrorHandlingMiddleware | None:
+    """Return the active ToolResultErrorHandlingMiddleware instance, if configured."""
     return _error_handling
 
 
@@ -624,7 +665,8 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
     - **RequestIdMiddleware** — correlation ID (outermost)
     - **MetricsMiddleware** — request/error/latency counters
     - **OTelTracingMiddleware** — OpenTelemetry spans (conditional)
-    - **ErrorHandlingMiddleware** — exception → MCP error mapping
+    - **ToolResultErrorHandlingMiddleware** — exception → MCP error mapping;
+      a ``ToolError`` stays an ``isError`` tool result
     - **InfrahubConnectionMiddleware** — friendly Infrahub SDK error messages
     - **RetryMiddleware** — exponential backoff for transient failures (conditional)
     - **RateLimitingMiddleware** — token bucket rate limiting (conditional)
@@ -658,7 +700,7 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
         logger.info("otel_tracing enabled=true")
 
     # Error handling — catches everything below
-    _error_handling = ErrorHandlingMiddleware(
+    _error_handling = ToolResultErrorHandlingMiddleware(
         logger=logging.getLogger("infrahub_mcp.errors"),
         include_traceback=config.log_level_debug,
         transform_errors=True,
