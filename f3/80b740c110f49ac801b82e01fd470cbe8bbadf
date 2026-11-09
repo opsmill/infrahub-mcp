@@ -1,0 +1,21 @@
+src/infrahub_mcp/middleware.py
+  s_03148743a2ae79::t_fd162adec60156 19,357
+tests/unit/test_middleware.py
+  s_03148743a2ae79::t_fd162adec60156 6,9,16,31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f380b740c110f49ac801b82e01fd470cbe8bbadf",
+  "prompts": {},
+  "sessions": {
+    "s_03148743a2ae79": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "33f236c0-7958-4bb1-b970-49127033241a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
