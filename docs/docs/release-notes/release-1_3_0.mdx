@@ -1,0 +1,131 @@
+---
+title: Release 1.3.0
+description: Run the container image without trusting compromised intermediate certificate authorities, receive tool call errors as results the agent can act on, keep one session branch with MCP 2026-07-28 clients, and deploy on Kubernetes with Helm.
+---
+
+<table>
+  <tbody>
+    <tr>
+      <th>Release Number</th>
+      <td>1.3.0</td>
+    </tr>
+    <tr>
+      <th>Release Type</th>
+      <td>Security</td>
+    </tr>
+    <tr>
+      <th>Release Date</th>
+      <td>November 9th, 2026</td>
+    </tr>
+    <tr>
+      <th>Tag</th>
+      <td>[v1.3.0](https://github.com/opsmill/infrahub-mcp/releases/tag/v1.3.0)</td>
+    </tr>
+  </tbody>
+</table>
+
+## Release summary
+
+Upgrade the container image so that it rejects certificates that chain through the compromised intermediate certificate authorities named in a recent certificate authority incident. After the upgrade, an agent receives tool call errors as tool results it can read and act on, instead of a generic internal error. Writes from clients on MCP protocol version 2026-07-28 reuse one session branch, so `propose_changes` finds it. You can also deploy the server on Kubernetes with the `infrahub-mcp` Helm chart.
+
+### Run the container image without trusting compromised intermediate certificate authorities
+
+The container image now rejects certificates that chain through the compromised intermediate certificate authorities listed on the [certificate authority incident page](https://emudhra.we-have-a-problem.com/).
+
+**What changed**
+
+* Pull the 1.3.0 container image to get a trust store that rejects certificates that chain through the compromised intermediates.
+* The image build stage moves to uv 0.13.6 on Debian 13 (`trixie`), and the runtime stage upgrades `ca-certificates`.
+
+### Receive tool call errors as results the agent can act on
+
+When a tool call fails, the client now receives a tool result with `isError: true` that carries the error message, as the MCP specification recommends. The agent can read the message, and any remediation hint, and correct the next call. Since the upgrade to FastMCP 4 and MCP SDK 2, these errors reached the client as a JSON-RPC `-32603 Internal error`.
+
+**What changed**
+
+* Call a tool with invalid arguments, and the result carries the validation message.
+* Call `get_nodes` with an unknown kind, send a GraphQL mutation to `query_graphql`, or request a response over the size limit, and the result carries the error message.
+* When Infrahub is unreachable, not responding or rejects the credentials, the result carries the message with a remediation hint, such as "Check that the instance is running", instead of the raw Infrahub SDK message.
+* In OIDC mode, call a tool that the token's scopes do not allow, and the result names the missing scopes.
+* When the response of a write tool such as `node_upsert` or `mutate_graphql` is over the size limit, the error says that the change was applied and that the tool must not be called again. Before, it asked the client to narrow its filters and repeat the call.
+* Call an unknown tool, and the server returns JSON-RPC `-32602`, as SEP-2164 requires, instead of `-32001`. In read-only mode, the call returns JSON-RPC `-32601`. In OIDC mode, the scope check rejects the call first and returns a tool result with `isError: true`.
+* Requests without passthrough credentials still return JSON-RPC errors.
+
+### Keep one session branch with MCP 2026-07-28 clients
+
+Clients that use MCP protocol version 2026-07-28, which has no sessions, can now make several writes and then call `propose_changes` on the same branch. Before, every write created a new branch and `propose_changes` failed with "No session branch exists yet".
+
+**What changed**
+
+* Without an MCP session, the server keeps one session branch per authenticated caller identity: the OIDC principal, the passthrough token or the Basic credentials.
+* Without authentication, the server keeps one session branch per server process.
+
+### Deploy the server on Kubernetes with Helm
+
+Follow the new [Kubernetes guide](../guides/kubernetes.mdx) to deploy the server with the `infrahub-mcp` Helm chart, either on its own or as part of the `infrahub` chart.
+
+## Bug fixes
+
+* With retries enabled through `INFRAHUB_MCP_RETRY_MAX_ATTEMPTS`, the server no longer retries a tool that is not annotated as idempotent or read-only, such as `node_upsert`, after a connection or timeout error. Before, a write that reached Infrahub before the error could be applied more than once.
+* Start OIDC mode without `INFRAHUB_MCP_OIDC_CLIENT_SECRET` by setting the new `INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY`, so the identity provider can register the server as a public client. When neither variable is set, the server stops at startup with an error that names both.
+* In read-only mode, the server no longer lists or serves the `make_infra_change` prompt, which tells the agent to use write tools that read-only mode removes. With `auth_mode=oidc`, the prompt requires the write scope (`INFRAHUB_MCP_AUTH_SCOPES_WRITE`), like the write tools.
+
+## Minor changes
+
+### Logging
+
+* The server's error-handling middleware logs a tool call error at `WARNING` level instead of `ERROR` level. FastMCP core and the structured logging middleware still log the error at `ERROR` level.
+
+### Dependencies
+
+* The server requires FastMCP 4.1.0 or later.
+
+### Deployment
+
+* Publishing a final release opens a pull request in `opsmill/infrahub-helm` that moves the `infrahub-mcp` Helm chart to the new version.
+
+## Upgrade notes
+
+### Clients that handle JSON-RPC tool errors
+
+If: your client or integration detects failed tool calls by the JSON-RPC `-32603` error code, or detects unknown tools by `-32001`.
+
+Then: read the `isError` field of the tool result instead, and expect `-32602` for an unknown tool.
+
+### Alerts on tool call errors at `ERROR` level
+
+If: you alert on `ERROR` log lines from the server's error-handling middleware.
+
+Then: match the `WARNING` level for those lines, or use the `ERROR` lines that FastMCP core and the structured logging middleware still write.
+
+### Environments that pin FastMCP
+
+If: you install `infrahub-mcp` into an environment that pins `fastmcp` below 4.1.0.
+
+Then: raise or remove that pin. `infrahub-mcp` 1.3.0 requires `fastmcp>=4.1.0`.
+
+## Full changelog
+
+### Security
+
+* The container image rejects certificates that chain through the compromised intermediate certificate authorities, builds with uv 0.13.6 on Debian 13 (`trixie`) and upgrades `ca-certificates` at runtime ([#219](https://github.com/opsmill/infrahub-mcp/pull/219)).
+
+### Added
+
+* Added a guide to deploying the MCP server on Kubernetes with the `infrahub-mcp` Helm chart, either standalone or as part of the `infrahub` chart ([#227](https://github.com/opsmill/infrahub-mcp/pull/227)).
+
+### Changed
+
+* Tool call errors follow the MCP specification and FastMCP's own error mapping, keep Infrahub remediation hints, and are logged at `WARNING` level by the error-handling middleware ([#234](https://github.com/opsmill/infrahub-mcp/issues/234)).
+
+### Fixed
+
+* In read-only mode, the server no longer lists or serves the `make_infra_change` prompt, and in OIDC mode the prompt requires the write scope ([#192](https://github.com/opsmill/infrahub-mcp/issues/192)).
+* OIDC mode starts without `INFRAHUB_MCP_OIDC_CLIENT_SECRET` when `INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY` is set ([#215](https://github.com/opsmill/infrahub-mcp/issues/215)).
+* An error raised while a tool runs returns a tool result with `isError: true` instead of a JSON-RPC `-32603 Internal error`, and the server requires FastMCP 4.1.0 or later ([#218](https://github.com/opsmill/infrahub-mcp/issues/218)).
+* With retries enabled, the server no longer retries a tool that is not annotated as idempotent or read-only after a connection or timeout error ([#237](https://github.com/opsmill/infrahub-mcp/pull/237)).
+* Writes reuse one session branch, and `propose_changes` finds it, when the client uses MCP protocol version 2026-07-28 ([#187](https://github.com/opsmill/infrahub-mcp/pull/187)).
+
+### Housekeeping
+
+* After a final release is published, send the `infrahub-mcp-released` event to `opsmill/infrahub-helm`, which opens a pull request that moves the `infrahub-mcp` Helm chart to the new version ([#221](https://github.com/opsmill/infrahub-mcp/pull/221)).
