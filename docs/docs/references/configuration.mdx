@@ -178,7 +178,7 @@ The server applies middleware in registration order. The full stack when all fea
 | 14 | **ResponseCachingMiddleware** — TTL-based response caching | no |
 | 15 | **DereferenceRefsMiddleware** — inline `$ref` in JSON schemas | no |
 | 16 | **PingMiddleware** — periodic keepalive pings | no |
-| 17 | **StrictResponseLimitingMiddleware** — rejects tool responses over 500 KB with a remediation hint; for a write tool, the error says the change was applied and the tool must not be called again | yes |
+| 17 | **StrictResponseLimitingMiddleware** — rejects tool responses over 500 KB with a remediation hint; for a successful write result, the error says the change was applied and the tool must not be called again | yes |
 
 <!-- vale on -->
 

@@ -86,8 +86,9 @@ via `configure_middleware()`.
   tools annotated as idempotent or read-only
 - `StrictResponseLimitingMiddleware` — subclass of
   `ResponseLimitingMiddleware` that rejects an oversized tool response with
-  a `ToolError` instead of truncating it; for a write tool, the error says
-  the change was applied and the tool must not be called again
+  a `ToolError` instead of truncating it; for a successful write result,
+  the error says the change was applied and the tool must not be called
+  again
 - `ReadOnlyMiddleware` — blocks tools tagged `"write"` in read-only mode
 - `AuditMiddleware` — structured audit log with request IDs
 - `InfrahubConnectionMiddleware` — translates Infrahub SDK connection and
