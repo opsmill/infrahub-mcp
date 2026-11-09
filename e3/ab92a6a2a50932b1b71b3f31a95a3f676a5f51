@@ -1,0 +1,29 @@
+src/infrahub_mcp/auth.py
+  s_5bd419ccdb94b5::t_c6ce04a7df21fc 55
+pyproject.toml
+  s_5bd419ccdb94b5::t_47186bb65a1a8c 12-14
+tests/unit/test_middleware.py
+  s_5bd419ccdb94b5::t_5b9c790c429e11 1392-1405
+dev/knowledge/architecture.md
+  s_5bd419ccdb94b5::t_e5b6f540327608 85-88
+changelog/218.fixed.md
+  s_5bd419ccdb94b5::t_f9b158849846c3 1
+uv.lock
+  s_5bd419ccdb94b5::t_8e626cd6cd0704 894
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e3ab92a6a2a50932b1b71b3f31a95a3f676a5f51",
+  "prompts": {},
+  "sessions": {
+    "s_5bd419ccdb94b5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6b35c2ec-f3cc-4b6e-b08d-8a034cf1f1f0",
+        "model": "unknown"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
