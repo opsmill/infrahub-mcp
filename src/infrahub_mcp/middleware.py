@@ -19,7 +19,7 @@ import time
 from typing import TYPE_CHECKING, Any, override
 
 import pydantic_core
-from fastmcp.exceptions import ToolError
+from fastmcp.exceptions import DisabledError, FastMCPError, NotFoundError, ToolError, to_mcp_error
 from fastmcp.server.auth import restrict_tag
 from fastmcp.server.middleware.authorization import AuthMiddleware
 from fastmcp.server.middleware.caching import (
@@ -266,23 +266,55 @@ class TokenPassthroughMiddleware(Middleware):
 # ---------------------------------------------------------------------------
 
 
+def _is_tool_call_error(error: Exception, context: MiddlewareContext[Any]) -> bool:
+    """Return whether ``error`` on this request is one FastMCP reports to the client itself."""
+    return context.method == "tools/call" and isinstance(error, (FastMCPError, NotFoundError, DisabledError))
+
+
 class ToolResultErrorHandlingMiddleware(ErrorHandlingMiddleware):
-    """``ErrorHandlingMiddleware`` that lets a ``ToolError`` reach the client as a tool result.
+    """``ErrorHandlingMiddleware`` that leaves tool call errors to FastMCP's own mapping.
 
     The MCP spec reports tool execution errors in the result with ``isError: true``
     so the model can read the message and correct its call. FastMCP builds that
-    result from a ``ToolError`` that leaves the middleware chain, but MCP SDK 2.x
-    sends any ``MCPError`` as a JSON-RPC error instead. The parent class would turn
-    the ``ToolError`` into ``MCPError(-32603)``, so it is re-raised unchanged here.
-    It is still logged and counted. Unknown tools, invalid arguments and every
-    other error keep the parent's mapping to a JSON-RPC error.
+    result from a ``FastMCPError`` that leaves the middleware chain: a ``ToolError``,
+    a ``ValidationError`` for invalid arguments, or an ``AuthorizationError`` for a
+    scope denial. MCP SDK 2.x sends any ``MCPError`` as a JSON-RPC error instead,
+    and the parent class would turn these errors into ``MCPError(-32603)``, so they
+    are re-raised unchanged here.
+
+    An unknown or disabled tool is a protocol error: ``to_mcp_error`` maps it to
+    ``-32602``, as SEP-2164 requires. Every other error keeps the parent's mapping.
+
+    FastMCP core already logs an error raised while the tool runs, so these errors
+    are logged here at ``WARNING`` at most: they are results the model acts on, not
+    server faults. They are still counted for ``/metrics``.
     """
 
     @override
     def _transform_error(self, error: Exception, context: MiddlewareContext[Any]) -> Exception:
-        if context.method == "tools/call" and isinstance(error, ToolError):
+        if _is_tool_call_error(error, context):
+            if isinstance(error, (NotFoundError, DisabledError)):
+                return to_mcp_error(error)
             return error
         return super()._transform_error(error, context)
+
+    @override
+    def _log_error(self, error: Exception, context: MiddlewareContext[Any]) -> None:
+        if not _is_tool_call_error(error, context):
+            super()._log_error(error, context)
+            return
+
+        error_type = type(error).__name__
+        method = context.method or "unknown"
+        error_key = f"{error_type}:{method}"
+        self.error_counts[error_key] = self.error_counts.get(error_key, 0) + 1
+        level = min(getattr(error, "log_level", logging.WARNING), logging.WARNING)
+        self.logger.log(level, "Error in %s: %s: %s", method, error_type, error)
+        if self.error_callback:
+            try:
+                self.error_callback(error, context)
+            except Exception as callback_error:  # noqa: BLE001 — same guard as the parent class
+                self.logger.error("Error in error callback: %s", callback_error)
 
 
 # ---------------------------------------------------------------------------
@@ -290,13 +322,36 @@ class ToolResultErrorHandlingMiddleware(ErrorHandlingMiddleware):
 # ---------------------------------------------------------------------------
 
 
-class InfrahubConnectionMiddleware(Middleware):
-    """Catch Infrahub SDK connection errors and return clean MCP errors.
+def _connection_error_message(exc: BaseException) -> tuple[int, str] | None:
+    """Return the JSON-RPC code and actionable message for an Infrahub connection error."""
+    if isinstance(exc, ServerNotReachableError):
+        return -32002, f"Infrahub is unreachable at {exc}. Check that the instance is running."
+    if isinstance(exc, ServerNotResponsiveError):
+        return -32002, f"Infrahub is not responding: {exc}"
+    if isinstance(exc, AuthenticationError):
+        return -32001, (
+            f"The Infrahub MCP server returned a 401 Unauthorized error — {exc}. "
+            "Check your credentials (API token, username/password, or passthrough header)."
+        )
+    if isinstance(exc, (ConnectionError, HttpxConnectError)):
+        return -32002, (
+            f"Cannot connect to Infrahub: {exc}. Check that INFRAHUB_ADDRESS is correct and the instance is reachable."
+        )
+    return None
 
-    Converts ``ServerNotReachableError``, ``ServerNotResponsiveError``,
+
+class InfrahubConnectionMiddleware(Middleware):
+    """Catch Infrahub SDK connection errors and return actionable messages.
+
+    Handles ``ServerNotReachableError``, ``ServerNotResponsiveError``,
     ``AuthenticationError``, ``ConnectionError``, and ``HttpxConnectError``
-    into actionable ``MCPError`` messages instead of leaking raw stack traces
-    to the client.
+    instead of leaking raw SDK messages to the client.
+
+    FastMCP wraps an exception raised in a tool in ``ToolError(...) from exc``
+    before the middleware chain sees it, so the error's ``__cause__`` is checked
+    as well. On ``tools/call`` the message is raised as a ``ToolError``, which
+    reaches the client as a result with ``isError: true``. On other methods it
+    is raised as an ``MCPError``.
     """
 
     @override
@@ -319,28 +374,20 @@ class InfrahubConnectionMiddleware(Middleware):
     async def _wrap(call_next: CallNext[Any, Any], context: MiddlewareContext[Any]) -> Any:
         try:
             return await call_next(context)
-        except ServerNotReachableError as exc:
-            raise MCPError(
-                code=-32002, message=f"Infrahub is unreachable at {exc}. Check that the instance is running."
-            ) from exc
-        except ServerNotResponsiveError as exc:
-            raise MCPError(code=-32002, message=f"Infrahub is not responding: {exc}") from exc
-        except AuthenticationError as exc:
-            raise MCPError(
-                code=-32001,
-                message=(
-                    f"The Infrahub MCP server returned a 401 Unauthorized error — {exc}. "
-                    "Check your credentials (API token, username/password, or passthrough header)."
-                ),
-            ) from exc
-        except (ConnectionError, HttpxConnectError) as exc:
-            raise MCPError(
-                code=-32002,
-                message=(
-                    f"Cannot connect to Infrahub: {exc}. "
-                    "Check that INFRAHUB_ADDRESS is correct and the instance is reachable."
-                ),
-            ) from exc
+        except MCPError:
+            raise
+        except Exception as exc:
+            original: BaseException = exc
+            found = _connection_error_message(exc)
+            if found is None and exc.__cause__ is not None:
+                original = exc.__cause__
+                found = _connection_error_message(original)
+            if found is None:
+                raise
+            code, message = found
+            if context.method == "tools/call":
+                raise ToolError(message) from original
+            raise MCPError(code=code, message=message) from original
 
 
 # ---------------------------------------------------------------------------

@@ -78,12 +78,16 @@ via `configure_middleware()`.
 **Custom middleware:**
 
 - `ToolResultErrorHandlingMiddleware` — subclass of `ErrorHandlingMiddleware`
-  that returns a `ToolError` from `tools/call` as a tool result with
-  `isError: true` instead of a JSON-RPC error
+  that leaves `tools/call` errors to FastMCP's own mapping: a `ToolError`,
+  invalid arguments and an OIDC scope denial return a tool result with
+  `isError: true`, and an unknown tool returns JSON-RPC `-32602`. These
+  errors are logged at `WARNING`, because FastMCP core already logs them
 - `ReadOnlyMiddleware` — blocks tools tagged `"write"` in read-only mode
 - `AuditMiddleware` — structured audit log with request IDs
 - `InfrahubConnectionMiddleware` — translates Infrahub SDK connection and
-  authentication exceptions to MCP errors
+  authentication exceptions, including ones wrapped in a `ToolError`, to
+  messages with a remediation hint: an `isError` result on `tools/call`,
+  a JSON-RPC error on other methods
 - `MetricsMiddleware` — request, error and latency counters for the
   `/metrics` endpoint
 

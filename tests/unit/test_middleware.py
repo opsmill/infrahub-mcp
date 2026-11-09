@@ -14,13 +14,13 @@ if TYPE_CHECKING:
 import mcp.types as mt
 import pytest
 from fastmcp import Client, FastMCP
-from fastmcp.exceptions import ToolError
+from fastmcp.exceptions import InsufficientScopeError, ToolError
 from fastmcp.server.middleware.error_handling import RetryMiddleware
-from fastmcp.server.middleware.middleware import MiddlewareContext
+from fastmcp.server.middleware.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.base import ToolResult
 from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
 from mcp import MCPError
-from mcp.types import TextContent
+from mcp.types import INVALID_PARAMS, TextContent
 from opentelemetry import trace
 
 import infrahub_mcp.middleware as middleware_module
@@ -1217,7 +1217,7 @@ class TestInfrahubConnectionMiddleware:
         async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             raise ServerNotReachableError(address="http://infrahub:8000")
 
-        with pytest.raises(MCPError, match="Infrahub is unreachable"):
+        with pytest.raises(ToolError, match="Infrahub is unreachable"):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
@@ -1239,7 +1239,7 @@ class TestInfrahubConnectionMiddleware:
         async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             raise ServerNotResponsiveError(url="http://infrahub:8000/api/schema")
 
-        with pytest.raises(MCPError, match="Infrahub is not responding"):
+        with pytest.raises(ToolError, match="Infrahub is not responding"):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
@@ -1251,7 +1251,7 @@ class TestInfrahubConnectionMiddleware:
             msg = "Invalid API token"
             raise AuthenticationError(msg)
 
-        with pytest.raises(MCPError, match="401 Unauthorized"):
+        with pytest.raises(ToolError, match="401 Unauthorized"):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
@@ -1265,7 +1265,7 @@ class TestInfrahubConnectionMiddleware:
             msg = "Connection refused"
             raise httpx.ConnectError(msg)
 
-        with pytest.raises(MCPError, match="Cannot connect to Infrahub"):
+        with pytest.raises(ToolError, match="Cannot connect to Infrahub"):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
@@ -1332,15 +1332,81 @@ class TestToolResultErrorHandlingMiddleware:
         assert text.startswith("Schema not found for kind: Missing.")
         assert "Remediation:" in text
 
-    async def test_unknown_tool_stays_protocol_error(self) -> None:
+    async def test_unknown_tool_is_invalid_params_protocol_error(self) -> None:
+        """SEP-2164: a request naming a tool that does not exist is a -32602 invalid-params error."""
         async with Client(_error_handling_server()) as client:
-            with pytest.raises(MCPError, match="Unknown tool: 'does_not_exist'"):
+            with pytest.raises(MCPError, match="Unknown tool: 'does_not_exist'") as exc_info:
                 await client.call_tool("does_not_exist", {})
+        assert exc_info.value.error.code == INVALID_PARAMS
 
-    async def test_invalid_arguments_stay_protocol_error(self) -> None:
+    async def test_invalid_arguments_reach_client_as_error_result(self) -> None:
+        """Input validation errors are tool execution errors, so the model can correct its arguments."""
         async with Client(_error_handling_server()) as client:
-            with pytest.raises(MCPError, match="Input should be a valid string"):
-                await client.call_tool("get_schema", {"kind": 42})
+            result = await client.call_tool("get_schema", {"kind": 42}, raise_on_error=False)
+        assert result.is_error
+        assert "Input should be a valid string" in result.content[0].text
+
+    async def test_scope_denial_reaches_client_as_error_result(self) -> None:
+        """An OIDC scope denial names the missing scopes in an isError result instead of -32603."""
+        server = FastMCP("scope-denial")
+
+        @server.tool(tags={"write"})
+        def node_upsert() -> str:
+            return "created"
+
+        class _DenyWrites(Middleware):
+            async def on_call_tool(
+                self,
+                context: MiddlewareContext[mt.CallToolRequestParams],
+                call_next: CallNext[mt.CallToolRequestParams, ToolResult],
+            ) -> ToolResult:
+                raise InsufficientScopeError(["infrahub:write"])
+
+        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
+        server.add_middleware(_DenyWrites())
+        async with Client(server) as client:
+            result = await client.call_tool("node_upsert", {}, raise_on_error=False)
+        assert result.is_error
+        assert "Insufficient scope. Required: infrahub:write" in result.content[0].text
+
+    async def test_connection_error_from_tool_code_reaches_client_with_hint(self) -> None:
+        """FastMCP wraps the SDK error in a ToolError; the connection middleware still matches its cause."""
+        server = FastMCP("unreachable")
+
+        @server.tool
+        def get_nodes() -> str:
+            raise ServerNotReachableError(address="http://infrahub:8000")
+
+        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
+        server.add_middleware(InfrahubConnectionMiddleware())
+        async with Client(server) as client:
+            result = await client.call_tool("get_nodes", {}, raise_on_error=False)
+        assert result.is_error
+        text = result.content[0].text
+        assert "Infrahub is unreachable" in text
+        assert "Check that the instance is running." in text
+
+    async def test_tool_call_error_is_logged_once_at_error_level(self, caplog: pytest.LogCaptureFixture) -> None:
+        """FastMCP core logs the tool error; the middleware adds a WARNING line, not a second ERROR line."""
+        server = FastMCP("logging")
+
+        @server.tool
+        def get_schema(kind: str) -> str:
+            msg = f"Schema not found for kind: {kind}."
+            raise ToolError(msg)
+
+        middleware = ToolResultErrorHandlingMiddleware(logger=logging.getLogger("infrahub_mcp.errors"))
+        server.add_middleware(middleware)
+        with caplog.at_level(logging.DEBUG):
+            async with Client(server) as client:
+                await client.call_tool("get_schema", {"kind": "Missing"}, raise_on_error=False)
+        error_lines = [r for r in caplog.records if r.levelno >= logging.ERROR]
+        assert len(error_lines) == 1, [r.getMessage() for r in error_lines]
+        assert any(
+            r.name == "infrahub_mcp.errors" and r.levelno == logging.WARNING and "Schema not found" in r.getMessage()
+            for r in caplog.records
+        )
+        assert middleware.get_error_stats() == {"ToolError:tools/call": 1}
 
     async def test_error_from_tool_code_reaches_client_as_error_result(self) -> None:
         """FastMCP wraps an exception from the tool body in a ToolError, so it also becomes an isError result."""
@@ -1400,12 +1466,15 @@ class TestToolResultErrorHandlingMiddleware:
             raise ToolError(msg)
 
         with (
-            caplog.at_level(logging.ERROR, logger="infrahub_mcp.errors"),
+            caplog.at_level(logging.WARNING, logger="infrahub_mcp.errors"),
             pytest.raises(ToolError, match="Schema not found"),
         ):
             await middleware.on_message(ctx, call_next)
         assert middleware.get_error_stats() == {"ToolError:tools/call": 1}
-        assert any("Error in tools/call: ToolError: Schema not found" in r.message for r in caplog.records)
+        assert any(
+            r.levelno == logging.WARNING and "Error in tools/call: ToolError: Schema not found" in r.message
+            for r in caplog.records
+        )
 
     async def test_tool_error_keeps_its_cause(self) -> None:
         """The ToolError is re-raised as-is, so the exception that caused it stays attached for tracing."""
