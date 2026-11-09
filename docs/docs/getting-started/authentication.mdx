@@ -150,6 +150,8 @@ When configured, tools tagged `write` (`node_upsert`, `node_delete`, `propose_ch
 1. **Hidden from discovery** — users without the required scope never see write tools in `tools/list`.
 2. **Blocked at call time** — even if a client hardcodes a tool name, the call is rejected.
 
+The same scope applies to the `make_infra_change` prompt, which is also tagged `write`. Users without the write scope do not see it in `prompts/list`, and a request to fetch it is rejected.
+
 Users without the write scope effectively get a read-only experience without needing `INFRAHUB_MCP_READ_ONLY=true`.
 
 <!-- vale Infrahub.sentence-case = NO -->
