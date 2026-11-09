@@ -579,6 +579,11 @@ class StrictResponseLimitingMiddleware(ResponseLimitingMiddleware):
     keeping the agent in its self-correction loop (tighten ``filters``, drop
     ``limit``, narrow ``include_attributes``) rather than guessing at truncated
     data.
+
+    A tool tagged ``"write"`` has already applied its change when the size
+    check runs, so its error says the change was applied and tells the agent
+    not to call the tool again: repeating a write that is not idempotent can
+    create duplicates.
     """
 
     @override
@@ -603,6 +608,18 @@ class StrictResponseLimitingMiddleware(ResponseLimitingMiddleware):
             len(serialized),
             self.max_size,
         )
+        tool = None
+        if context.fastmcp_context is not None:
+            tool = await context.fastmcp_context.fastmcp.get_tool(tool_name)
+        if tool is not None and WRITE_TAG in (tool.tags or set()):
+            raise ToolError(
+                f"{tool_name!r} applied the change, but its response is "
+                f"{len(serialized)} bytes, over the {self.max_size}-byte limit, "
+                "so it was not returned.\n"
+                f"Do not call {tool_name!r} again for this change. "
+                "To check the result, read the changed nodes with `get_nodes` "
+                "or `query_graphql`."
+            )
         raise ToolError(
             f"Response from {tool_name!r} is {len(serialized)} bytes, "
             f"over the {self.max_size}-byte limit.\n"

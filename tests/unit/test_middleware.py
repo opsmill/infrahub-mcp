@@ -1373,6 +1373,24 @@ class TestToolResultErrorHandlingMiddleware:
         assert "over the 200-byte limit" in text
         assert "Remediation:" in text
 
+    async def test_oversized_write_response_says_not_to_call_again(self) -> None:
+        """A write tool has already applied its change, so the error must not ask the model to repeat the call."""
+        server = FastMCP("oversized-write-response")
+
+        @server.tool(tags={"write"})
+        def node_upsert() -> str:
+            return "x" * 1_000
+
+        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
+        server.add_middleware(StrictResponseLimitingMiddleware(max_size=200))
+        async with Client(server) as client:
+            result = await client.call_tool("node_upsert", {}, raise_on_error=False)
+        assert result.is_error
+        text = result.content[0].text
+        assert "applied the change" in text
+        assert "Do not call 'node_upsert' again" in text
+        assert "Remediation:" not in text
+
     async def test_tool_error_is_logged_and_counted(self, caplog: pytest.LogCaptureFixture) -> None:
         middleware = ToolResultErrorHandlingMiddleware(logger=logging.getLogger("infrahub_mcp.errors"))
         ctx = _make_tool_context("get_schema")
