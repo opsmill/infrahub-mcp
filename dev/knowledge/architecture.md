@@ -87,7 +87,7 @@ via `configure_middleware()`.
 - `InfrahubConnectionMiddleware` — translates Infrahub SDK connection and
   authentication exceptions, including ones wrapped in a `ToolError`, to
   messages with a remediation hint: an `isError` result on `tools/call`,
-  a JSON-RPC error on other methods
+  a JSON-RPC error on resource reads
 - `MetricsMiddleware` — request, error and latency counters for the
   `/metrics` endpoint
 
