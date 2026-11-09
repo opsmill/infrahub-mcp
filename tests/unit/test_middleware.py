@@ -12,7 +12,9 @@ if TYPE_CHECKING:
 
 import mcp.types as mt
 import pytest
+from fastmcp import Client, FastMCP
 from fastmcp.exceptions import ToolError
+from fastmcp.server.auth import AccessToken
 from fastmcp.server.middleware.error_handling import RetryMiddleware
 from fastmcp.server.middleware.middleware import MiddlewareContext
 from fastmcp.tools.base import ToolResult
@@ -39,6 +41,7 @@ from infrahub_mcp.middleware import (
     get_error_handling,
     get_metrics,
 )
+from infrahub_mcp.prompts.prompts import mcp as prompts_mcp
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -942,6 +945,50 @@ class TestConfigureMiddlewareOidc:
 
         types = [type(m).__name__ for m in mock_mcp.middleware]
         assert "AuthMiddleware" in types
+
+
+class TestOidcWriteScopeGatesWritePrompt:
+    """The write scope also gates the ``write``-tagged ``make_infra_change`` prompt (#192)."""
+
+    @staticmethod
+    def _server_with_oidc_auth() -> FastMCP:
+        """Mount the real prompts behind the AuthMiddleware that configure_middleware builds."""
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+        mock_mcp.add_middleware.side_effect = mock_mcp.middleware.append
+        configure_middleware(mock_mcp, ServerConfig(auth_mode="oidc", auth_scopes_write="infrahub:write"))
+        auth_middleware = next(m for m in mock_mcp.middleware if type(m).__name__ == "AuthMiddleware")
+
+        server = FastMCP(name="oidc-prompts")
+        server.mount(prompts_mcp)
+        server.add_middleware(auth_middleware)
+        return server
+
+    @staticmethod
+    async def _list_and_get(server: FastMCP, scopes: list[str]) -> tuple[set[str], bool]:
+        token = AccessToken(token="test-token", client_id="test-client", scopes=scopes)  # noqa: S106
+        with patch("fastmcp.server.middleware.authorization.get_access_token", return_value=token):
+            async with Client(server) as client:
+                names = {p.name for p in await client.list_prompts()}
+                try:
+                    await client.get_prompt("make_infra_change", arguments={"description": "add a VLAN"})
+                    fetchable = True
+                except MCPError:
+                    fetchable = False
+        return names, fetchable
+
+    @pytest.mark.asyncio
+    async def test_token_without_write_scope_cannot_list_or_get_make_infra_change(self) -> None:
+        names, fetchable = await self._list_and_get(self._server_with_oidc_auth(), scopes=["openid"])
+        assert "make_infra_change" not in names
+        assert {"answer_infra_question", "explore_schema"} <= names
+        assert fetchable is False
+
+    @pytest.mark.asyncio
+    async def test_token_with_write_scope_can_list_and_get_make_infra_change(self) -> None:
+        names, fetchable = await self._list_and_get(self._server_with_oidc_auth(), scopes=["openid", "infrahub:write"])
+        assert "make_infra_change" in names
+        assert fetchable is True
 
 
 # ---------------------------------------------------------------------------
