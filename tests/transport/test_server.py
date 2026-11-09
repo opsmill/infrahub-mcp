@@ -232,7 +232,7 @@ async def test_tool_error_does_not_execute_mutation(connected: Connection) -> No
         "query_graphql", {"query": 'mutation { TestWidgetDelete(id: "example") { ok } }'}, raise_on_error=False
     )
     assert result.is_error
-    assert "Mutations are not allowed" in result.content[0].text  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+    assert "Mutations are not allowed" in result.content[0].text  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
     assert "graphql-executed" not in (await AsyncPath(events).read_text(encoding="utf-8")).splitlines()
 
 
@@ -241,7 +241,7 @@ async def test_tool_error_returns_error_result(connected: Connection) -> None:
     client, _ = connected
     result = await client.call_tool("get_schema", {"kind": "MissingWidget"}, raise_on_error=False)
     assert result.is_error
-    text = result.content[0].text  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+    text = result.content[0].text  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
     assert text.startswith("Schema not found for kind: MissingWidget.")
     assert "Remediation:" in text
     assert "Traceback" not in text

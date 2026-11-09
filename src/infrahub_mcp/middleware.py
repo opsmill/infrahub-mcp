@@ -47,6 +47,7 @@ from fastmcp.server.middleware.response_limiting import (
     ResponseLimitingMiddleware,
 )
 from fastmcp.server.middleware.timing import DetailedTimingMiddleware
+from fastmcp.tools.base import InputRequiredToolResult, ToolResult
 from httpx import ConnectError as HttpxConnectError
 from infrahub_sdk.exceptions import AuthenticationError, ServerNotReachableError, ServerNotResponsiveError
 from mcp import MCPError
@@ -63,7 +64,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     import mcp.types as mt
-    from fastmcp.tools.base import Tool, ToolResult
+    from fastmcp.tools.base import Tool
 
     from infrahub_mcp.config import ServerConfig
 
@@ -76,6 +77,18 @@ WRITE_TAG = "write"
 
 # ContextVar for propagating the request ID to downstream middleware and log filters.
 current_request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_request_id", default=None)
+
+
+async def _resolve_tool(context: MiddlewareContext[mt.CallToolRequestParams]) -> Tool | None:
+    """Return the tool a ``tools/call`` request names, or ``None`` when it cannot be resolved."""
+    if context.fastmcp_context is None:
+        return None
+    return await context.fastmcp_context.fastmcp.get_tool(context.message.name)
+
+
+def _is_write_tool(tool: Tool) -> bool:
+    """Return whether ``tool`` is tagged ``"write"``."""
+    return WRITE_TAG in (tool.tags or set())
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +183,7 @@ class ReadOnlyMiddleware(Middleware):
         call_next: CallNext[mt.ListToolsRequest, Sequence[Tool]],
     ) -> Sequence[Tool]:
         tools = await call_next(context)
-        filtered = [t for t in tools if WRITE_TAG not in (t.tags or set())]
+        filtered = [t for t in tools if not _is_write_tool(t)]
         hidden = len(tools) - len(filtered)
         if hidden:
             logger.debug("read_only_filter hidden_tools=%d", hidden)
@@ -185,16 +198,9 @@ class ReadOnlyMiddleware(Middleware):
         tool_name = context.message.name
 
         # Resolve the tool to check its tags dynamically.
-        # Fall back to name-based check if resolution is unavailable.
-        is_write = False
-        if context.fastmcp_context is not None:
-            tool = await context.fastmcp_context.fastmcp.get_tool(tool_name)
-            is_write = (
-                WRITE_TAG in (tool.tags or set()) if tool is not None else tool_name not in self._KNOWN_READ_ONLY_TOOLS
-            )
-        else:
-            # Fail-closed: without context, only allow known read-only tools
-            is_write = tool_name not in self._KNOWN_READ_ONLY_TOOLS
+        # Fail-closed: when the tool cannot be resolved, only allow known read-only tools.
+        tool = await _resolve_tool(context)
+        is_write = _is_write_tool(tool) if tool is not None else tool_name not in self._KNOWN_READ_ONLY_TOOLS
 
         if is_write:
             logger.warning("read_only_blocked tool=%s", tool_name)
@@ -293,7 +299,7 @@ class ToolResultErrorHandlingMiddleware(ErrorHandlingMiddleware):
     @override
     def _transform_error(self, error: Exception, context: MiddlewareContext[Any]) -> Exception:
         if _is_tool_call_error(error, context):
-            if isinstance(error, (NotFoundError, DisabledError)):
+            if self.transform_errors and isinstance(error, (NotFoundError, DisabledError)):
                 return to_mcp_error(error)
             return error
         return super()._transform_error(error, context)
@@ -309,7 +315,14 @@ class ToolResultErrorHandlingMiddleware(ErrorHandlingMiddleware):
         error_key = f"{error_type}:{method}"
         self.error_counts[error_key] = self.error_counts.get(error_key, 0) + 1
         level = min(getattr(error, "log_level", logging.WARNING), logging.WARNING)
-        self.logger.log(level, "Error in %s: %s: %s", method, error_type, error)
+        self.logger.log(
+            level,
+            "Error in %s: %s: %s",
+            method,
+            error_type,
+            error,
+            exc_info=error if self.include_traceback else None,
+        )
         if self.error_callback:
             try:
                 self.error_callback(error, context)
@@ -325,9 +338,9 @@ class ToolResultErrorHandlingMiddleware(ErrorHandlingMiddleware):
 def _connection_error_message(exc: BaseException) -> tuple[int, str] | None:
     """Return the JSON-RPC code and actionable message for an Infrahub connection error."""
     if isinstance(exc, ServerNotReachableError):
-        return -32002, f"Infrahub is unreachable at {exc}. Check that the instance is running."
+        return -32002, f"Infrahub is unreachable at {exc.address}. Check that the instance is running."
     if isinstance(exc, ServerNotResponsiveError):
-        return -32002, f"Infrahub is not responding: {exc}"
+        return -32002, f"Infrahub is not responding: {exc} Check that the instance is running and not overloaded."
     if isinstance(exc, AuthenticationError):
         return -32001, (
             f"The Infrahub MCP server returned a 401 Unauthorized error — {exc}. "
@@ -593,9 +606,7 @@ class SafeRetryMiddleware(RetryMiddleware):
         call_next: CallNext[mt.CallToolRequestParams, ToolResult],
     ) -> ToolResult:
         # Check if the tool is marked idempotent before applying retries
-        tool = None
-        if context.fastmcp_context is not None:
-            tool = await context.fastmcp_context.fastmcp.get_tool(context.message.name)
+        tool = await _resolve_tool(context)
 
         is_safe_to_retry = False
         if tool is not None and tool.annotations is not None:
@@ -627,10 +638,10 @@ class StrictResponseLimitingMiddleware(ResponseLimitingMiddleware):
     ``limit``, narrow ``include_attributes``) rather than guessing at truncated
     data.
 
-    A tool tagged ``"write"`` has already applied its change when the size
-    check runs, so its error says the change was applied and tells the agent
-    not to call the tool again: repeating a write that is not idempotent can
-    create duplicates.
+    A tool tagged ``"write"`` that returned a result without ``isError`` has
+    already applied its change when the size check runs, so its error says the
+    change was applied and tells the agent not to call the tool again: repeating
+    a write that is not idempotent can create duplicates.
     """
 
     @override
@@ -641,7 +652,11 @@ class StrictResponseLimitingMiddleware(ResponseLimitingMiddleware):
     ) -> ToolResult:
         result = await call_next(context)
 
-        if self.tools is not None and context.message.name not in self.tools:
+        # As in the parent class: a multi-round-trip ask (SEP-2322) or a task
+        # acknowledgement carries no tool content to measure.
+        if isinstance(result, InputRequiredToolResult) or not isinstance(result, ToolResult):
+            return result
+        if not self._limits_tool(context.message.name):
             return result
 
         serialized = pydantic_core.to_json(result, fallback=str)
@@ -655,10 +670,8 @@ class StrictResponseLimitingMiddleware(ResponseLimitingMiddleware):
             len(serialized),
             self.max_size,
         )
-        tool = None
-        if context.fastmcp_context is not None:
-            tool = await context.fastmcp_context.fastmcp.get_tool(tool_name)
-        if tool is not None and WRITE_TAG in (tool.tags or set()):
+        tool = await _resolve_tool(context)
+        if tool is not None and _is_write_tool(tool) and not result.is_error:
             raise ToolError(
                 f"{tool_name!r} applied the change, but its response is "
                 f"{len(serialized)} bytes, over the {self.max_size}-byte limit, "

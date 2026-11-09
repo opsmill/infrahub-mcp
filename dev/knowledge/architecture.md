@@ -66,11 +66,8 @@ via `configure_middleware()`.
 
 - `StructuredLoggingMiddleware` — structured log output
 - `DetailedTimingMiddleware` — request duration tracking
-- `ErrorHandlingMiddleware` — exception-to-MCP-error translation
-- `RetryMiddleware` — transient failure retry with backoff
 - `ResponseCachingMiddleware` — TTL-based caching for schema/list ops
 - `RateLimitingMiddleware` — token-bucket rate limiting
-- `ResponseLimitingMiddleware` — response size control
 - `PingMiddleware` — HTTP session keep-alive
 - `DereferenceRefsMiddleware` — JSON Schema `$ref` resolution
 - `AuthMiddleware` — OAuth scope enforcement
@@ -80,8 +77,17 @@ via `configure_middleware()`.
 - `ToolResultErrorHandlingMiddleware` — subclass of `ErrorHandlingMiddleware`
   that leaves `tools/call` errors to FastMCP's own mapping: a `ToolError`,
   invalid arguments and an OIDC scope denial return a tool result with
-  `isError: true`, and an unknown tool returns JSON-RPC `-32602`. These
-  errors are logged at `WARNING`, because FastMCP core already logs them
+  `isError: true`, and an unknown tool returns JSON-RPC `-32602` (in OIDC
+  mode `AuthMiddleware` rejects it first as an `isError` result; in
+  read-only mode `ReadOnlyMiddleware` returns `-32601`). These errors are
+  logged at `WARNING`, because they are results the model acts on and
+  FastMCP core already logs them
+- `SafeRetryMiddleware` — subclass of `RetryMiddleware` that retries only
+  tools annotated as idempotent or read-only
+- `StrictResponseLimitingMiddleware` — subclass of
+  `ResponseLimitingMiddleware` that rejects an oversized tool response with
+  a `ToolError` instead of truncating it; for a write tool, the error says
+  the change was applied and the tool must not be called again
 - `ReadOnlyMiddleware` — blocks tools tagged `"write"` in read-only mode
 - `AuditMiddleware` — structured audit log with request IDs
 - `InfrahubConnectionMiddleware` — translates Infrahub SDK connection and

@@ -1217,7 +1217,9 @@ class TestInfrahubConnectionMiddleware:
         async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             raise ServerNotReachableError(address="http://infrahub:8000")
 
-        with pytest.raises(ToolError, match="Infrahub is unreachable"):
+        with pytest.raises(
+            ToolError, match=r"^Infrahub is unreachable at http://infrahub:8000\. Check that the instance is running\.$"
+        ):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
@@ -1239,7 +1241,7 @@ class TestInfrahubConnectionMiddleware:
         async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
             raise ServerNotResponsiveError(url="http://infrahub:8000/api/schema")
 
-        with pytest.raises(ToolError, match="Infrahub is not responding"):
+        with pytest.raises(ToolError, match=r"Infrahub is not responding: .* Check that the instance is running"):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
@@ -1456,6 +1458,51 @@ class TestToolResultErrorHandlingMiddleware:
         assert "applied the change" in text
         assert "Do not call 'node_upsert' again" in text
         assert "Remediation:" not in text
+
+    async def test_oversized_write_error_result_keeps_generic_message(self) -> None:
+        """A write tool that returned an error result did not apply a change, so the error must not say it did."""
+        server = FastMCP("oversized-write-error-result")
+
+        @server.tool(tags={"write"})
+        def node_upsert() -> ToolResult:
+            return ToolResult(content=[TextContent(type="text", text="x" * 1_000)], is_error=True)
+
+        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=True))
+        server.add_middleware(StrictResponseLimitingMiddleware(max_size=200))
+        async with Client(server) as client:
+            result = await client.call_tool("node_upsert", {}, raise_on_error=False)
+        assert result.is_error
+        text = result.content[0].text
+        assert "applied the change" not in text
+        assert "over the 200-byte limit" in text
+
+    async def test_tool_error_log_includes_traceback_in_debug(self, caplog: pytest.LogCaptureFixture) -> None:
+        """With include_traceback, the WARNING line for a tool call error keeps the traceback."""
+        middleware = ToolResultErrorHandlingMiddleware(
+            logger=logging.getLogger("infrahub_mcp.errors"), include_traceback=True
+        )
+        ctx = _make_tool_context("get_schema")
+
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
+            msg = "Schema not found for kind: Missing."
+            raise ToolError(msg)
+
+        with (
+            caplog.at_level(logging.WARNING, logger="infrahub_mcp.errors"),
+            pytest.raises(ToolError),
+        ):
+            await middleware.on_message(ctx, call_next)
+        record = next(r for r in caplog.records if r.name == "infrahub_mcp.errors")
+        assert record.exc_info is not None
+
+    async def test_unknown_tool_without_transform_is_left_to_fastmcp(self) -> None:
+        """With transform_errors=False, an unknown tool keeps FastMCP's own isError result."""
+        server = FastMCP("no-transform")
+        server.add_middleware(ToolResultErrorHandlingMiddleware(transform_errors=False))
+        async with Client(server) as client:
+            result = await client.call_tool("does_not_exist", {}, raise_on_error=False)
+        assert result.is_error
+        assert "Unknown tool: 'does_not_exist'" in result.content[0].text
 
     async def test_tool_error_is_logged_and_counted(self, caplog: pytest.LogCaptureFixture) -> None:
         middleware = ToolResultErrorHandlingMiddleware(logger=logging.getLogger("infrahub_mcp.errors"))
