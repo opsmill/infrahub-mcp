@@ -1,1 +1,0 @@
-When retries are enabled with `INFRAHUB_MCP_RETRY_MAX_ATTEMPTS`, the server no longer retries a tool that is not annotated as idempotent or read-only, such as `node_upsert`, after a connection or timeout error. Before, every tool call was retried, so a write that reached Infrahub before the error could be applied more than once.

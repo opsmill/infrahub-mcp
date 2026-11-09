@@ -11,6 +11,40 @@ This project uses [*towncrier*](https://towncrier.readthedocs.io/) and the chang
 
 <!-- towncrier release notes start -->
 
+## [Infrahub MCP - v1.3.0](https://github.com/opsmill/infrahub-mcp/tree/v1.3.0) - 2026-11-09
+
+### Security
+
+- The container image rejects certificates that chain through the compromised eMudhra intermediate CAs ([incident page](https://emudhra.we-have-a-problem.com/)). The build stage moves to uv 0.13.6 on Debian trixie. The runtime stage upgrades `ca-certificates`.
+
+### Added
+
+- Added a guide to deploying the MCP server on Kubernetes with the `infrahub-mcp` Helm chart, either standalone or as part of the `infrahub` chart.
+
+### Changed
+
+- Tool call errors now follow the MCP specification and FastMCP's own error mapping:
+
+  - A call with invalid arguments returns a tool result with `isError: true` that carries the validation message, instead of a JSON-RPC `-32603 Internal error`.
+  - In OIDC mode, a call that the token's scopes do not allow returns a tool result with `isError: true` that names the missing scopes, instead of a JSON-RPC `-32603 Internal error`.
+  - A call to an unknown tool returns JSON-RPC `-32602`, as SEP-2164 requires, instead of `-32001`. In OIDC mode, the scope check rejects the call first and returns a tool result with `isError: true`. In read-only mode, the call returns JSON-RPC `-32601`.
+  - When Infrahub is unreachable, not responding or rejects the credentials, a tool call now returns the message with the remediation hint, such as "Check that the instance is running", instead of the raw Infrahub SDK message.
+  - The server's error-handling middleware logs a tool call error at `WARNING` level instead of `ERROR` level, because the error is a result the model acts on, not a server fault. FastMCP core and the structured logging middleware still log the error at `ERROR` level.
+
+  ([#234](https://github.com/opsmill/infrahub-mcp/issues/234))
+
+### Fixed
+
+- In read-only mode, the server no longer lists or serves the `make_infra_change` prompt, which tells the agent to use write tools that read-only mode removes. With `auth_mode=oidc`, the prompt now also requires the write scope (`INFRAHUB_MCP_AUTH_SCOPES_WRITE`), like the write tools. ([#192](https://github.com/opsmill/infrahub-mcp/issues/192))
+- OIDC mode now starts without `INFRAHUB_MCP_OIDC_CLIENT_SECRET` when the new `INFRAHUB_MCP_OIDC_JWT_SIGNING_KEY` is set, so the identity provider can register the MCP server as a public client. Before, the server stopped at startup with a FastMCP error in that setup. When neither variable is set, the server now stops with an error that names both. ([#215](https://github.com/opsmill/infrahub-mcp/issues/215))
+- An error raised while a tool runs now returns a tool result with `isError: true` that carries the error message and any remediation hint, as the MCP specification recommends. This covers, for example, `get_nodes` with an unknown kind, a response over the size limit, a GraphQL mutation sent to `query_graphql`, and Infrahub SDK errors such as an unreachable Infrahub instance or a rejected API token. Since the upgrade to FastMCP 4 and MCP SDK 2, these errors reached the client as a JSON-RPC `-32603 Internal error`. Outside OIDC mode, unknown tools and calls to write tools on a read-only server still return JSON-RPC errors; in OIDC mode, the scope check rejects these calls first with a tool result with `isError: true`. Requests without passthrough credentials still return JSON-RPC errors. When the response of a write tool such as `node_upsert` or `mutate_graphql` is over the size limit, the error now says that the change was applied and that the tool must not be called again, instead of asking the client to narrow its filters and repeat the call. The server now requires FastMCP 4.1.0 or later, the first release that passes such an error on without replacing the exception that caused it. ([#218](https://github.com/opsmill/infrahub-mcp/issues/218))
+- When retries are enabled with `INFRAHUB_MCP_RETRY_MAX_ATTEMPTS`, the server no longer retries a tool that is not annotated as idempotent or read-only, such as `node_upsert`, after a connection or timeout error. Before, every tool call was retried, so a write that reached Infrahub before the error could be applied more than once.
+- Writes now reuse one session branch and `propose_changes` finds it when the client uses MCP protocol version 2026-07-28, which has no sessions. Previously every write created a new branch and `propose_changes` failed with "No session branch exists yet". Without an MCP session, the server now keeps one branch per authenticated caller identity (OIDC principal, passthrough token or Basic credentials), or one per server process when there is no authentication.
+
+### Housekeeping
+
+- After a final release is published, send the `infrahub-mcp-released` event to opsmill/infrahub-helm, which opens a pull request that moves the `infrahub-mcp` Helm chart to the new version.
+
 ## [Infrahub MCP - v1.2.1](https://github.com/opsmill/infrahub-mcp/tree/v1.2.1) - 2026-10-27
 
 ### Security
