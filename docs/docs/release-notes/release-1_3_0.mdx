@@ -26,7 +26,7 @@ description: Run the container image without trusting compromised intermediate c
 
 ## Release summary
 
-Upgrade the container image so that it rejects certificates that chain through the compromised intermediate certificate authorities named in a recent certificate authority incident. After the upgrade, an agent receives tool call errors as tool results it can read and act on, instead of a generic internal error. Writes from clients on MCP protocol version 2026-07-28 reuse one session branch, so `propose_changes` finds it. You can also deploy the server on Kubernetes with the `infrahub-mcp` Helm chart.
+Upgrade the container image so that it rejects certificates that chain through the compromised intermediate certificate authorities named in a recent certificate authority incident. After the upgrade, an agent receives errors raised while a tool runs as tool results it can read and act on, instead of a generic internal error. Writes from clients on MCP protocol version 2026-07-28 reuse one session branch, so `propose_changes` finds it. You can also deploy the server on Kubernetes with the `infrahub-mcp` Helm chart.
 
 ### Run the container image without trusting compromised intermediate certificate authorities
 
@@ -39,7 +39,7 @@ The container image now rejects certificates that chain through the compromised 
 
 ### Receive tool call errors as results the agent can act on
 
-When a tool call fails, the client now receives a tool result with `isError: true` that carries the error message, as the MCP specification recommends. The agent can read the message, and any remediation hint, and correct the next call. Since the upgrade to FastMCP 4 and MCP SDK 2, these errors reached the client as a JSON-RPC `-32603 Internal error`.
+When an error is raised while a tool runs, the client now receives a tool result with `isError: true` that carries the error message, as the MCP specification recommends. The agent can read the message, and any remediation hint, and correct the next call. Since the upgrade to FastMCP 4 and MCP SDK 2, these errors reached the client as a JSON-RPC `-32603 Internal error`.
 
 **What changed**
 
