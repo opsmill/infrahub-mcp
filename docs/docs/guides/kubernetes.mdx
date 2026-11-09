@@ -65,16 +65,17 @@ For the other modes (`basic-passthrough` and `oidc`) and their required configur
 
 In the `none` and `oidc` modes, the MCP server calls Infrahub with one API token that it holds itself. Store that token in a Kubernetes Secret rather than in your values file.
 
-The following commands prompt for the token, write it to a file that only you can read, create the Secret from that file and then delete the file. Passing the token through a file keeps it out of your shell history and out of the `kubectl` process arguments. `printf '%s'` writes the token without a trailing newline, because `kubectl` stores the file content as it is:
+The following commands prompt for the token, write it to a temporary file, create the Secret from that file and then delete the file. Passing the token through a file keeps it out of your shell history and out of the `kubectl` process arguments. `mktemp` creates a new file with a unique name that only you can read, so the token is never written to a file or link that already exists. `printf '%s'` writes the token without a trailing newline, because `kubectl` stores the file content as it is:
 
 ```bash
 read -rs INFRAHUB_API_TOKEN
-(umask 077 && printf '%s' "$INFRAHUB_API_TOKEN" > infrahub-api-token)
+token_file="$(mktemp)"
+printf '%s' "$INFRAHUB_API_TOKEN" > "$token_file"
 kubectl create secret generic infrahub-mcp-token \
   --namespace <namespace> \
-  --from-file=INFRAHUB_API_TOKEN=infrahub-api-token
-rm infrahub-api-token
-unset INFRAHUB_API_TOKEN
+  --from-file=INFRAHUB_API_TOKEN="$token_file"
+rm -f "$token_file"
+unset INFRAHUB_API_TOKEN token_file
 ```
 
 Then reference the Secret:
