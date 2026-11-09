@@ -234,20 +234,16 @@ class CachedSchemaEntry:
 
 # Status codes ``/api/schema/summary`` answers for a branch that no longer
 # exists. Infrahub raises ``BranchNotFoundError`` (``HTTP_CODE = 400``) from
-# the endpoint's branch dependency before the handler runs, so 400 is the
-# code a deleted branch actually produces; the SDK's own
-# ``_parse_schema_response`` maps 400 from ``/api/schema`` to
-# ``BranchNotFoundError`` for the same reason. 404 stays accepted for a
-# server that routes an unknown branch to a not-found response.
-_BRANCH_GONE_STATUS_CODES: frozenset[int] = frozenset({httpx.codes.BAD_REQUEST, httpx.codes.NOT_FOUND})
+# the endpoint's branch dependency, and the SDK maps 400 from ``/api/schema``
+# to ``BranchNotFoundError`` too. 404 is not included: Infrahub uses it for a
+# missing resource, so a 404 here means the endpoint itself is unreachable
+# (a proxy that does not forward it, an older server). Treating that as
+# "branch gone" would drop every entry, ``main`` included, on each probe.
+_BRANCH_GONE_STATUS_CODES: frozenset[int] = frozenset({httpx.codes.BAD_REQUEST})
 
 
 class _BranchGoneError(Exception):
-    """Raised by ``_fetch_summary_hash`` when ``/summary`` reports the branch as gone.
-
-    "Gone" means the response status is one of
-    :data:`_BRANCH_GONE_STATUS_CODES` (400 or 404).
-    """
+    """Raised by ``_fetch_summary_hash`` when ``/summary`` answers 400 for the branch."""
 
 
 # Status codes that mean Infrahub rejected the *caller's* credential rather
@@ -504,7 +500,7 @@ def _evict_lru(app_ctx: AppContext, *, keep: str | None = None) -> None:
     because branch names are caller input and the default ``branch_pattern``
     mints one per session: without it a long-lived server accumulates one
     full ``BranchSchema`` — plus that branch's SDL — for every session it
-    ever served, since the only other way out of the cache is a 400/404
+    ever served, since the only other way out of the cache is a 400
     from ``/summary``, which requires the abandoned branch to be read again.
 
     A branch someone currently holds or waits on the lock for is never the
@@ -626,7 +622,7 @@ async def _branch_get(client: InfrahubClient, path: str, branch: str) -> httpx.R
 async def _fetch_summary_hash(client: InfrahubClient, branch: str) -> str:
     """Return the current ``main`` schema hash from ``GET /api/schema/summary``.
 
-    Raises :class:`_BranchGoneError` on HTTP 400 or 404 (see
+    Raises :class:`_BranchGoneError` on HTTP 400 (see
     :data:`_BRANCH_GONE_STATUS_CODES`) so the caller can evict the cache
     entry. Other HTTP errors propagate.
 
@@ -664,7 +660,7 @@ async def _fetch_graphql_sdl(client: InfrahubClient, branch: str) -> str:
     folds every non-200 into a bare ``ValueError``; ``raise_for_status()``
     surfaces it as ``httpx.HTTPStatusError`` instead, so a 401/403 answered
     by this endpoint is caller-scoped through :func:`_is_auth_error` like
-    every other probe in this module. A branch-gone 400/404 is not special
+    every other probe in this module. A branch-gone 400 is not special
     here: an SDL-only failure is absorbed by :func:`_full_fetch`, and the
     lazy fill treats any non-auth error as transient. The body is returned
     as the SDK would return it.
@@ -957,7 +953,7 @@ async def _revalidate_under_lock(
     failure keeps the fresh structured schema and stores the entry with
     ``graphql_sdl=None`` for :func:`get_cached_graphql_sdl` to fill later.
 
-    On 400 or 404 from ``/summary`` (branch gone): evict the entry and
+    On 400 from ``/summary`` (branch gone): evict the entry and
     raise the public :class:`~infrahub_sdk.exceptions.BranchNotFoundError`.
     The private ``_BranchGoneError`` never escapes this module, so a deleted
     branch fails the same way here as it does on a cold cache miss — where
@@ -1655,7 +1651,7 @@ async def _fill_graphql_sdl(*, app_ctx: AppContext, client: InfrahubClient, bran
     :func:`_raise_auth_error` surfaces them to the caller with the entry
     untouched, so one caller's bad credential does not fail everyone's SDL
     reads fast. Every other failure — a network error, a 5xx, a branch-gone
-    400/404 — is stamped and throttled as an outage.
+    400 — is stamped and throttled as an outage.
     """
     config = app_ctx.config
     entry = app_ctx.schema_cache.get(branch)

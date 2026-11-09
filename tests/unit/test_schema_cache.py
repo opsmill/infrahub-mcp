@@ -74,7 +74,7 @@ def _make_response(*, status_code: int = 200, json_body: dict[str, Any] | None =
     response.json.return_value = json_body or {}
     response.text = text
     response.raise_for_status = MagicMock()
-    if status_code >= 400 and status_code != httpx.codes.NOT_FOUND:
+    if status_code >= 400:
         response.raise_for_status.side_effect = httpx.HTTPStatusError(
             "boom",
             request=MagicMock(),
@@ -83,12 +83,10 @@ def _make_response(*, status_code: int = 200, json_body: dict[str, Any] | None =
     return response
 
 
-# Statuses ``/api/schema/summary`` answers for a deleted branch. Infrahub raises
-# ``BranchNotFoundError`` with ``HTTP_CODE = 400`` from the branch dependency,
-# so 400 is the real-world code; 404 is kept as the generic not-found signal.
+# Status ``/api/schema/summary`` answers for a deleted branch: Infrahub raises
+# ``BranchNotFoundError`` with ``HTTP_CODE = 400`` from the branch dependency.
 _BRANCH_GONE_PARAMS = [
     pytest.param(httpx.codes.BAD_REQUEST, id="400-infrahub-BranchNotFoundError"),
-    pytest.param(httpx.codes.NOT_FOUND, id="404-not-found"),
 ]
 
 
@@ -981,6 +979,25 @@ class TestPerBranchLock:
         assert "a" not in app_ctx._schema_cache_locks
         assert app_ctx._schema_cache_lock_holders == {}
 
+    @pytest.mark.anyio
+    async def test_a_404_from_summary_is_a_transient_failure_not_a_deleted_branch(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        """A 404 means the endpoint is unreachable (a proxy, an older server): keep the entry, count a failure."""
+        schema = _make_branch_schema(schema_hash="H1")
+        mock_client.schema._fetch.return_value = schema
+        mock_client._get.return_value = _make_response(json_body={"main": "H1"})
+        assert await get_cached_branch_schema(mock_ctx, "main") is schema
+
+        app_ctx.schema_cache["main"] = _past_window_entry(schema, now=schema_cache._now(), branch="main")
+        mock_client._get.return_value = _make_response(status_code=httpx.codes.NOT_FOUND)
+
+        assert await get_cached_branch_schema(mock_ctx, "main") is schema  # served stale
+        assert app_ctx.schema_cache["main"].consecutive_failures == 1
+
 
 def _ctx_with_cap(max_branches: int) -> tuple[MagicMock, AppContext]:
     """A request context whose schema cache holds at most *max_branches* branches."""
@@ -1001,7 +1018,7 @@ class TestCacheIsBoundedByBranchCount:
     Branch names are caller input and the default ``branch_pattern`` mints
     one per session, so an unbounded cache kept a full ``BranchSchema`` — and
     that branch's SDL — for every session the process ever served: the only
-    other way out is a 400/404 from ``/summary``, which needs the abandoned
+    other way out is a 400 from ``/summary``, which needs the abandoned
     branch to be read again. Every leaked entry also pinned that branch's
     lock, since a lock is kept while its branch has an entry.
 
@@ -1281,8 +1298,8 @@ class TestUS2Revalidation:
         # The private _BranchGoneError is translated at the eviction site, so
         # callers see the same public error a cold cache miss produces (the SDK
         # raises BranchNotFoundError from /api/schema on an unknown branch).
-        # Infrahub answers a deleted branch with 400, not 404, so both must
-        # evict; a 400 must never be recorded as a transient failure.
+        # Infrahub answers a deleted branch with 400, which must evict and
+        # must never be recorded as a transient failure.
         with pytest.raises(BranchNotFoundError):
             await get_cached_branch_schema(mock_ctx)
 
