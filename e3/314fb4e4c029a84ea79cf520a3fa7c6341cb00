@@ -1,0 +1,28 @@
+docs/docs/getting-started/authentication.mdx
+  s_7564ab7214f758::t_88443a2f45c530 136-137
+tests/unit/test_middleware.py
+  s_7564ab7214f758::t_295f28607e90f7 969
+  s_7564ab7214f758::t_1650b51782d78b 15,17
+  s_7564ab7214f758::t_1f1763e45195f2 950-968,970-993
+  s_7564ab7214f758::t_184f7bfe8f4237 44
+changelog/192.fixed.md
+  s_7564ab7214f758::t_2824d6ae6f0574 1
+docs/docs/getting-started/make-a-change.mdx
+  s_7564ab7214f758::t_0f32da8b2f6578 69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e3314fb4e4c029a84ea79cf520a3fa7c6341cb00",
+  "prompts": {},
+  "sessions": {
+    "s_7564ab7214f758": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3490d414-85da-4855-8d24-a077b146d402",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
