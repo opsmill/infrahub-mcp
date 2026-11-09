@@ -1,0 +1,53 @@
+src/infrahub_mcp/schema_cache.py
+  s_cfb1f403c0571c::t_04e91f20591656 1654-1657,1661
+  s_cfb1f403c0571c::t_5ec293ccd246e7 1658-1660
+  s_cfb1f403c0571c::t_cd179a11be2de7 427-437,439,474-475,480,483,501-507
+  s_cfb1f403c0571c::t_debca2655c06d6 87-92
+  s_cfb1f403c0571c::t_92bfe78a569e2f 161,163-166,615,623-633,637,808-810,826,851,874-875,917,937,1549-1562,1565-1568,1571-1575,1581,1626-1628
+  s_cfb1f403c0571c::t_375c95b336418d 69
+  s_cfb1f403c0571c::t_f5ec8331bc0876 1652-1653
+  s_cfb1f403c0571c::t_a9174b07422780 119
+tests/unit/test_keyed_locks.py
+  s_cfb1f403c0571c::t_4c1ff2e36c4852 4
+  s_cfb1f403c0571c::t_831265e674e578 56-59,66-71
+  s_cfb1f403c0571c::t_b5bcb7e62e53cf 1-3,5-55,60-65,72-82
+dev/adr/0010-hash-validated-schema-cache.md
+  s_cfb1f403c0571c::t_f6002c46e078fa 21-22,24,30
+src/infrahub_mcp/utils.py
+  s_cfb1f403c0571c::t_7e7fb9bde0e157 6
+  s_cfb1f403c0571c::t_7ab8a0b2f54da7 47-52,55-61,69,89-95,97-98,100-101,252-254
+  s_cfb1f403c0571c::t_ac955f780099ca 30
+tests/unit/test_schema_cache.py
+  s_cfb1f403c0571c::t_64e5ea008b3cdb 776,783,791,810,815,817,821,839,842,849,855,861,888,890-891,898-899,928-929,938-939,946,950,970
+  s_cfb1f403c0571c::t_8a3f67e75cd2fb 1082,1086,1095,1100,2613,2622,2647,2750
+  s_cfb1f403c0571c::t_ba9afe0c380cd7 1262,2849
+  s_cfb1f403c0571c::t_24b0d48528b6ff 3408,3414,3419,3427,3470
+  s_cfb1f403c0571c::t_7136fb0cf607d4 2146,2194,3487,3637,3670,3678,3686-3687,3730
+  s_cfb1f403c0571c::t_6beea4fce3b1ed 3543
+  s_cfb1f403c0571c::t_a2a5e533d8f965 3562-3570,3576-3590
+  s_cfb1f403c0571c::t_2fd2906207b35b 3607
+  s_cfb1f403c0571c::t_7dd02b11c0e7cf 3571-3575
+  s_cfb1f403c0571c::t_efe2d0115fa846 3561
+src/infrahub_mcp/keyed_locks.py
+  s_cfb1f403c0571c::t_846530ab249638 1-76
+docs/docs/references/configuration.mdx
+  s_cfb1f403c0571c::t_67f2b54d8f45e5 80,84
+tests/unit/test_session_branch_validation.py
+  s_cfb1f403c0571c::t_945eddedbe4303 379-380,388,390,411-412
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9fcbcee6400573e2166a96b4550a6f5e5ec6c639",
+  "prompts": {},
+  "sessions": {
+    "s_cfb1f403c0571c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "427e2abf-64ad-4839-bc29-e2fe0f76375f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
