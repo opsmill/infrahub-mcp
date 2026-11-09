@@ -156,7 +156,15 @@ ingress:
   tls: true
 ```
 
-With Gateway API, set `httpRoute.hostnames` to `mcp.example.com` and `httpRoute.path` to `/`. Set `INFRAHUB_MCP_OIDC_BASE_URL` to the same host, `https://mcp.example.com`, as described in [Set up authentication](../getting-started/authentication.mdx). Clients then connect to `https://mcp.example.com/mcp`.
+With Gateway API, set `httpRoute.hostnames` to `mcp.example.com` and `httpRoute.path` to `/`. Set `mcp.oidc.baseUrl` to the same host, under `infrahub-mcp:` when you install through the `infrahub` chart:
+
+```yaml
+mcp:
+  oidc:
+    baseUrl: "https://mcp.example.com"
+```
+
+The chart sets `INFRAHUB_MCP_OIDC_BASE_URL` from this value. The identity provider settings go in `mcp.oidc.configUrl`, `mcp.oidc.clientId` and `mcp.oidc.clientSecret`; [Set up authentication](../getting-started/authentication.mdx) describes what each one must contain. Clients then connect to `https://mcp.example.com/mcp`.
 
 ## Install the chart
 
