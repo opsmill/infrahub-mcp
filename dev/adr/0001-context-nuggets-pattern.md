@@ -42,9 +42,10 @@ focused Python project rather than a monorepo.
   - `skills/` — domain-specific skill guides
 
 - **Tool compatibility via symlinks:**
-  - `.claude/commands` → `../.agents/commands`
-  - `.claude/skills` → `../.agents/skills`
-  - `.specify/memory/constitution.md` → `../../dev/constitution.md`
+  - `.claude/commands` → `../.agents/commands` and `.claude/skills` → `../.agents/skills`
+    were planned but are not committed: `.gitignore` ignores `.claude/*` except
+    `settings.json`, so a fresh clone has neither view.
+  - `.specify/memory/constitution.md` → `../../dev/constitution.md` (committed)
 
 - **`AGENTS.md`** becomes a lightweight map (~100 lines) with pointers
   to detailed docs, not a knowledge dump.

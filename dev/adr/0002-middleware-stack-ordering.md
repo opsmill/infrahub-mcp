@@ -3,6 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-04-21
 **Author:** @bkohler
+**Updated:** 2026-11-09 — layer order, class names and activation brought in line with `configure_middleware()` in `src/infrahub_mcp/middleware.py`
 
 ## Context
 
@@ -17,22 +18,22 @@ Compose a 17-layer middleware stack once at startup via a single `configure_midd
 1. `RequestIdMiddleware` — correlation ID
 2. `MetricsMiddleware` — Prometheus counters
 3. `OTelTracingMiddleware` — OpenTelemetry spans
-4. `ErrorHandlingMiddleware` — exception translation
+4. `ToolResultErrorHandlingMiddleware` — exception translation
 5. `InfrahubConnectionMiddleware` — SDK error handling
-6. `RetryMiddleware` — transient failure retry
+6. `SafeRetryMiddleware` — transient failure retry, skipping non-idempotent tool calls
 7. `RateLimitingMiddleware` — token-bucket throttling
 8. `StructuredLoggingMiddleware` — JSON logs
 9. `DetailedTimingMiddleware` — timing breakdown
-10. `ResponseCachingMiddleware` — TTL-based cache
-11. `DereferenceRefsMiddleware` — JSON Schema `$ref` resolution
-12. `PingMiddleware` — HTTP keep-alive
-13. `AuthMiddleware` — OIDC scope enforcement
-14. `TokenPassthroughMiddleware` — credential presence
-15. `ReadOnlyMiddleware` — write tool filtering
-16. `AuditMiddleware` — write operation audit log
-17. `ResponseLimitingMiddleware` — size control (innermost)
+10. `AuthMiddleware` — OIDC scope enforcement
+11. `TokenPassthroughMiddleware` — credential presence
+12. `ReadOnlyMiddleware` — write tool filtering
+13. `AuditMiddleware` — tool and resource access log
+14. `ResponseCachingMiddleware` — TTL-based cache
+15. `DereferenceRefsMiddleware` — JSON Schema `$ref` resolution
+16. `PingMiddleware` — HTTP keep-alive
+17. `StrictResponseLimitingMiddleware` — size control (innermost)
 
-Each layer is conditionally activated based on `ServerConfig` flags. The stack is configuration-dependent, not request-dependent.
+Eight layers are always registered: request ID, metrics, error handling, Infrahub connection, structured logging, detailed timing, audit and response limiting. The other nine are registered only when their `ServerConfig` flag enables them. The stack is configuration-dependent, not request-dependent.
 
 ## Consequences
 
@@ -45,12 +46,12 @@ Each layer is conditionally activated based on `ServerConfig` flags. The stack i
 
 ### Negative
 
-- All 17 classes live in one file (`middleware.py`, ~800 lines) — large but intentionally centralized
+- The stack is composed in one file (`middleware.py`, ~900 lines): 10 of the 17 classes are defined there and 7 are imported from FastMCP — large but intentionally centralized
 - Ordering bugs are subtle — moving a layer can silently change behavior (for example, caching before auth would bypass auth)
 
 ### Neutral
 
-- Auth sits after caching — FastMCP caching is key-based and auth-aware, so cached responses don't bypass auth
+- Auth, passthrough, read-only and audit sit outside caching, so a cached response never skips the permission checks or the audit log
 - ReadOnly sits after auth so permission checks happen before tool filtering
 
 ## Alternatives Considered

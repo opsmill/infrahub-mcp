@@ -41,8 +41,9 @@ infrahub-mcp --transport streamable-http --host 0.0.0.0 --port 8001
 ## What you can do with it
 
 - **Query your infrastructure data from natural language** — find devices, interfaces, IP addresses, or any kind in your schema, with attribute filtering and partial-match search.
+- **Follow relationships between nodes** — `find_paths` returns the paths that connect two nodes, and `find_reachable` returns the nodes of given kinds that a node reaches, for example the interfaces and circuits connected to a device (Infrahub 1.10 or later).
 - **Explore your schema without leaving the conversation** — the server exposes your catalog, per-kind attribute/filter maps, and the GraphQL SDL as MCP resources.
-- **Make changes on isolated branches** — writes land on an auto-created session branch (`mcp/session-YYYYMMDD-<hex>`); the default branch is never touched directly.
+- **Make changes on isolated branches** — every write targets a session branch that the server creates on the first write (named `mcp/session-YYYYMMDD-<hex>` unless you set `INFRAHUB_MCP_BRANCH_PATTERN`); the default branch is never touched directly.
 - **Submit changes for human review** — call `propose_changes` to open a Proposed Change for approval before merging.
 - **Run arbitrary GraphQL** — execute any query or mutation against the Infrahub API when you need full control.
 
@@ -54,7 +55,7 @@ Full documentation, including client configuration for Cursor, VS Code, Claude D
 - [Docker / sidecar deployment](https://docs.infrahub.app/mcp/guides/docker-compose)
 - [Authentication modes](https://docs.infrahub.app/mcp/references/authentication)
 - [Configuration reference](https://docs.infrahub.app/mcp/references/configuration)
-- [Methods reference — tools, resources, prompts](https://docs.infrahub.app/mcp/references/methods)
+- [Methods reference — tools](https://docs.infrahub.app/mcp/references/methods)
 
 ## About Infrahub
 

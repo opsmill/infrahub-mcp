@@ -60,7 +60,7 @@ resource implementations.
 - The SDK client is created once during the application lifespan and
   shared via `AppContext`.
 - GraphQL queries MUST use the SDK's query interface or the dedicated
-  `graphql_query` / `mutate_graphql` tools, never raw `httpx` calls.
+  `query_graphql` / `mutate_graphql` tools, never raw `httpx` calls.
 - Node operations (get, search, create, update, delete) MUST use the
   SDK's typed node interface.
 - Schema introspection MUST use the SDK's schema API, cached via MCP
@@ -208,11 +208,14 @@ contributors to understand the request flow.
 All code MUST pass these gates before merge:
 
 1. **Dependencies:** `uv sync` — lock file up to date.
-2. **Formatting & Linting:** `uv run pre-commit run` — ruff format,
-   ruff lint, mypy. Zero errors.
+2. **Formatting & Linting:** `uv run pre-commit run` locally — ruff
+   format, ruff lint, mypy (`src/`), rumdl. CI additionally runs
+   `uv run ruff check .`, `uv run ruff format --check .`,
+   `uv run ty check .` and `uv run yamllint -s .` over the whole
+   repository. Zero errors.
 3. **Tests:** `uv run pytest` — all tests pass.
-4. **Documentation:** `uv run rumdl check docs/docs/` for any
-   documentation changes.
+4. **Documentation:** `uv run rumdl check docs/` and Vale over every
+   `.md`/`.mdx` file in `docs/` for any documentation changes.
 
 ### Git Workflow
 

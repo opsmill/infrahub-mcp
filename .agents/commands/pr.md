@@ -21,20 +21,27 @@ Handle the full workflow from current branch state to an open, CI-monitored pull
 ### 1. Safety Checks & Branch Setup
 
 - [ ] Verify we are NOT on `stable` or `main`:
+
   ```bash
   git branch --show-current
   ```
+
   If on a protected branch, **stop immediately** and inform the user.
 - [ ] Check working tree status:
+
   ```bash
   git status --short
   ```
+
   If there are uncommitted changes and `commit` was NOT passed, **warn the user** but do not commit.
 - [ ] Ensure the branch tracks a remote:
+
   ```bash
   git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "no upstream"
   ```
+
   If no upstream, set one:
+
   ```bash
   git push -u origin $(git branch --show-current)
   ```
@@ -46,16 +53,21 @@ Handle the full workflow from current branch state to an open, CI-monitored pull
 When `commit` IS provided:
 
 1. Run the required quality gates:
+
    ```bash
    uv run pre-commit run
    ```
+
    Fix any issues that arise before committing.
 2. Stage all changes:
+
    ```bash
    git add -A
    ```
+
 3. Create a commit with a descriptive message following project conventions.
 4. Push to remote:
+
    ```bash
    git push
    ```
@@ -67,17 +79,23 @@ Don't just look at the latest commit — analyze ALL changes since diverging fro
 </thinking>
 
 1. Find the merge base with `stable`:
+
    ```bash
    git merge-base stable HEAD
    ```
+
 2. Review all commits on this branch:
+
    ```bash
    git log stable..HEAD --oneline
    ```
+
 3. Review the full diff:
+
    ```bash
    git diff stable...HEAD --stat
    ```
+
 4. Read changed files to understand the full scope of changes.
 5. Check if a spec exists for this work (look in `.specify/` or `specs/`).
 
@@ -97,6 +115,7 @@ For each significant change, verify documentation is current:
 - [ ] **README changes?** → Check root `README.md` if user-facing behavior changed
 
 If any documentation is missing or stale:
+
 1. Propose the documentation updates to the user
 2. After approval, make the updates and commit them
 3. Run `uv run rumdl check docs/docs/` if any `.mdx` files were modified
@@ -108,6 +127,7 @@ Focus on business value — what problem does this solve, what capability does i
 </thinking>
 
 **PR Title:** Short, conventional format (under 70 chars). Examples:
+
 - `feat: add response caching middleware with configurable TTLs`
 - `fix: handle SDK timeout errors in node search tools`
 - `refactor: extract auth provider factory into dedicated module`
@@ -136,18 +156,27 @@ Omit this section if no docs were changed.]
 [How to verify — test commands to run, manual verification steps, or CI checks to watch]
 ```
 
-**Labels:** Choose from repo labels (`gh label list`). Common ones:
-- `bugs`, `enhancements`, `features`, `breaking`
-- Improvements = **enhancements** unless explicitly a **feature**
+**Labels:** Choose from the labels defined in `.github/labels.yml` (`gh label list`):
+
+- **Required:** exactly one release-intent label — `changes/major`, `changes/minor` or `changes/patch`.
+  The release-label gate (`.github/workflows/release-label-check.yml`) fails without it, and it alone
+  decides the version bump.
+- **Changelog:** a PR that changes behaviour carries a fragment in `changelog/` (see AGENTS.md).
+  `ci/skip-changelog` is read only by `changelog-check.yml`, whose pull-request trigger is
+  currently disabled; it does not replace the `changes/*` label.
+- **Optional type label:** `type/feature`, `type/bug`, `type/breaking-change`, `type/documentation`,
+  `type/housekeeping`, `type/refactoring`
 
 ### 6. User Validation & PR Creation
 
 1. Present the complete PR title, body, and labels to the user
 2. Wait for explicit approval or requested changes
 3. Only after approval, create the PR:
+
    ```bash
    gh pr create --title "<title>" --body "<body>" --label "<labels>" --base stable
    ```
+
 4. Report the PR URL to the user
 
 ### 7. Monitor CI & Fix Issues
@@ -157,22 +186,27 @@ Don't just open the PR and walk away. Watch CI, especially linters — they freq
 </thinking>
 
 1. After PR creation, wait for CI to start and monitor GitHub Actions (check every 30-60 seconds):
+
    ```bash
    gh run list --branch $(git branch --show-current) --limit 5
    ```
-   CI can take a few minutes to start. If nothing has started after 5 minutes, investigate.
 
+   CI can take a few minutes to start. If nothing has started after 5 minutes, investigate.
 2. Wait for at least all **linter jobs** to complete
 3. If any jobs fail:
    - Read failure logs:
+
      ```bash
      gh run view <run-id> --log-failed
      ```
+
    - Reproduce the issue locally:
+
      ```bash
      uv run pre-commit run
      uv run pytest
      ```
+
    - Analyze the failure and propose a fix to the user
    - After approval, commit the fix and push
    - Continue monitoring until linters pass
@@ -181,15 +215,18 @@ Don't just open the PR and walk away. Watch CI, especially linters — they freq
 ## Notes
 
 **Branch Safety:**
+
 - This command will NEVER commit to `stable` or `main`
 - If uncommitted changes exist and `commit` was not passed, warn but do not commit
 
 **Business Value Focus:**
+
 - PR descriptions should answer "why does this matter?" before "what changed?"
 - When a spec exists, it is the primary framing device — reference user scenarios and success criteria
 - Technical implementation details belong in the diff, not the PR description
 
 **Documentation Discipline:**
+
 - Stale docs are worse than no docs — always check before opening a PR
 - New features or changed behavior should be reflected in `dev/knowledge/` or `dev/guidelines/`
 

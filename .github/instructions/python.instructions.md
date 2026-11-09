@@ -4,7 +4,7 @@ applyTo: '**/*.py'
 
 # Python Coding Standards
 
-- Use Python 3.10+ syntax and features.
+- Use Python 3.13+ syntax and features (the project requires Python 3.13).
 - Follow PEP 8 for code style and formatting.
 - Use type annotations for all function signatures and variables.
 - Prefer f-strings for string formatting.
@@ -19,7 +19,7 @@ applyTo: '**/*.py'
 
 ## Formatting and Linting
 
-The project is using Use ruff and mypy for type checking and validations.
+The project uses ruff for formatting and linting, and ty (in CI) and mypy (locally, on `src/`) for type checking.
 
-you can format all python files by running `uv run invoke format`
-and you can validate that all files are formatted correctly by running `uv run invoke lint`
+Format all Python files with `uv run invoke format`. Before pushing, run the same checks as CI:
+`uv run ruff check .`, `uv run ruff format --check .` and `uv run ty check .`. `uv run invoke lint` runs yamllint, ruff and mypy on `src/`, and pylint.
