@@ -27,6 +27,7 @@ from fastmcp.server.middleware.caching import (
     ListToolsSettings,
     ReadResourceSettings,
 )
+from fastmcp.tools.base import ToolResult
 from infrahub_sdk.exceptions import AuthenticationError, BranchNotFoundError, SchemaNotFoundError
 
 from infrahub_mcp import schema_cache
@@ -3753,21 +3754,15 @@ class TestSchemaAwareCachingMiddleware:
         ``excluded_tools=["get_schema"]`` setting, which FastMCP reads as
         "cache everything except get_schema".
         """
-        mw = _SchemaAwareResponseCachingMiddleware(
-            list_tools_settings=ListToolsSettings(ttl=300),
-            list_resources_settings=ListResourcesSettings(ttl=300),
-            list_prompts_settings=ListPromptsSettings(ttl=300),
-            read_resource_settings=ReadResourceSettings(ttl=300),
-            call_tool_settings=CallToolSettings(ttl=300),
-        )
+        mw = _build_response_caching_middleware(_make_config(schema_cache_enabled=True, cache_enabled=True))
 
         calls = 0
 
-        async def call_next(context: Any) -> str:  # noqa: RUF029  # FastMCP middleware contract requires async
+        async def call_next(context: Any) -> ToolResult:  # noqa: RUF029  # FastMCP middleware contract requires async
             del context
             nonlocal calls
             calls += 1
-            return f"result-{calls}"
+            return ToolResult(content=f"result-{calls}")
 
         for tool_name in ("get_schema", "get_nodes", "node_upsert", "mutate_graphql"):
             mock_msg = MagicMock()
@@ -3778,14 +3773,14 @@ class TestSchemaAwareCachingMiddleware:
 
             first = await mw.on_call_tool(mock_ctx, call_next)
             second = await mw.on_call_tool(mock_ctx, call_next)
-            assert first != second, f"{tool_name} result was replayed from cache"
+            assert first.content != second.content, f"{tool_name} result was replayed from cache"
 
         assert calls == 8, f"expected every call to reach the tool, got {calls}"
 
 
 class TestResponseCachingMiddlewareBuilder:
-    def test_schema_cache_enabled_leaves_no_tool_allowlist(self) -> None:
-        """An empty allowlist must be expressed by the bypass, not by settings.
+    def test_schema_cache_enabled_disables_tool_caching(self) -> None:
+        """No tool is cacheable, and that is expressed by ``enabled=False``, not by a filter.
 
         FastMCP's ``_matches_tool_cache_settings`` reads both filters with a
         truthiness check, so ``included_tools=[]`` means "no filter" and
@@ -3794,11 +3789,9 @@ class TestResponseCachingMiddlewareBuilder:
         mw = _build_response_caching_middleware(_make_config(schema_cache_enabled=True, cache_enabled=True))
 
         assert isinstance(mw, _SchemaAwareResponseCachingMiddleware)
+        assert mw._call_tool_settings.get("enabled") is False
         assert not mw._call_tool_settings.get("included_tools")
         assert not mw._call_tool_settings.get("excluded_tools")
-        assert mw._matches_tool_cache_settings("node_upsert") is True, (
-            "settings alone do not block tool caching — on_call_tool must"
-        )
 
     def test_schema_cache_disabled_keeps_get_schema_allowlist(self) -> None:
         mw = _build_response_caching_middleware(_make_config(schema_cache_enabled=False, cache_enabled=True))
@@ -3905,6 +3898,67 @@ class TestEntryRemoval:
             await schema_cache._revalidate_under_lock(app_ctx=app_ctx, client=mock_client, entry=entry, metrics=None)
 
         assert "main" not in app_ctx.schema_cache
+
+    @pytest.mark.anyio
+    async def test_failed_probe_does_not_put_back_an_entry_removed_meanwhile(
+        self,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        """A lock-free branch-gone answer during this probe wins over this probe's transient failure."""
+        entry = _past_window_entry(_make_branch_schema(schema_hash="H1"), now=schema_cache._now())
+        app_ctx.schema_cache["main"] = entry
+
+        async def probe(url: str, **_: Any) -> MagicMock:  # noqa: RUF029  # async signature required by production contract
+            del url
+            app_ctx.schema_cache.pop("main")
+            msg = "down"
+            raise httpx.ConnectError(msg)
+
+        mock_client._get.side_effect = probe
+
+        with pytest.raises(BranchNotFoundError):
+            await schema_cache._revalidate_under_lock(app_ctx=app_ctx, client=mock_client, entry=entry, metrics=None)
+
+        assert "main" not in app_ctx.schema_cache
+
+    @pytest.mark.anyio
+    async def test_failed_probe_counts_on_the_entry_refreshed_meanwhile(
+        self,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        """A lock-free hash-match refresh during this probe is not overwritten by the pre-probe copy."""
+        now = schema_cache._now()
+        entry = _past_window_entry(
+            _make_branch_schema(schema_hash="H1"), now=now, consecutive_failures=9, last_attempt_monotonic=now - 60
+        )
+        entry = replace(entry, failing_since_monotonic=now - 600)
+        app_ctx.schema_cache["main"] = entry
+        refreshed = replace(
+            entry,
+            fetched_at_monotonic=now,
+            consecutive_failures=0,
+            last_attempt_monotonic=now,
+            failing_since_monotonic=None,
+        )
+
+        async def probe(url: str, **_: Any) -> MagicMock:  # noqa: RUF029  # async signature required by production contract
+            del url
+            app_ctx.schema_cache["main"] = refreshed
+            msg = "down"
+            raise httpx.ConnectError(msg)
+
+        mock_client._get.side_effect = probe
+
+        stored = await schema_cache._revalidate_under_lock(
+            app_ctx=app_ctx, client=mock_client, entry=entry, metrics=None
+        )
+
+        assert stored is app_ctx.schema_cache["main"]
+        assert stored.consecutive_failures == 1
+        assert stored.fetched_at_monotonic == refreshed.fetched_at_monotonic
+        assert not stored.circuit_break_recorded
 
     @pytest.mark.anyio
     async def test_lock_free_branch_gone_drops_the_unheld_lock(

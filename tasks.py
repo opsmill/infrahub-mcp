@@ -1,6 +1,7 @@
 import json
 import sys
 from pathlib import Path
+from shutil import which
 
 from invoke import Context, Exit, task
 
@@ -103,18 +104,16 @@ def lint_vale(context: Context) -> None:
     repo_vale = MAIN_DIRECTORY_PATH / "vale"
     if repo_vale.exists():
         vale_bin = "./vale"
-    else:
-        from shutil import which  # noqa: PLC0415
-
-        if which("vale") is None:
-            msg = (
-                "vale binary not found (neither ./vale nor on PATH). CI's "
-                "validate-documentation-style job is not path-gated, so it runs on "
-                "every pull request and this gate cannot be skipped locally. "
-                "Install it with 'brew install vale'."
-            )
-            raise Exit(msg, code=1)
+    elif which("vale") is not None:
         vale_bin = "vale"
+    else:
+        msg = (
+            "vale binary not found (neither ./vale nor on PATH). CI's "
+            "validate-documentation-style job is not path-gated, so it runs on "
+            "every pull request and this gate cannot be skipped locally. "
+            "Install it with 'brew install vale'."
+        )
+        raise Exit(msg, code=1)
 
     prune = " -o ".join(f'-name "{d}"' for d in VALE_PRUNED_DIRECTORIES)
     # ``-print0``/``-0`` so a path containing a space stays one argument, and

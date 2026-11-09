@@ -793,6 +793,45 @@ def _note_failure(
     return new_entry
 
 
+def _entry_after_await(app_ctx: AppContext, entry: CachedSchemaEntry) -> CachedSchemaEntry:
+    """Return *entry*'s branch entry as it is now, for a lock holder updating it after an upstream call.
+
+    The lock holder read *entry* before awaiting, but
+    :func:`_validate_caller_outside_lock` writes without the branch lock: it
+    may have stored a hash-match refresh of the same snapshot meanwhile, or
+    dropped the entry on a branch-gone answer. Updating the pre-await copy
+    would overwrite the first and put the second back, so updates start from
+    the current entry, and a dropped one raises the branch-gone answer that
+    removed it. Eviction never removes a branch whose lock is held, so a
+    missing entry here always means that answer.
+    """
+    current = app_ctx.schema_cache.get(entry.branch)
+    if current is None:
+        logger.warning("schema_cache_branch_gone branch=%s", entry.branch)
+        raise BranchNotFoundError(identifier=entry.branch)
+    return current
+
+
+def _store_hash_match(app_ctx: AppContext, entry: CachedSchemaEntry, metrics: Any) -> CachedSchemaEntry:
+    """Store *entry* refreshed after a ``/summary`` probe matched its hash, and return the stored copy.
+
+    The cache is current: the skip-window restarts and any failure streak ends.
+    """
+    now = _now()
+    refreshed = replace(
+        entry,
+        fetched_at_monotonic=now,
+        consecutive_failures=0,
+        last_attempt_monotonic=now,
+        failing_since_monotonic=None,
+        circuit_break_recorded=False,
+    )
+    _store_entry(app_ctx, refreshed)
+    if metrics is not None:
+        metrics.record_schema_cache_event("hash_match")
+    return refreshed
+
+
 def _note_transient_failure(
     exc: Exception,
     *,
@@ -801,16 +840,18 @@ def _note_transient_failure(
     metrics: Any,
     event: str,
 ) -> CachedSchemaEntry:
-    """Handle an upstream failure that landed on an existing *entry*.
+    """Handle an upstream failure that landed on an existing *entry*. Caller holds the branch lock.
 
     A rejected credential is not an upstream-health signal: it is raised to
     this caller through :func:`_raise_auth_error` with *entry* untouched.
-    Anything else is transient — counted by :func:`_note_failure`, logged as
+    Anything else is transient — counted by :func:`_note_failure` on the
+    branch's current entry (see :func:`_entry_after_await`), logged as
     *event* and returned as the failure-incremented entry for the caller to
     serve stale.
     """
     if _is_auth_error(exc):
         _raise_auth_error(exc, branch=entry.branch)
+    entry = _entry_after_await(app_ctx, entry)
     new_entry = _note_failure(app_ctx=app_ctx, entry=entry, metrics=metrics, now=_now())
     logger.warning(
         "%s branch=%s exception=%r",
@@ -952,19 +993,7 @@ async def _revalidate_under_lock(
         )
 
     if upstream_hash == entry.schema_hash:
-        now = _now()
-        refreshed = replace(
-            entry,
-            fetched_at_monotonic=now,
-            consecutive_failures=0,
-            last_attempt_monotonic=now,
-            failing_since_monotonic=None,
-            circuit_break_recorded=False,
-        )
-        _store_entry(app_ctx, refreshed)
-        if metrics is not None:
-            metrics.record_schema_cache_event("hash_match")
-        return refreshed
+        return _store_hash_match(app_ctx, _entry_after_await(app_ctx, entry), metrics)
 
     # Hash differs — full refetch.
     try:
@@ -981,6 +1010,8 @@ async def _revalidate_under_lock(
             exc, app_ctx=app_ctx, entry=entry, metrics=metrics, event="schema_cache_refetch_failure"
         )
 
+    # Not stored if a lock-free probe found the branch gone while this refetch ran.
+    _entry_after_await(app_ctx, entry)
     now = _now()
     refreshed = CachedSchemaEntry(
         branch=branch,
@@ -1351,18 +1382,7 @@ async def _validate_caller_outside_lock(
     if entry is None or upstream_hash != entry.schema_hash:
         return None
 
-    now = _now()
-    refreshed = replace(
-        entry,
-        fetched_at_monotonic=now,
-        consecutive_failures=0,
-        last_attempt_monotonic=now,
-        failing_since_monotonic=None,
-        circuit_break_recorded=False,
-    )
-    _store_entry(app_ctx, refreshed)
-    if metrics is not None:
-        metrics.record_schema_cache_event("hash_match")
+    refreshed = _store_hash_match(app_ctx, entry, metrics)
     _install_into_client(client, refreshed)
     return refreshed
 
@@ -1558,7 +1578,8 @@ async def get_cached_branch_schema(
     upstream call in this same request; an unprimed one probes ``/summary``
     with its own credential first (one probe per request, run outside the
     branch's cache lock so concurrent callers probe at the same time), so a
-    rejected token raises ``AuthenticationError`` to that caller alone. An unvalidated passthrough caller is never served
+    rejected token raises ``AuthenticationError`` to that caller alone. An
+    unvalidated passthrough caller is never served
     stale: when its probe fails transiently, or the failure throttle forbids
     one, the read fails closed with ``ToolError`` as it did before this
     cache existed. The shared-credential modes serve a hot entry to every

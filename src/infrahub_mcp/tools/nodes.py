@@ -10,7 +10,7 @@ from infrahub_sdk.types import Order
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from infrahub_mcp.schema import get_valid_kinds_summary
+from infrahub_mcp.schema import get_peer_schemas, get_valid_kinds_summary
 from infrahub_mcp.schema_cache import get_cached_kind
 from infrahub_mcp.utils import _log_and_raise_error, convert_node_to_dict, get_client, get_node_label
 
@@ -117,14 +117,7 @@ async def _validate_filters(  # pylint: disable=too-many-arguments,too-many-posi
         )
 
     # Build the valid filter set from the schema (same logic as schema detail).
-    # Distinct peers are resolved once each: two relationships pointing at the
-    # same peer kind used to resolve it twice.
-    peer_schemas: dict[str, Any] = {}
-    for peer_kind in dict.fromkeys(rel.peer for rel in schema.relationships):
-        try:
-            peer_schemas[peer_kind] = await get_cached_kind(ctx, kind=peer_kind, branch=branch, client=client)
-        except SchemaNotFoundError:
-            continue
+    peer_schemas = await get_peer_schemas(ctx, schema, branch=branch, client=client)
 
     valid_filters: set[str] = {f"{attr.name}__value" for attr in schema.attributes}
     for rel in schema.relationships:

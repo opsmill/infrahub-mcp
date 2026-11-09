@@ -14,8 +14,11 @@ from infrahub_mcp.schema_cache import get_cached_branch_schema, get_cached_kind
 from infrahub_mcp.utils import resolve_client
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from fastmcp import Context
     from infrahub_sdk.client import InfrahubClient
+    from infrahub_sdk.schema import MainSchemaTypesAPI
 
 
 async def get_schema_catalog(
@@ -37,6 +40,40 @@ async def get_schema_catalog(
         for kind, node in branch_schema.nodes.items()
         if node.namespace not in NAMESPACES_INTERNAL
     }
+
+
+async def get_peer_schemas(
+    ctx: "Context",
+    schema: "MainSchemaTypesAPI",
+    branch: str | None = None,
+    *,
+    client: "InfrahubClient | None" = None,
+    branch_nodes: "Mapping[str, MainSchemaTypesAPI] | None" = None,
+) -> "dict[str, MainSchemaTypesAPI]":
+    """Return the schema of each distinct relationship peer of *schema*, keyed by peer kind.
+
+    Peers are looked up in *branch_nodes*, the branch schema the caller
+    already holds (read here when omitted). Only kinds absent from it go
+    through :func:`get_cached_kind`, whose forced revalidation catches a kind
+    added upstream since the cache entry was fetched. Peer kinds that do not
+    exist are left out. See :func:`get_schema_catalog` for *client*.
+    """
+    client = resolve_client(ctx, client)
+    if branch_nodes is None:
+        branch_nodes = (await get_cached_branch_schema(ctx, branch=branch, client=client)).nodes
+    unique_peer_kinds = list(dict.fromkeys(rel.peer for rel in schema.relationships))
+    peer_schemas = {pk: branch_nodes[pk] for pk in unique_peer_kinds if pk in branch_nodes}
+
+    async def _fetch_peer(peer_kind: str) -> "tuple[str, MainSchemaTypesAPI | None]":
+        try:
+            return peer_kind, await get_cached_kind(ctx, kind=peer_kind, branch=branch, client=client)
+        except SchemaNotFoundError:
+            return peer_kind, None
+
+    missing_peer_kinds = [pk for pk in unique_peer_kinds if pk not in peer_schemas]
+    peer_results = await asyncio.gather(*[_fetch_peer(pk) for pk in missing_peer_kinds])
+    peer_schemas.update({pk: s for pk, s in peer_results if s is not None})
+    return peer_schemas
 
 
 def _shape_attribute(attr: Any) -> dict[str, Any]:
@@ -121,19 +158,7 @@ async def get_schema_detail(
         for attr in schema.attributes
     ]
 
-    unique_peer_kinds: list[str] = list(dict.fromkeys(rel.peer for rel in schema.relationships))
-
-    peer_schemas: dict[str, Any] = {pk: branch_nodes[pk] for pk in unique_peer_kinds if pk in branch_nodes}
-
-    async def _fetch_peer(peer_kind: str) -> tuple[str, Any]:
-        try:
-            return peer_kind, await get_cached_kind(ctx, kind=peer_kind, branch=branch, client=client)
-        except SchemaNotFoundError:
-            return peer_kind, None
-
-    missing_peer_kinds = [pk for pk in unique_peer_kinds if pk not in peer_schemas]
-    peer_results = await asyncio.gather(*[_fetch_peer(pk) for pk in missing_peer_kinds])
-    peer_schemas.update({pk: s for pk, s in peer_results if s is not None})
+    peer_schemas = await get_peer_schemas(ctx, schema, branch=branch, client=client, branch_nodes=branch_nodes)
 
     for rel in schema.relationships:
         rel_schema = peer_schemas.get(rel.peer)
