@@ -1,0 +1,203 @@
+.agents/skills/speckit-opsmill-extract/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 3,6,223,227-238,246
+docs/package.json
+  s_03148743a2ae79::t_15324244adee8f 22,37,40
+.agents/skills/speckit-analyze/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 27,32,55,72,214,219,240
+.specify/presets/reconcile-opsmill/commands/speckit.reconcile.run.md
+  s_03148743a2ae79::t_15324244adee8f 1-200
+.specify/templates/plan-template.md
+  s_03148743a2ae79::t_15324244adee8f 4,7,21-28,30-36
+.specify/extensions/opsmill/README.md
+  s_03148743a2ae79::t_15324244adee8f 6,8-15,25-27,29-31,36-50,54-55,59-67,71-72,76,79-82,85,88-101,104-107,110-145,176-187,194-195,201-225,228,235-238,241-244,251,254-259,262-272,274-345,347-350,352-353
+.agents/skills/speckit-git-commit/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 6
+docs/docs/guides/installation.mdx
+  s_03148743a2ae79::t_15324244adee8f 10
+.specify/scripts/bash/setup-tasks.sh
+  s_03148743a2ae79::t_15324244adee8f 1-94
+.specify/templates/tasks-template.md
+  s_03148743a2ae79::t_15324244adee8f 9,29,32,38,43
+.agents/skills/speckit-archive/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 3,6
+.agents/skills/speckit-archive-run/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 1-430
+.agents/skills/speckit-opsmill-summary/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 3,6
+.agents/skills/speckit-git-validate/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 6
+.specify/extensions/opsmill/commands/auto.md
+  s_03148743a2ae79::t_15324244adee8f 1-74
+.agents/skills/speckit-constitution/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 3,22-40,46,51,74,79-81,85-94,108,114-116,123,129,131,133,135,148,155,160,181
+.agents/skills/speckit-git-initialize/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 6
+.agents/skills/speckit-taskstoissues/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 3,14-21,35,40,63,69,80-83,93,98,119
+.specify/extensions/.registry
+  s_03148743a2ae79::t_15324244adee8f 213,215,222-226,230
+.agents/skills/speckit-checklist/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 35-43,57,62,85,90,94-96,128,134,145,154,264,266,359,364,385
+.agents/skills/speckit-git-feature/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 6
+.agents/skills/speckit-opsmill-auto/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 1-79
+.specify/integration.json
+  s_03148743a2ae79::t_15324244adee8f 2-12,14
+.specify/presets/critique-opsmill/preset.yml
+  s_03148743a2ae79::t_15324244adee8f 1-27
+.specify/presets/reconcile-opsmill/preset.yml
+  s_03148743a2ae79::t_15324244adee8f 1-28
+.specify/extensions/opsmill/commands/extract.md
+  s_03148743a2ae79::t_15324244adee8f 29,56,75,218,222-233,241
+.specify/extensions/opsmill/commands/implement.md
+  s_03148743a2ae79::t_15324244adee8f 1-178
+.specify/scripts/bash/create-new-feature.sh
+  s_03148743a2ae79::t_15324244adee8f 11,52-54,64-67,97-110,115,123-127,132,136-139,141-142,144,147-156,158-168,170-180,182-199,201-210,212,214,216-221,223-252,255,258-268,271,275,287,290-295,301-304,306-309,314,319,345-348,360-371,373-376,378,383-410,415-417,419-420,427-447,454-456,463-471,501-502
+changelog/+kubernetes-guide.added.md
+  s_03148743a2ae79::t_15324244adee8f 1
+docs/docs/getting-started/authentication.mdx
+  s_03148743a2ae79::t_15324244adee8f 153-154
+docs/docs/getting-started/make-a-change.mdx
+  s_03148743a2ae79::t_15324244adee8f 69
+docs/docs/guides/kubernetes.mdx
+  s_03148743a2ae79::t_15324244adee8f 1-330
+.specify/integrations/speckit.manifest.json
+  s_03148743a2ae79::t_15324244adee8f 3,6-9,11-17
+.agents/skills/speckit-iterate-define/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 3,6
+.specify/presets/reconcile-opsmill/README.md
+  s_03148743a2ae79::t_15324244adee8f 1-61
+.agents/skills/speckit-implement/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 27,32,52,55,63-65,69-70,74-78,82-83,85-87,92,102,157,185-229
+.specify/presets/.registry
+  s_03148743a2ae79::t_15324244adee8f 1-33
+.specify/scripts/bash/setup-plan.sh
+  s_03148743a2ae79::t_15324244adee8f 10-11,13,17,19-21,38-44,46-68,77,79,81-82,86-87
+.specify/presets/critique-opsmill/LICENSE
+  s_03148743a2ae79::t_15324244adee8f 1-21
+.agents/skills/speckit-reconcile-run/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 3,7,52,58-62,64,82,125-126,129-130,150,152,155-156,177-181,189,198
+docs/docs/getting-started/installation.mdx
+  s_03148743a2ae79::t_15324244adee8f 7
+.specify/extensions/opsmill/CHANGELOG.md
+  s_03148743a2ae79::t_15324244adee8f 8-193,232
+docs/sidebars.ts
+  s_03148743a2ae79::t_15324244adee8f 21
+.specify/.gitignore
+  s_03148743a2ae79::t_15324244adee8f 1-14
+changelog/192.fixed.md
+  s_03148743a2ae79::t_15324244adee8f 1
+pyproject.toml
+  s_03148743a2ae79::t_15324244adee8f 38,76-77
+src/infrahub_mcp/prompts/prompts.py
+  s_03148743a2ae79::t_15324244adee8f 85
+.agents/skills/speckit-tasks/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 27,32,52,55,60,65,79,92-135,163,198,213-218
+.specify/init-options.json
+  s_03148743a2ae79::t_15324244adee8f 3-4,7,11
+.agents/skills/speckit-clarify/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 27,32,55,73-75,129,131,142,144-149,184,202,210-229,243-245,248-250,255,257-265,278-294
+.specify/integrations/claude.manifest.json
+  s_03148743a2ae79::t_15324244adee8f 3-4,6-15
+.agents/skills/speckit-tinyspec-tinyspec/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 3,6
+.specify/templates/spec-template.md
+  s_03148743a2ae79::t_15324244adee8f 3-8,17,91
+.agents/skills/speckit-opsmill-qa/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 1-371
+.agents/skills/speckit-opsmill-implement/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 1-183
+.gitignore
+  s_03148743a2ae79::t_15324244adee8f 32-34
+.specify/extensions/opsmill/scripts/bash/python-env.sh
+  s_03148743a2ae79::t_15324244adee8f 1-34
+docs/docs/guides/docker-compose.mdx
+  s_03148743a2ae79::t_15324244adee8f 10
+src/infrahub_mcp/server.py
+  s_03148743a2ae79::t_15324244adee8f 289-291
+tests/unit/test_read_only_prompts.py
+  s_03148743a2ae79::t_15324244adee8f 1-56
+.agents/skills/speckit-iterate-apply/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 3,6
+.specify/extensions/opsmill/LICENSE
+  s_03148743a2ae79::t_15324244adee8f 189
+.agents/skills/speckit-opsmill-prep/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 1-183
+.specify/extensions/opsmill/commands/qa.md
+  s_03148743a2ae79::t_15324244adee8f 1-369
+.specify/scripts/bash/resolve-template.sh
+  s_03148743a2ae79::t_15324244adee8f 1-57
+.specify/templates/checklist-template.md
+  s_03148743a2ae79::t_15324244adee8f 7-9,11,14,20,39-42
+.specify/extensions/opsmill/commands/retrospect.md
+  s_03148743a2ae79::t_15324244adee8f 24,74,159
+.github/workflows/ci-docker-image.yml
+  s_03148743a2ae79::t_15324244adee8f 202,222,225
+.codex/hooks.json
+  s_03148743a2ae79::t_15324244adee8f 1-15
+.specify/scripts/bash/common.sh
+  s_03148743a2ae79::t_15324244adee8f 27-55,57-62,70,75-78,85-87,100-106,112-113,115,118-119,131-135,137-138,140-142,145-149,152-157,159,164-177,180-186,189-190,196-200,208-209,212-213,217-225,245-376,408-511,522-523,532-537,542-543,545,548-557,567-568,578-579,588-589,597-603,605,607,631-632,640-644,647-648,654-662,664,667-676,681-709,715,717,719-753,755-757,759-772,774-783,785-801,803-804,806-810,812,818-825,827,831-832,834,839,856-859,864-867,883-884,889-892,900-903,908-915,919,921-932,934,936
+.agents/skills/speckit-critique-run/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 3,7,177
+.specify/presets/critique-opsmill/README.md
+  s_03148743a2ae79::t_15324244adee8f 1-20
+.agents/skills/speckit-git-remote/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 6
+.agents/skills/speckit-plan/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 27,32,55,60,72-109,151-156,158,162,164-169
+.agents/skills/speckit-converge/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 1-285
+.specify/extensions/opsmill/extension.yml
+  s_03148743a2ae79::t_15324244adee8f 6-7,29-40,54,56-59
+.specify/extensions/opsmill/scripts/bash/route-codex.sh
+  s_03148743a2ae79::t_15324244adee8f 1-3
+.specify/presets/reconcile-opsmill/LICENSE
+  s_03148743a2ae79::t_15324244adee8f 1-21
+.specify/scripts/bash/check-prerequisites.sh
+  s_03148743a2ae79::t_15324244adee8f 12,16,28,32,34-35,39-41,51-58,67,71,77,80,83,88,92,99-106,110,141,147-160,167,190-199,209-220,228-233,239,245
+.agents/skills/speckit-checkpoint-commit/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 6
+.agents/skills/speckit-tinyspec-classify/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 6
+.agents/skills/speckit-opsmill-retrospect/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 3,6,29,79,120,164
+.claude/settings.json
+  s_03148743a2ae79::t_15324244adee8f 1-15
+.specify/extensions/opsmill/commands/prep.md
+  s_03148743a2ae79::t_15324244adee8f 1-178
+.specify/extensions.yml
+  s_03148743a2ae79::t_15324244adee8f 1-2,168
+.specify/extensions/opsmill/scripts/python/route_codex.py
+  s_03148743a2ae79::t_15324244adee8f 1-71
+docs/docs/readme.mdx
+  s_03148743a2ae79::t_15324244adee8f 43
+.specify/presets/critique-opsmill/commands/speckit.critique.run.md
+  s_03148743a2ae79::t_15324244adee8f 1-238
+.agents/skills/speckit-tinyspec-implement/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 6
+.specify/extensions/opsmill/scripts/bash/python-run.sh
+  s_03148743a2ae79::t_15324244adee8f 1-43
+.agents/skills/speckit-specify/SKILL.md
+  s_03148743a2ae79::t_15324244adee8f 27,32,55,89,94,98-99,115,117-119,144,146,152,156,158,163,165,174,176,181,183,193,208,210,212,214,221,238-279,343-348
+docs/pnpm-lock.yaml
+  s_03148743a2ae79::t_d968d465a77794 21,24,27,30,32-33,39,61,72-73,76,81-82,736-741,1305-1306,1310-1315,2063-2064,2068,2092-2097,2100,2114-2117,2136-2144,2151-2152,2155,2165-2288,2706-2708,4073-4075,4210-4211,5572-5573,5581-5585,5929-5931,5965-5967,5973-5974,6419,6441,6452,6461,6955,7094,7128-7130,7504,7533,7552,7580,7583,7658,7660,7662,7753,7755,7794,7796,7799-7800,7814,7846,7848,7852,7865,7896,7898,7906,7936,7938,7942,7973,7975,7982,8011,8013,8018,8047,8049,8054,8083,8085,8090,8119,8121,8131,8160,8162,8166-8167,8170,8200-8215,8255,8257,8261-8264,8283,8312,8316,8327,8349,8351,8353,8389,8393,8395-8396,8408,8444,8485,8514,8517,8559,8590,8592-8593,8601-8602,8607,8611,8642,8647,8652,8741,8743,8745,8747,8749,8751,8753,8755,8757,8759,8761,8763,8765,8767-8770,8772,8774-8778,8780,8782,8784,8786-8789,8791,8793-8795,8797,8799-8806,8808,8810-8812,8814,8816-8820,8822,8824-8828,8830-8832,8834,8836-8840,8842-8844,8846,8848-8850,8852,8854-8855,8857,8859-8861,8863,8865-8867,8999,9006,9013,9022,9029,9040,9047,9053,9060,9067,9071,9084,9109,9111,9135,9193,9198,9209,9213,9219,9221-9222,9228,9235-9237,9248,9538,9541-9545,9551-9552,9554,9558,9562,9567,9581-9586,9588-9589,9592,9594,9602-9604,9611-9612,9614,9618,9626-9642,9644,9648,9655,9658,9663,9668-9670,9672,9687-9751,9945,9974,10128,10192,10247-10248,10341,10348,10385,10816,11239,11241,11518,11826-11833,11938,11946,12159-12172,12594,12726,12733,12776,12817,12968,12970,12973,13314,13369,13384,13390,13401,13706,13708,13712-13713,13846,14009,14011,14031,14033,14041,14043,14051-14053,14056,14081-14102,14106,14185
+uv.lock
+  s_03148743a2ae79::t_1ed5b9e17f98e8 905,941,951,953,1039,1044,1046
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "29441e51bed25ee9c12fa4d633058a4757c15e33",
+  "prompts": {},
+  "sessions": {
+    "s_03148743a2ae79": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "33f236c0-7958-4bb1-b970-49127033241a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
