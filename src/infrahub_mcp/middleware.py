@@ -16,6 +16,7 @@ import contextvars
 import logging
 import secrets
 import time
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, override
 
 import pydantic_core
@@ -353,7 +354,7 @@ def _connection_error_message(exc: BaseException) -> tuple[int, str] | None:
     if isinstance(exc, AuthenticationError):
         # The SDK raises AuthenticationError for both a 401 and a 403 response from Infrahub.
         status_code = getattr(getattr(exc.__cause__, "response", None), "status_code", None)
-        if status_code == 403:  # noqa: PLR2004
+        if status_code == HTTPStatus.FORBIDDEN:
             return -32001, (
                 f"Infrahub returned a 403 Forbidden error — {exc}. "
                 "Check that the account behind the credentials has permission for this operation."

@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 import logging
+import pkgutil
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Sequence
 
+import httpx
 import mcp.types as mt
 import pytest
 from fastmcp import Client, FastMCP
@@ -25,6 +28,7 @@ from mcp.types import INVALID_PARAMS, TextContent
 from opentelemetry import trace
 
 import infrahub_mcp.middleware as middleware_module
+import infrahub_mcp.tools
 from infrahub_mcp.auth import _passthrough_token, set_passthrough_token
 from infrahub_mcp.config import ServerConfig
 from infrahub_mcp.middleware import (
@@ -147,10 +151,6 @@ class TestRequestIdMiddleware:
 class TestReadOnlyMiddleware:
     async def test_fallback_allowlist_matches_registered_read_tools(self) -> None:
         """The fallback allowlist names every registered tool without the write tag, and no other tool."""
-        import importlib  # noqa: PLC0415
-        import pkgutil  # noqa: PLC0415
-
-        import infrahub_mcp.tools  # noqa: PLC0415
 
         modules = [
             importlib.import_module(f"infrahub_mcp.tools.{info.name}")
@@ -1344,7 +1344,6 @@ class TestInfrahubConnectionMiddleware:
     @pytest.mark.anyio
     async def test_forbidden_authentication_error_names_permissions(self) -> None:
         """The SDK raises AuthenticationError for a 403 too; that is a permission problem, not bad credentials."""
-        import httpx  # noqa: PLC0415
 
         middleware = InfrahubConnectionMiddleware()
         ctx = _make_tool_context("node_upsert")
@@ -1360,7 +1359,6 @@ class TestInfrahubConnectionMiddleware:
 
     @pytest.mark.anyio
     async def test_catches_httpx_connect_error(self) -> None:
-        import httpx  # noqa: PLC0415
 
         middleware = InfrahubConnectionMiddleware()
         ctx = _make_tool_context("get_schema")
