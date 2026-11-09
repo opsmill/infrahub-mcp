@@ -1,10 +1,9 @@
 ---
 name: speckit-archive
-description: Archive a feature specification into main project memory after merge,
-  resolving gaps and conflicts
+description: Archive a feature specification into main project memory after merge, resolving gaps and conflicts
 compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
-  author: github-spec-kit
+  author: Stanislav Deviatov
   source: archive:commands/archive.md
 ---
 

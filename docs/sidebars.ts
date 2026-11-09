@@ -18,6 +18,7 @@ const sidebars: SidebarsConfig = {
       label: 'Deployment',
       items: [
         'guides/docker-compose',
+        'guides/kubernetes',
       ],
     },
     {

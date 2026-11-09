@@ -66,7 +66,7 @@ Approve and merge when ready. Until a human approves, the default branch is unto
 
 - **Branch isolation** — every write lives on an ephemeral session branch; the default branch is never modified directly.
 - **Read-only kill switch** — setting `INFRAHUB_MCP_READ_ONLY=true` hides all write tools from discovery and rejects calls that hardcode them.
-- **Scope gating (OIDC only)** — set `INFRAHUB_MCP_AUTH_SCOPES_WRITE=infrahub:write` to require a specific OAuth scope for write tools.
+- **Scope gating (OIDC only)** — set `INFRAHUB_MCP_AUTH_SCOPES_WRITE=infrahub:write` to require a specific OAuth scope for write tools and the `make_infra_change` prompt.
 - **Audit logs** — every tool call is logged with a request ID, tool name, branch, and (under OIDC) the authenticated user.
 - **Human approval** — `propose_changes` is the only way changes reach the default branch. Agents cannot merge.
 
