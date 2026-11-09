@@ -1,0 +1,34 @@
+src/infrahub_mcp/utils.py
+  s_cc606579d59e17::t_539ff7e6b0c47f 472-495
+specs/tiny/truncate-text-helper.md
+  s_90670c9e188610::t_2dfb43c57e458d 1-4,6-44,47-49,52-54
+  s_cc606579d59e17::t_506b28be4116db 5,45-46,50-51,55-57
+tests/unit/test_truncate_text.py
+  s_cc606579d59e17::t_30f695955b9d7e 1-51
+changelog/+truncate-text-helper.housekeeping.md
+  s_cc606579d59e17::t_b2e16031f43b10 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6e2a681eeda4a7af73760b3b38be9de2c45eb9be",
+  "prompts": {},
+  "sessions": {
+    "s_90670c9e188610": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f3f92e6-8df5-4d33-b110-ead5e445391d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Pol Michel <polmichel29@gmail.com>"
+    },
+    "s_cc606579d59e17": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a66a4eee-1c15-47b3-af11-346376f5f9ec",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Pol Michel <polmichel29@gmail.com>"
+    }
+  }
+}
