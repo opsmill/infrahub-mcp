@@ -66,11 +66,16 @@ async def _stop_http(process: asyncio.subprocess.Process) -> None:
         pytest.fail("HTTP server failed to shut down within 10 seconds")
 
 
-@pytest.fixture(params=["stdio", "streamable-http"])
+@pytest.fixture(params=[("stdio", "auto"), ("streamable-http", "auto")], ids=["stdio", "streamable-http"])
 async def connected(
     request: pytest.FixtureRequest, tmp_path: Path, unused_tcp_port: int, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[Connection]:
-    """Start a fresh read-only server for each scenario, then verify it exits."""
+    """Start a fresh read-only server for each scenario, then verify it exits.
+
+    ``request.param`` is a ``(transport, client mode)`` pair; a test can parametrize this
+    fixture indirectly to pin the protocol era with ``mode="legacy"``.
+    """
+    transport_name, mode = request.param
     events = tmp_path / "events.txt"
     logs = tmp_path / "server.log"
     # A developer's credentials, proxies and .env must never influence these tests.
@@ -95,11 +100,11 @@ async def connected(
             "MCP_TEST_EVENTS": str(events),
         }
     )
-    args = ["-m", "tests.transport._server", "--transport", request.param]
+    args = ["-m", "tests.transport._server", "--transport", transport_name]
     process: asyncio.subprocess.Process | None = None
     with logs.open("w", encoding="utf-8") as output:
         transport: StdioTransport | StreamableHttpTransport
-        if request.param == "stdio":
+        if transport_name == "stdio":
             transport = StdioTransport(
                 command=sys.executable, args=args, env=env, cwd=str(ROOT), keep_alive=False, log_file=output
             )
@@ -118,7 +123,7 @@ async def connected(
         try:
             if process is not None:
                 await _wait_for_http(process, unused_tcp_port, logs)
-            async with Client(transport, timeout=5, init_timeout=15) as client:
+            async with Client(transport, timeout=5, init_timeout=15, mode=mode) as client:
                 yield client, events
         finally:
             if process is not None:
@@ -149,6 +154,30 @@ async def test_protocol_round_trip(connected: Connection) -> None:
     assert session.data["has_session_branch"] is False
     prompt = await client.get_prompt("answer_infra_question", {"question": "List widgets"})
     assert "List widgets" in prompt.messages[0].content.text  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+
+
+@pytest.mark.parametrize(
+    "connected",
+    [("stdio", "legacy"), ("streamable-http", "legacy")],
+    ids=["stdio-legacy", "streamable-http-legacy"],
+    indirect=True,
+)
+async def test_legacy_handshake_round_trip(connected: Connection) -> None:
+    """Clients on a handshake-era protocol keep the read-only surface and an empty trace context.
+
+    From mcp 2.3.0, such clients omit empty ``_meta`` and ``params`` on the wire.
+    """
+    client, _ = connected
+    assert client.initialize_result is not None  # only the legacy initialize handshake sets it
+    await client.ping()
+    tools = {tool.name for tool in await client.list_tools()}
+    assert "get_schema" in tools
+    assert "node_delete" not in tools
+    result = await client.call_tool("get_schema", {})
+    assert json.loads(result.content[0].text) == {"TestWidget": "Widget"}  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+    untraced = await client.call_tool("get_schema", {"branch": "trace-clean"})
+    catalog = json.loads(untraced.content[0].text)  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+    assert json.loads(catalog["TestWidget"]) == {"trace_id": "0" * 32, "span_id": "0" * 16, "tracestate": ""}
 
 
 async def test_mounted_resource_template_matches_tool_result(connected: Connection) -> None:

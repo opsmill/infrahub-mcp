@@ -25,15 +25,24 @@ The server is built on **FastMCP** and follows its composition pattern:
 configuration are yielded as `AppContext`, available to all tools via
 FastMCP's dependency injection.
 
-### Session-branch state (per-session, weakly held)
+### Session-branch state (per caller, bounded)
 
-`AppContext` is shared across MCP sessions for the process lifetime, so the
-active session branch must **not** be a single value on it. Instead it is held
-in `WeakKeyDictionary` maps keyed by the per-session object
-(`ctx.request_context.session`, resolved by `_session_obj`): one map for the
-branch name, one for a per-session `asyncio.Lock`. This gives true per-session
-isolation (a reset/recovery in one session never touches another) and releases
-entries automatically when a session ends — no unbounded growth.
+`AppContext` is shared by all callers for the process lifetime, so the active
+session branch must **not** be a single value on it. Instead it is held in two
+`OrderedDict` maps (branch name, and a per-key `asyncio.Lock`) keyed by the
+string from `_session_key()`. From MCP protocol version 2026-07-28 each request
+gets a new session object, so the key joins an HMAC-SHA-256 digest of the
+authenticated caller (`get_caller_identity()` in `auth.py`) and the session id
+that the transport issued (`Connection.session_id`, set only for stateful
+streamable-HTTP sessions; the raw `mcp-session-id` header is not trusted),
+caller first so one caller's session id never reaches another caller's branch.
+The transport checks the session owner only in `oidc` mode, so the caller part
+is what isolates passthrough callers.
+With neither, the key is `process` (correct for stdio, where one process serves
+one client). Storing or reading a branch marks its key as most recently used.
+The branch map keeps at most 1024 keys and drops the least recently used key
+first; the lock map drops only locks that no task holds or waits for. A reset/recovery for one key never touches
+another. See [ADR 0009](../adr/0009-session-branch-key-without-mcp-sessions.md).
 
 `get_or_create_session_branch()` validates the cached branch before reuse via a
 single `client.branch.get()`: a `BranchNotFoundError` (deleted) or a

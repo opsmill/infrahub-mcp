@@ -15,29 +15,29 @@
     "typecheck": "tsc"
   },
   "dependencies": {
-    "@docusaurus/core": "^3.10.0",
-    "@docusaurus/plugin-client-redirects": "^3.10.0",
-    "@docusaurus/preset-classic": "^3.10.0",
-    "@docusaurus/theme-mermaid": "^3.10.0",
-    "@easyops-cn/docusaurus-search-local": "^0.44.5",
-    "@mdx-js/react": "^3.0.1",
-    "@signalwire/docusaurus-plugin-llms-txt": "^1.2.1",
+    "@docusaurus/core": "^3.10.2",
+    "@docusaurus/plugin-client-redirects": "^3.10.2",
+    "@docusaurus/preset-classic": "^3.10.2",
+    "@docusaurus/theme-mermaid": "^3.10.2",
+    "@easyops-cn/docusaurus-search-local": "^0.44.6",
+    "@mdx-js/react": "^3.1.1",
+    "@signalwire/docusaurus-plugin-llms-txt": "^1.2.2",
     "clsx": "^2.1.1",
-    "prism-react-renderer": "^2.4.0",
+    "prism-react-renderer": "^2.4.1",
     "raw-loader": "^4.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-player": "^2.16.0"
+    "react-player": "^2.16.1"
   },
   "devDependencies": {
-    "@docusaurus/eslint-plugin": "^3.10.0",
-    "@docusaurus/module-type-aliases": "^3.10.0",
-    "@docusaurus/tsconfig": "^3.10.0",
-    "@docusaurus/types": "^3.10.0",
-    "@typescript-eslint/eslint-plugin": "^6.20.0",
-    "@typescript-eslint/parser": "^6.20.0",
-    "eslint": "^8.56.0",
-    "typescript": "~5.6.2"
+    "@docusaurus/eslint-plugin": "^3.10.2",
+    "@docusaurus/module-type-aliases": "^3.10.2",
+    "@docusaurus/tsconfig": "^3.10.2",
+    "@docusaurus/types": "^3.10.2",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.57.1",
+    "typescript": "~5.6.3"
   },
   "packageManager": "pnpm@11.6.0",
   "browserslist": {
@@ -53,6 +53,6 @@
     ]
   },
   "engines": {
-    "node": ">=18.0"
+    "node": ">=20.18.1"
   }
 }

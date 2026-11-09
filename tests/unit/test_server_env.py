@@ -124,6 +124,34 @@ class TestLifespanEnvPriming:
                 assert os.environ["INFRAHUB_ADDRESS"] == "http://infrahub"
                 assert context.client is not None
 
+    async def test_commented_token_placeholder_fails_startup(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unfilled ``INFRAHUB_API_TOKEN= # ...`` line must stop startup, not be sent as a token."""
+        (tmp_path / ".env").write_text("INFRAHUB_ADDRESS=http://infrahub\nINFRAHUB_API_TOKEN= # fill me in\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            with pytest.raises(RuntimeError, match="Authentication required"):
+                async with app_lifespan(mcp):
+                    pass
+
+    async def test_commented_token_placeholder_allows_password_login(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A blank token placeholder next to a username and password must not count as a token."""
+        (tmp_path / ".env").write_text(
+            "INFRAHUB_ADDRESS=http://infrahub\n"
+            "INFRAHUB_API_TOKEN= # fill me in\n"
+            "INFRAHUB_USERNAME=alice\n"
+            "INFRAHUB_PASSWORD=hunter2\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True):
+            async with app_lifespan(mcp) as context:
+                assert context.client is not None
+                assert context.client.config.password_authentication
+                assert "X-INFRAHUB-KEY" not in context.client.headers
+
 
 def _git(directory: Path, *args: str) -> None:
     """Create test fixtures with native Git, independent of the SDK's Dulwich reader."""
