@@ -1,0 +1,45 @@
+tests/transport/test_server.py
+  s_03148743a2ae79::t_ce274b0103bf98 235,244
+tests/unit/test_middleware.py
+  s_03148743a2ae79::t_04605ee544c7f0 1220-1222
+  s_03148743a2ae79::t_0e3621283b7218 1244
+  s_03148743a2ae79::t_65485fd6f9374e 1462-1506
+changelog/218.fixed.md
+  s_03148743a2ae79::t_dc076d1cf43277 1
+docs/docs/references/configuration.mdx
+  s_03148743a2ae79::t_d73da98fbe9e40 168
+  s_03148743a2ae79::t_39ba0121d2085a 181
+src/infrahub_mcp/middleware.py
+  s_03148743a2ae79::t_0e5263255eb95f 655-659
+  s_03148743a2ae79::t_1743960c4fc921 341,343
+  s_03148743a2ae79::t_c2c9c63d177e68 673-674
+  s_03148743a2ae79::t_9f384cc7b1c868 67
+  s_03148743a2ae79::t_cbc525a75d23b3 302
+  s_03148743a2ae79::t_abd33485ed6378 201-203
+  s_03148743a2ae79::t_f7e4d2722c6210 641-644
+  s_03148743a2ae79::t_e76fbda0339367 186
+  s_03148743a2ae79::t_05608a11d16636 609
+  s_03148743a2ae79::t_a89e3fc1930766 318-325
+  s_03148743a2ae79::t_4faaca0728c569 50
+  s_03148743a2ae79::t_28af312e12415e 82-93
+dev/knowledge/architecture.md
+  s_03148743a2ae79::t_6da45bf4670199 80-90
+changelog/234.changed.md
+  s_03148743a2ae79::t_8b5766527f76ae 5,7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1ffa6c47d7a6559f6b50439b90fba37aeb215819",
+  "prompts": {},
+  "sessions": {
+    "s_03148743a2ae79": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "33f236c0-7958-4bb1-b970-49127033241a",
+        "model": "unknown"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
