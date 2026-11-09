@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import logging
 import re
+import secrets
 from contextvars import ContextVar, Token
 from typing import TYPE_CHECKING, Any
 
@@ -187,3 +191,54 @@ def get_user_from_token(claim: str = "email") -> str:
     except (ImportError, AttributeError, KeyError, TypeError):
         logger.debug("Failed to extract user from OIDC token", exc_info=True)
     return "anonymous"
+
+
+# Claims that identify one user of the OIDC application when the token has no subject.
+_OIDC_USER_CLAIMS = ("oid", "preferred_username", "email")
+# The caller identities live only in this process's memory, so a per-process key is enough.
+_CALLER_IDENTITY_KEY = secrets.token_bytes(32)
+
+
+def get_caller_identity() -> str | None:
+    """Return a stable, hashed identity for the authenticated caller, or ``None``.
+
+    Used to keep per-caller state between tool calls when the MCP protocol has no
+    session (2026-07-28 and later). Checked in order: the OIDC principal
+    (client id, issuer, subject, as the MCP SDK's ``principal_components`` reads
+    it for session ownership), the passthrough API token, then the passthrough
+    Basic credentials. An OIDC token without a subject uses the first of
+    ``oid``, ``preferred_username`` or ``email`` that it carries. With none of
+    them it falls back to the token itself, because client id and issuer alone
+    are the same for every user of the application; that identity changes when
+    the token is refreshed, so the caller then gets a new branch. The value is an
+    HMAC-SHA-256 digest under a key generated for this process, so neither
+    secrets nor digests that could be brute-forced offline are held as dictionary
+    keys. Returns ``None`` when the request carries no credentials (stdio
+    transport or ``auth_mode=none``).
+    """
+    material: str | None = None
+    try:
+        from fastmcp.server.dependencies import get_access_token  # noqa: PLC0415
+        from mcp.server.auth.provider import principal_components  # noqa: PLC0415
+
+        token = get_access_token()
+    except (ImportError, RuntimeError):
+        token = None
+    if token is not None:
+        claims = token.claims or {}
+        client_id, issuer, subject = principal_components(token)
+        subject = subject or claims.get("sub")
+        user_claim = next((name for name in _OIDC_USER_CLAIMS if claims.get(name)), None)
+        if subject:
+            material = "oidc:" + json.dumps([client_id, issuer, subject], default=str)
+        elif user_claim is not None:
+            material = "oidc:" + json.dumps([client_id, issuer, user_claim, claims[user_claim]], default=str)
+        else:
+            material = f"oidc-token:{token.token}"
+    elif (passthrough_token := get_passthrough_token()) is not None:
+        material = f"token:{passthrough_token}"
+    elif (credentials := get_passthrough_basic()) is not None:
+        material = "basic:" + json.dumps(list(credentials))
+    if material is None:
+        return None
+    return hmac.new(_CALLER_IDENTITY_KEY, material.encode(), hashlib.sha256).hexdigest()

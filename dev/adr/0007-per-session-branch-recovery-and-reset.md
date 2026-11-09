@@ -1,6 +1,6 @@
 # 7. Per-Session Branch Recovery, Reset, and Scoping
 
-**Status:** Accepted
+**Status:** Accepted; per-session scoping superseded by [ADR 0009](0009-session-branch-key-without-mcp-sessions.md)
 **Date:** 2026-06-04
 **Author:** @bkohler
 
