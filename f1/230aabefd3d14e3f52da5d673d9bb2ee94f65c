@@ -1,0 +1,25 @@
+specs/004-branch-name-helper/spec.md
+  s_db21cc05544a7c::t_3df2b38a1d711d 17-23
+  s_db21cc05544a7c::t_8ae39db8e22b65 30,35-45
+specs/004-branch-name-helper/plan.md
+  s_db21cc05544a7c::t_bf1f7e661cee6c 18-19
+  s_db21cc05544a7c::t_bc9b93e3c65e80 7
+specs/004-branch-name-helper/tasks.md
+  s_db21cc05544a7c::t_81017202d795ab 5-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f1230aabefd3d14e3f52da5d673d9bb2ee94f65c",
+  "prompts": {},
+  "sessions": {
+    "s_db21cc05544a7c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9dce56cc-b30b-4511-9177-948090b69c77",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Pol Michel <polmichel29@gmail.com>"
+    }
+  }
+}
