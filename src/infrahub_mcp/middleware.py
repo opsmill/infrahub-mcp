@@ -281,7 +281,7 @@ def _is_tool_call_error(error: Exception, context: MiddlewareContext[Any]) -> bo
 
 
 class ToolResultErrorHandlingMiddleware(ErrorHandlingMiddleware):
-    """``ErrorHandlingMiddleware`` that leaves tool call errors to FastMCP's own mapping.
+    """``ErrorHandlingMiddleware`` that keeps tool call errors as ``isError`` results.
 
     The MCP spec reports tool execution errors in the result with ``isError: true``
     so the model can read the message and correct its call. FastMCP builds that
@@ -292,11 +292,14 @@ class ToolResultErrorHandlingMiddleware(ErrorHandlingMiddleware):
     are re-raised unchanged here.
 
     An unknown or disabled tool is a protocol error: ``to_mcp_error`` maps it to
-    ``-32602``, as SEP-2164 requires. Every other error keeps the parent's mapping.
+    ``-32602``, as SEP-2164 requires, instead of the ``isError`` result that
+    FastMCP's ``tools/call`` handler would return. Every other error keeps the
+    parent's mapping.
 
-    FastMCP core already logs an error raised while the tool runs, so these errors
-    are logged here at ``WARNING`` at most: they are results the model acts on, not
-    server faults. They are still counted for ``/metrics``.
+    These tool call errors are logged here at ``WARNING`` at most, because they are
+    caused by the call, not by a server fault. FastMCP core logs an error raised
+    while the tool runs, but not an unknown tool or an error that a middleware
+    raises. They are still counted for ``/metrics``.
     """
 
     @override
@@ -348,8 +351,15 @@ def _connection_error_message(exc: BaseException) -> tuple[int, str] | None:
             "Check that the instance is running and not overloaded."
         )
     if isinstance(exc, AuthenticationError):
+        # The SDK raises AuthenticationError for both a 401 and a 403 response from Infrahub.
+        status_code = getattr(getattr(exc.__cause__, "response", None), "status_code", None)
+        if status_code == 403:  # noqa: PLR2004
+            return -32001, (
+                f"Infrahub returned a 403 Forbidden error — {exc}. "
+                "Check that the account behind the credentials has permission for this operation."
+            )
         return -32001, (
-            f"The Infrahub MCP server returned a 401 Unauthorized error — {exc}. "
+            f"Infrahub returned a 401 Unauthorized error — {exc}. "
             "Check your credentials (API token, username/password, or passthrough header)."
         )
     if isinstance(exc, (ConnectionError, HttpxConnectError)):
@@ -737,7 +747,8 @@ def configure_middleware(mcp: Any, config: ServerConfig) -> None:
     - **MetricsMiddleware** — request/error/latency counters
     - **OTelTracingMiddleware** — OpenTelemetry spans (conditional)
     - **ToolResultErrorHandlingMiddleware** — exception → MCP error mapping;
-      a ``ToolError`` stays an ``isError`` tool result
+      a tool call ``FastMCPError`` stays an ``isError`` tool result, and an
+      unknown tool returns JSON-RPC ``-32602``
     - **InfrahubConnectionMiddleware** — friendly Infrahub SDK error messages
     - **SafeRetryMiddleware** — exponential backoff for transient failures,
       retrying only idempotent or read-only tools (conditional)

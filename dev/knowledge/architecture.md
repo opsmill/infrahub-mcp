@@ -75,13 +75,12 @@ via `configure_middleware()`.
 **Custom middleware:**
 
 - `ToolResultErrorHandlingMiddleware` — subclass of `ErrorHandlingMiddleware`
-  that leaves `tools/call` errors to FastMCP's own mapping: a `ToolError`,
-  invalid arguments and an OIDC scope denial return a tool result with
+  that keeps `tools/call` errors as tool results: a `ToolError`, invalid
+  arguments and an OIDC scope denial return a tool result with
   `isError: true`, and an unknown tool returns JSON-RPC `-32602` (in OIDC
   mode `AuthMiddleware` rejects it first as an `isError` result; in
   read-only mode `ReadOnlyMiddleware` returns `-32601`). These errors are
-  logged at `WARNING`, because they are results the model acts on and
-  FastMCP core already logs them
+  logged at `WARNING`, because the call caused them, not a server fault
 - `SafeRetryMiddleware` — subclass of `RetryMiddleware` that retries only
   tools annotated as idempotent or read-only
 - `StrictResponseLimitingMiddleware` — subclass of

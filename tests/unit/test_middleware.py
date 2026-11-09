@@ -15,6 +15,7 @@ import mcp.types as mt
 import pytest
 from fastmcp import Client, FastMCP
 from fastmcp.exceptions import InsufficientScopeError, ToolError
+from fastmcp.server.auth import AccessToken
 from fastmcp.server.middleware.error_handling import RetryMiddleware
 from fastmcp.server.middleware.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.base import ToolResult
@@ -43,6 +44,7 @@ from infrahub_mcp.middleware import (
     get_error_handling,
     get_metrics,
 )
+from infrahub_mcp.prompts.prompts import mcp as prompts_mcp
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -145,11 +147,17 @@ class TestRequestIdMiddleware:
 class TestReadOnlyMiddleware:
     async def test_fallback_allowlist_matches_registered_read_tools(self) -> None:
         """The fallback allowlist names every registered tool without the write tag, and no other tool."""
-        from infrahub_mcp.tools import gql, nodes, schema, session, traversal, write  # noqa: PLC0415
+        import importlib  # noqa: PLC0415
+        import pkgutil  # noqa: PLC0415
 
-        registered = [
-            tool for module in (gql, nodes, schema, session, traversal, write) for tool in await module.mcp.list_tools()
+        import infrahub_mcp.tools  # noqa: PLC0415
+
+        modules = [
+            importlib.import_module(f"infrahub_mcp.tools.{info.name}")
+            for info in pkgutil.iter_modules(infrahub_mcp.tools.__path__)
         ]
+        assert modules, "no tool modules found"
+        registered = [tool for module in modules for tool in await module.mcp.list_tools()]
         read_tools = {tool.name for tool in registered if WRITE_TAG not in tool.tags}
         assert read_tools == ReadOnlyMiddleware._KNOWN_READ_ONLY_TOOLS  # noqa: SLF001
 
@@ -1019,6 +1027,50 @@ class TestConfigureMiddlewareOidc:
         assert "AuthMiddleware" in types
 
 
+class TestOidcWriteScopeGatesWritePrompt:
+    """The write scope also gates the ``write``-tagged ``make_infra_change`` prompt (#192)."""
+
+    @staticmethod
+    def _server_with_oidc_auth() -> FastMCP:
+        """Mount the real prompts behind the AuthMiddleware that configure_middleware builds."""
+        mock_mcp = MagicMock()
+        mock_mcp.middleware = []
+        mock_mcp.add_middleware.side_effect = mock_mcp.middleware.append
+        configure_middleware(mock_mcp, ServerConfig(auth_mode="oidc", auth_scopes_write="infrahub:write"))
+        auth_middleware = next(m for m in mock_mcp.middleware if type(m).__name__ == "AuthMiddleware")
+
+        server = FastMCP(name="oidc-prompts")
+        server.mount(prompts_mcp)
+        server.add_middleware(auth_middleware)
+        return server
+
+    @staticmethod
+    async def _list_and_get(server: FastMCP, scopes: list[str]) -> tuple[set[str], bool]:
+        token = AccessToken(token="test-token", client_id="test-client", scopes=scopes)  # noqa: S106
+        with patch("fastmcp.server.middleware.authorization.get_access_token", return_value=token):
+            async with Client(server) as client:
+                names = {p.name for p in await client.list_prompts()}
+                try:
+                    await client.get_prompt("make_infra_change", arguments={"description": "add a VLAN"})
+                    fetchable = True
+                except MCPError:
+                    fetchable = False
+        return names, fetchable
+
+    @pytest.mark.asyncio
+    async def test_token_without_write_scope_cannot_list_or_get_make_infra_change(self) -> None:
+        names, fetchable = await self._list_and_get(self._server_with_oidc_auth(), scopes=["openid"])
+        assert "make_infra_change" not in names
+        assert {"answer_infra_question", "explore_schema"} <= names
+        assert fetchable is False
+
+    @pytest.mark.asyncio
+    async def test_token_with_write_scope_can_list_and_get_make_infra_change(self) -> None:
+        names, fetchable = await self._list_and_get(self._server_with_oidc_auth(), scopes=["openid", "infrahub:write"])
+        assert "make_infra_change" in names
+        assert fetchable is True
+
+
 # ---------------------------------------------------------------------------
 # SafeRetryMiddleware — on_call_tool routing
 # ---------------------------------------------------------------------------
@@ -1286,7 +1338,24 @@ class TestInfrahubConnectionMiddleware:
             msg = "Invalid API token"
             raise AuthenticationError(msg)
 
-        with pytest.raises(ToolError, match="401 Unauthorized"):
+        with pytest.raises(ToolError, match=r"^Infrahub returned a 401 Unauthorized error — Invalid API token\."):
+            await middleware.on_call_tool(ctx, call_next)
+
+    @pytest.mark.anyio
+    async def test_forbidden_authentication_error_names_permissions(self) -> None:
+        """The SDK raises AuthenticationError for a 403 too; that is a permission problem, not bad credentials."""
+        import httpx  # noqa: PLC0415
+
+        middleware = InfrahubConnectionMiddleware()
+        ctx = _make_tool_context("node_upsert")
+        request = httpx.Request("POST", "http://infrahub:8000/graphql")
+        response = httpx.Response(403, request=request)
+
+        async def call_next(context: MiddlewareContext[Any]) -> ToolResult:  # noqa: RUF029
+            msg = "You do not have permission"
+            raise AuthenticationError(msg) from httpx.HTTPStatusError("forbidden", request=request, response=response)
+
+        with pytest.raises(ToolError, match=r"^Infrahub returned a 403 Forbidden error .* has permission"):
             await middleware.on_call_tool(ctx, call_next)
 
     @pytest.mark.anyio
