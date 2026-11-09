@@ -1447,6 +1447,18 @@ def _get_metrics() -> Any:
     return get_metrics()
 
 
+def _sdk_branch(client: InfrahubClient, branch: str | None) -> str:
+    """Resolve *branch* the way the SDK does: ``None`` or empty means ``client.default_branch``.
+
+    The ``schema_cache_enabled=False`` path keys the SDK's per-client cache
+    with this name. The SDK's own reads (``client.filters(branch=None)`` and
+    the rest) look the cache up under ``client.default_branch``, so a name
+    resolved any other way — for example the server's default branch from a
+    ``branch.all()`` query — would miss and fetch the schema again.
+    """
+    return branch or client.default_branch
+
+
 async def _sdk_cached_branch_schema(client: InfrahubClient, branch: str) -> BranchSchema:
     """Serve *branch* from the SDK's per-client cache, fetching and priming it on a miss.
 
@@ -1518,8 +1530,7 @@ async def get_cached_branch_schema(
     app_ctx = get_app_ctx(ctx)
     client = resolve_client(ctx, client)
     if not app_ctx.config.schema_cache_enabled:
-        resolved_branch = await _resolve_branch(ctx, branch)
-        return await _sdk_cached_branch_schema(client, resolved_branch)
+        return await _sdk_cached_branch_schema(client, _sdk_branch(client, branch))
 
     entry = await _ensure_entry(ctx=ctx, client=client, branch=branch, force_revalidate=False)
     return entry.schema
@@ -1645,8 +1656,13 @@ async def get_cached_graphql_sdl(
     app_ctx = get_app_ctx(ctx)
     client = resolve_client(ctx, client)
     if not app_ctx.config.schema_cache_enabled:
-        resolved_branch = await _resolve_branch(ctx, branch)
-        return await _fetch_graphql_sdl(client, resolved_branch)
+        sdk_branch = _sdk_branch(client, branch)
+        try:
+            return await _fetch_graphql_sdl(client, sdk_branch)
+        except Exception as exc:
+            if _is_auth_error(exc):
+                _raise_auth_error(exc, branch=sdk_branch)
+            raise
 
     entry = await _ensure_entry(ctx=ctx, client=client, branch=branch, force_revalidate=False)
     if entry.graphql_sdl is not None:
@@ -1705,9 +1721,8 @@ async def get_cached_kind(
     # branch — see _FORCED_REVALIDATE_DEBOUNCE_SECONDS.
     app_ctx = get_app_ctx(ctx)
     if not app_ctx.config.schema_cache_enabled:
-        # Caching off — defer to the SDK's regular error path.
-        resolved_branch = await _resolve_branch(ctx, branch)
-        return await client.schema.get(kind=kind, branch=resolved_branch)
+        # Caching off — defer to the SDK, which resolves the branch itself.
+        return await client.schema.get(kind=kind, branch=branch or None)
 
     entry = await _ensure_entry(ctx=ctx, client=client, branch=branch, force_revalidate=True)
     if kind in entry.schema.nodes:

@@ -166,6 +166,7 @@ def _make_client() -> MagicMock:
     """
     client = MagicMock()
     client.address = "http://infrahub.test"
+    client.default_branch = "main"
     client.schema = MagicMock()
     client.schema.cache = {}
     client.schema._fetch = AsyncMock()
@@ -368,6 +369,40 @@ class TestDisabledFlagUsesSdkCache:
         assert second is schema
         mock_client.schema._fetch.assert_awaited_once_with(branch="main")
         mock_client.schema.set_cache.assert_called_once_with(schema=schema, branch="main")
+
+    @pytest.mark.anyio
+    async def test_no_branch_resolves_to_the_clients_default_branch_like_the_sdk(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+    ) -> None:
+        """The SDK's own reads look the cache up under ``client.default_branch``, so it must be stored there."""
+        app_ctx.config = _make_config(schema_cache_enabled=False)
+        mock_client.default_branch = "trunk"  # differs from the server default the fixture resolves ("main")
+        schema = _make_branch_schema(schema_hash="H1")
+        mock_client.schema._fetch.return_value = schema
+
+        assert await get_cached_branch_schema(mock_ctx) is schema
+
+        mock_client.schema._fetch.assert_awaited_once_with(branch="trunk")
+        assert mock_client.schema.cache == {"trunk": schema}
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("status_code", [httpx.codes.UNAUTHORIZED, httpx.codes.FORBIDDEN])
+    async def test_a_rejected_credential_on_the_sdl_raises_authentication_error(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        status_code: int,
+    ) -> None:
+        """With the cache off, a 401/403 from ``/schema.graphql`` surfaces as it does with the cache on."""
+        app_ctx.config = _make_config(schema_cache_enabled=False)
+        _fail_sdl(mock_client, status_code)
+
+        with pytest.raises(AuthenticationError):
+            await get_cached_graphql_sdl(mock_ctx)
 
     @pytest.mark.anyio
     async def test_fresh_client_per_request_fetches_once_per_call(
