@@ -2405,74 +2405,94 @@ class TestPassthroughCallerIsValidatedBeforeAHit:
         with pytest.raises(ToolError, match="credential could not be checked"):
             await get_cached_branch_schema(ctx, client=caller)
 
-        # Two probes: the validating one outside the lock, then the lock path's own after it fell
-        # through. Only the second is counted — the fast path deliberately records no failure.
-        assert _summary_probes(caller) == 2
+        assert _summary_probes(caller) == 1
         caller.schema.set_cache.assert_not_called()
         assert app_ctx.schema_cache["main"].consecutive_failures == 1  # breaker bookkeeping still ran
         events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
         assert events.count("revalidate_failure") == 1
         assert "stale_hit" not in events
 
-        # Still unprimed, now inside the throttle: a further read in this request fails fast, no probe.
+        # Still unprimed: a further read in this request probes again with its own credential.
         clock.advance(1)
-        with pytest.raises(ToolError, match="cannot be checked until the next upstream attempt"):
+        with pytest.raises(ToolError, match="credential could not be checked"):
             await get_cached_branch_schema(ctx, client=caller)
         assert _summary_probes(caller) == 2
+        assert app_ctx.schema_cache["main"].consecutive_failures == 2
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
-    async def test_an_unprimed_client_inside_the_failure_throttle_fails_fast_without_probing(
+    async def test_an_unprimed_client_inside_the_failure_throttle_probes_with_its_own_credential(
         self,
         mock_metrics: MagicMock,
         clock: _FakeClock,
         auth_mode: str,
     ) -> None:
-        """Another caller's probe failed moments ago: neither stale schema nor a probe for this one."""
+        """Another caller's probe failed moments ago: this caller still probes, and a hash match serves it."""
         ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
         schema = _make_branch_schema(schema_hash="H1")
-        entry = _entry(
+        app_ctx.schema_cache["main"] = _entry(
             schema,
             fetched_at_monotonic=clock.now - 100,  # past the skip-window
             consecutive_failures=1,
             last_attempt_monotonic=clock.now - 5,  # failed probe inside the 30 s throttle
         )
-        app_ctx.schema_cache["main"] = entry
         caller = _make_client()
-        caller._get.side_effect = httpx.NetworkError("down")
+        caller._get.return_value = _make_response(json_body={"main": "H1"})
 
-        with pytest.raises(ToolError, match="cannot be checked until the next upstream attempt in 25 s"):
-            await get_cached_branch_schema(ctx, client=caller)
+        assert await get_cached_branch_schema(ctx, client=caller) is schema
 
-        caller._get.assert_not_awaited()
-        caller.schema.set_cache.assert_not_called()
-        assert app_ctx.schema_cache["main"] is entry
+        assert _summary_probes(caller) == 1
+        assert app_ctx.schema_cache["main"].consecutive_failures == 0  # the match ended the streak
         events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
+        assert "hash_match" in events
         assert "stale_hit" not in events
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
-    async def test_the_throttle_wins_over_the_skip_window_for_an_unprimed_client(
+    async def test_a_failed_forced_probe_inside_the_skip_window_does_not_block_an_unprimed_client(
         self,
         clock: _FakeClock,
         auth_mode: str,
     ) -> None:
-        """A forced probe can fail inside the skip-window; the window must not route this caller to a probe."""
+        """One failed forced probe must not fail every new passthrough caller closed for the throttle window."""
         ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
         schema = _make_branch_schema(schema_hash="H1")
         app_ctx.schema_cache["main"] = _entry(
             schema,
-            fetched_at_monotonic=clock.now - 10,  # inside the skip-window
+            fetched_at_monotonic=clock.now - 5,  # inside the skip-window
             consecutive_failures=1,
-            last_attempt_monotonic=clock.now - 5,  # a forced probe failed since
+            last_attempt_monotonic=clock.now - 1,  # a forced probe failed since
         )
         caller = _make_client()
-        caller._get.side_effect = httpx.NetworkError("down")
+        caller._get.return_value = _make_response(json_body={"main": "H1"})
 
-        with pytest.raises(ToolError):
-            await get_cached_branch_schema(ctx, client=caller)
+        assert await get_cached_branch_schema(ctx, client=caller) is schema
+        assert _summary_probes(caller) == 1
 
-        caller._get.assert_not_awaited()
+    @pytest.mark.anyio
+    @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
+    async def test_an_outage_seen_by_unprimed_clients_still_trips_the_breaker(
+        self,
+        clock: _FakeClock,
+        auth_mode: str,
+    ) -> None:
+        """Each unprimed caller's failed probe counts, so the breaker trips and later callers fail fast."""
+        ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
+        schema = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = _within_window_entry(schema, now=clock.now)
+        max_failures = app_ctx.config.schema_cache_max_consecutive_failures
+
+        for _ in range(max_failures):
+            caller = _make_client()
+            caller._get.side_effect = httpx.NetworkError("down")
+            with pytest.raises(ToolError):
+                await get_cached_branch_schema(ctx, client=caller)
+
+        late = _make_client()
+        late._get.side_effect = httpx.NetworkError("down")
+        with pytest.raises(ToolError, match="circuit-break threshold reached"):
+            await get_cached_branch_schema(ctx, client=late)
+        late._get.assert_not_awaited()
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
@@ -2660,14 +2680,14 @@ class TestPassthroughProbesRunOutsideTheBranchLock:
     @pytest.mark.anyio
     @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
     @pytest.mark.parametrize("configure", _TRANSIENT_PROBE_FAILURES)
-    async def test_a_transient_probe_failure_falls_through_to_the_lock_and_counts_once(
+    async def test_a_transient_probe_failure_counts_once_without_a_second_probe_under_the_lock(
         self,
         mock_metrics: MagicMock,
         clock: _FakeClock,
         auth_mode: str,
         configure: Callable[[MagicMock], None],
     ) -> None:
-        """The fast path records nothing; the lock path owns the bookkeeping and the caller fails closed."""
+        """The lock-free probe counts its own failure and fails the caller closed; the lock is never taken."""
         ctx, app_ctx = _ctx_for_auth_mode(auth_mode)
         schema = _make_branch_schema(schema_hash="H1")
         app_ctx.schema_cache["main"] = _within_window_entry(schema, now=clock.now)
@@ -2677,7 +2697,8 @@ class TestPassthroughProbesRunOutsideTheBranchLock:
         with pytest.raises(ToolError, match="credential could not be checked"):
             await get_cached_branch_schema(ctx, client=caller)
 
-        assert _summary_probes(caller) == 2  # once outside the lock, once under it
+        assert _summary_probes(caller) == 1  # no second probe under the lock
+        assert "main" not in app_ctx._schema_cache_locks
         assert app_ctx.schema_cache["main"].consecutive_failures == 1  # counted exactly once
         caller.schema.set_cache.assert_not_called()
         events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
