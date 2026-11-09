@@ -3,11 +3,9 @@ import re
 import secrets
 import string
 from collections import OrderedDict
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from itertools import islice
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn
 
@@ -29,6 +27,7 @@ from infrahub_mcp.auth import (
 )
 from infrahub_mcp.config import ServerConfig, env_get
 from infrahub_mcp.constants import AUTH_MODE_BASIC_PASSTHROUGH, AUTH_MODE_TOKEN_PASSTHROUGH
+from infrahub_mcp.keyed_locks import KeyedLocks
 
 if TYPE_CHECKING:
     from infrahub_mcp.schema_cache import CachedSchemaEntry
@@ -45,20 +44,21 @@ class AppContext:  # pylint: disable=too-many-instance-attributes  # context agg
 
     The active session branch is tracked **per caller**, not process-wide: the
     branch name and its lock are keyed by the string from ``_session_key``
-    (authenticated caller and MCP session id, else the server process). The maps
-    keep at most ``_MAX_SESSION_ENTRIES`` keys and drop the least recently used
-    key first, so memory stays bounded. A lock that a task holds or waits for is
-    never dropped. A reset/recovery for one key never disturbs another.
-    ``default_branch`` stays instance-wide.
+    (authenticated caller and MCP session id, else the server process). The
+    branch map keeps at most ``_MAX_SESSION_ENTRIES`` keys and drops the least
+    recently used key first; the lock map holds only the keys a task holds or
+    waits for (see :class:`~infrahub_mcp.keyed_locks.KeyedLocks`). A
+    reset/recovery for one key never disturbs another. ``default_branch``
+    stays instance-wide.
 
     The schema cache (``schema_cache``) is process-wide and keyed by branch
-    name, and so are its locks: ``_schema_cache_locks`` holds one
-    ``asyncio.Lock`` per branch, created on first use, so one branch's
-    upstream fetch never holds up another branch's reads, and dropped once
-    the branch has neither a cache entry nor a reader on the lock. The cache
-    itself is bounded by ``ServerConfig.schema_cache_max_branches`` and
-    evicts its least recently used branch past that count, which is what
-    keeps both maps finite under the default per-session branch pattern.
+    name, and so are its locks: ``_schema_cache_locks`` serializes each
+    branch's structured-schema fetches and ``_schema_sdl_locks`` each
+    branch's GraphQL SDL fetches, so one branch's upstream call never holds
+    up another branch's reads, and a slow SDL fetch never holds up a
+    structured read. The cache itself is bounded by
+    ``ServerConfig.schema_cache_max_branches`` and evicts its least recently
+    used branch past that count.
     """
 
     client: InfrahubClient | None
@@ -66,9 +66,7 @@ class AppContext:  # pylint: disable=too-many-instance-attributes  # context agg
     default_branch: str | None = field(default=None)
     _default_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     _session_branches: OrderedDict[str, str] = field(default_factory=OrderedDict)
-    _session_locks: OrderedDict[str, asyncio.Lock] = field(default_factory=OrderedDict)
-    # Number of tasks holding or waiting for each key's lock; a key is absent when unused.
-    _session_lock_users: dict[str, int] = field(default_factory=dict)
+    _session_locks: KeyedLocks = field(default_factory=KeyedLocks)
     schema_cache: OrderedDict[str, "CachedSchemaEntry"] = field(default_factory=OrderedDict)
     """Branch name → that branch's cached schema snapshot, in least-recently-used order.
 
@@ -88,33 +86,19 @@ class AppContext:  # pylint: disable=too-many-instance-attributes  # context agg
     successful cold fetch removes it. Kept apart from ``schema_cache`` so
     ``CachedSchemaEntry.schema`` stays non-optional for every reader.
     """
-    _schema_cache_locks: dict[str, asyncio.Lock] = field(default_factory=dict)
-    """Branch name → the lock serializing that branch's upstream schema calls.
+    _schema_cache_locks: KeyedLocks = field(default_factory=KeyedLocks)
+    """Per-branch locks serializing the structured-schema fetch and revalidation of that branch.
 
-    Taken by ``schema_cache._ensure_entry`` and ``schema_cache._fill_graphql_sdl``
-    for the branch they read, and held across the upstream call — up to its
-    timeout. One lock per branch rather than one for the whole cache: with a
-    single lock, a cold fetch or probe for one branch queued every other
-    branch's lock-path reads, healthy ones included, behind that timeout.
-    A lock is created on first use and dropped by ``schema_cache._branch_lock``
-    when its last holder or waiter (counted in ``_schema_cache_lock_holders``)
-    releases it while the branch has no entry in ``schema_cache`` — an unknown
-    branch, an evicted one, a failed cold fetch. It is kept while anyone holds
-    or waits on it, so two readers of a branch never end up on two locks and
-    fetch it twice, and while the branch has an entry, for that entry's
-    revalidations. That last rule leaves a lock behind when an entry is
-    removed with nobody on the lock, so every removal — LRU eviction or a
-    branch-gone probe, through ``schema_cache._drop_entry`` — drops the
-    branch's lock itself when nobody holds or waits on it. The map is
-    therefore bounded by the branches in the cache plus those with a read in
-    flight, not by every branch name — caller input — ever asked for.
+    Held by ``schema_cache._ensure_entry`` across the upstream call, up to
+    its timeout. One lock per branch rather than one for the whole cache: a
+    single lock let one branch's cold fetch or probe queue every other
+    branch's reads behind that timeout.
     """
-    _schema_cache_lock_holders: dict[str, int] = field(default_factory=dict)
-    """Branch name → how many tasks currently hold or wait on that branch's lock.
+    _schema_sdl_locks: KeyedLocks = field(default_factory=KeyedLocks)
+    """Per-branch locks serializing the lazy GraphQL SDL fetch of that branch.
 
-    Maintained only by ``schema_cache._branch_lock``: incremented before a
-    task awaits the lock, decremented once it has released it, and removed at
-    zero. A branch is listed here only while it is in ``_schema_cache_locks``.
+    Separate from ``_schema_cache_locks`` so that a slow ``/schema.graphql``
+    never holds up a structured-schema read of the same branch.
     """
 
 
@@ -265,39 +249,9 @@ def _get_cached_session_branch(app_ctx: AppContext, key: str) -> str | None:
     return branch
 
 
-@asynccontextmanager
-async def _session_lock(app_ctx: AppContext, key: str) -> AsyncGenerator[None]:
-    """Hold the per-key branch lock, creating it on first use.
-
-    Each task that holds or waits for the lock is counted in ``_session_lock_users``.
-    Only locks with no such task are dropped past ``_MAX_SESSION_ENTRIES``, oldest
-    first. ``asyncio.Lock.locked()`` is not enough: it is ``False`` between a
-    ``release()`` and the woken waiter resuming, and dropping the lock then would
-    give a new task for the same key a second, unrelated lock.
-    """
-    # No await until ``async with lock``: the event loop runs this lookup, count and
-    # trim without switching tasks, so no separate guard lock is needed.
-    locks = app_ctx._session_locks  # noqa: SLF001
-    users = app_ctx._session_lock_users  # noqa: SLF001
-    lock = locks.get(key)
-    if lock is None:
-        lock = asyncio.Lock()
-        locks[key] = lock
-    locks.move_to_end(key)
-    users[key] = users.get(key, 0) + 1
-    excess = len(locks) - _MAX_SESSION_ENTRIES
-    if excess > 0:
-        for unused_key in list(islice((k for k in locks if k not in users), excess)):
-            del locks[unused_key]
-    try:
-        async with lock:
-            yield
-    finally:
-        remaining = users[key] - 1
-        if remaining:
-            users[key] = remaining
-        else:
-            del users[key]
+def _session_lock(app_ctx: AppContext, key: str) -> AbstractAsyncContextManager[None]:
+    """Hold the per-key session-branch lock for the block."""
+    return app_ctx._session_locks.hold(key)  # noqa: SLF001
 
 
 def get_session_branch(ctx: Context) -> str | None:

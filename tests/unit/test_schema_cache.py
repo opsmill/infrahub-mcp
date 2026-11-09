@@ -773,14 +773,14 @@ class TestPerBranchLock:
         assert app_ctx.schema_cache["b"].consecutive_failures == 0
 
     @pytest.mark.anyio
-    async def test_the_sdl_fill_shares_its_branch_lock_and_leaves_other_branches_alone(
+    async def test_a_parked_sdl_fill_never_blocks_a_structured_read(
         self,
         mock_ctx: MagicMock,
         app_ctx: AppContext,
         mock_client: MagicMock,
         clock: _FakeClock,
     ) -> None:
-        """A parked lazy SDL fill for ``a`` holds ``a``'s lock — the one its structured reads take — and no other."""
+        """A slow lazy SDL fill for ``a`` holds ``a``'s SDL lock only: structured reads of any branch proceed."""
         now = clock.now
         schema_a = _make_branch_schema(schema_hash="HA")
         schema_b = _make_branch_schema(schema_hash="HB")
@@ -788,7 +788,7 @@ class TestPerBranchLock:
             branch="a",
             schema=schema_a,
             schema_hash="H1",
-            graphql_sdl=None,  # only the SDL fetch failed; the next SDL read fills it lazily
+            graphql_sdl=None,  # the next SDL read fills it lazily
             fetched_at_monotonic=now,
             consecutive_failures=0,
             last_attempt_monotonic=now,
@@ -807,22 +807,18 @@ class TestPerBranchLock:
         mock_client._get.return_value = _make_response(json_body={"main": "H1"})
 
         fill_a = asyncio.create_task(get_cached_graphql_sdl(mock_ctx, "a"))
-        await entered.wait()  # the fill holds ``a``'s lock across its upstream call
+        await entered.wait()  # the fill holds ``a``'s SDL lock across its upstream call
 
         assert await get_cached_branch_schema(mock_ctx, "b") is schema_b  # ``b`` probes and is served meanwhile
 
         clock.advance(31)  # ``a`` is now past its skip-window: its next structured read takes the lock
-        read_a = asyncio.create_task(get_cached_branch_schema(mock_ctx, "a"))
-        for _ in range(3):
-            await asyncio.sleep(0)
-        assert not read_a.done(), "a structured read for `a` must queue behind `a`'s SDL fill"
+        assert await get_cached_branch_schema(mock_ctx, "a") is schema_a  # not queued behind the SDL fill
         assert not fill_a.done()
+        assert _summary_probes(mock_client) == 2  # one for ``b``, one for ``a``
 
         release.set()
         assert await fill_a == "sdl-a"
-        assert await read_a is schema_a
-        assert app_ctx.schema_cache["a"].graphql_sdl == "sdl-a"
-        assert _summary_probes(mock_client) == 2  # one for ``b``, one for ``a`` once its lock was free
+        assert app_ctx.schema_cache["a"].graphql_sdl == "sdl-a"  # the hash-match refresh kept the snapshot
 
     @pytest.mark.anyio
     async def test_an_unknown_branch_leaves_no_lock_behind(
@@ -840,32 +836,29 @@ class TestPerBranchLock:
 
         assert mock_client.schema._fetch.await_count == 3
         assert app_ctx.schema_cache == {}
-        assert app_ctx._schema_cache_locks == {}
-        assert app_ctx._schema_cache_lock_holders == {}
+        assert len(app_ctx._schema_cache_locks) == 0
 
     @pytest.mark.anyio
-    async def test_a_branch_with_an_entry_keeps_its_lock_between_reads(
+    async def test_a_lock_is_dropped_once_nobody_holds_or_waits_for_it(
         self,
         mock_ctx: MagicMock,
         app_ctx: AppContext,
         mock_client: MagicMock,
         clock: _FakeClock,
     ) -> None:
-        """Once a read has stored an entry, its lock stays — the same object — for the entry's revalidations."""
+        """A cached branch keeps no lock between reads: an unused lock carries no state."""
         schema = _make_branch_schema(schema_hash="H1")
         mock_client.schema._fetch.return_value = schema
         mock_client._get.return_value = _make_response(json_body={"main": "H1"})
 
         assert await get_cached_branch_schema(mock_ctx, "a") is schema
-        lock = app_ctx._schema_cache_locks["a"]
-        assert app_ctx._schema_cache_lock_holders == {}  # nobody on it, yet kept: ``a`` has an entry
+        assert "a" not in app_ctx._schema_cache_locks
 
         clock.advance(31)  # past the skip-window: the next read takes the lock and probes
         assert await get_cached_branch_schema(mock_ctx, "a") is schema
 
         assert _summary_probes(mock_client) == 1
-        assert app_ctx._schema_cache_locks["a"] is lock
-        assert app_ctx._schema_cache_lock_holders == {}
+        assert len(app_ctx._schema_cache_locks) == 0
 
     @pytest.mark.anyio
     async def test_a_reader_queued_behind_a_cold_fetch_shares_its_one_lock(
@@ -892,18 +885,18 @@ class TestPerBranchLock:
         second = asyncio.create_task(get_cached_branch_schema(mock_ctx, "a"))
         for _ in range(3):
             await asyncio.sleep(0)  # the second parks on that lock
-        lock = app_ctx._schema_cache_locks["a"]
+        lock = app_ctx._schema_cache_locks.get("a")
 
-        assert list(app_ctx._schema_cache_locks) == ["a"]
-        assert app_ctx._schema_cache_lock_holders == {"a": 2}
+        assert len(app_ctx._schema_cache_locks) == 1
+        assert app_ctx._schema_cache_locks.users("a") == 2
         assert not second.done()
 
         release.set()
         assert await first is schema
         assert await second is schema
         assert mock_client.schema._fetch.await_count == 1  # single-flight: the second was served by the first's fetch
-        assert app_ctx._schema_cache_locks["a"] is lock  # kept: ``a`` has an entry now
-        assert app_ctx._schema_cache_lock_holders == {}
+        assert lock is not None
+        assert len(app_ctx._schema_cache_locks) == 0
 
     @pytest.mark.anyio
     async def test_a_failed_cold_fetch_keeps_the_lock_for_its_waiter_and_the_last_reader_drops_it(
@@ -932,8 +925,8 @@ class TestPerBranchLock:
         second = asyncio.create_task(get_cached_branch_schema(mock_ctx, "ghost"))
         for _ in range(3):
             await asyncio.sleep(0)  # the second parks on ``ghost``'s lock
-        lock = app_ctx._schema_cache_locks["ghost"]
-        assert app_ctx._schema_cache_lock_holders == {"ghost": 2}
+        lock = app_ctx._schema_cache_locks.get("ghost")
+        assert app_ctx._schema_cache_locks.users("ghost") == 2
         assert not entered[1].is_set()  # the second never fetches alongside the first
 
         release[0].set()
@@ -942,20 +935,19 @@ class TestPerBranchLock:
         await entered[1].wait()  # the second now holds the lock, inside its own fetch
         # The first released on a branch with no entry, but the second was still queued: dropping
         # the lock there would let a third reader create a second one and fetch ``ghost`` concurrently.
-        assert app_ctx._schema_cache_locks["ghost"] is lock
-        assert app_ctx._schema_cache_lock_holders == {"ghost": 1}
+        assert app_ctx._schema_cache_locks.get("ghost") is lock
+        assert app_ctx._schema_cache_locks.users("ghost") == 1
 
         release[1].set()
         with pytest.raises(BranchNotFoundError):
             await second
 
         assert mock_client.schema._fetch.await_count == 2  # the second asked upstream itself, after the first
-        assert app_ctx._schema_cache_locks == {}
-        assert app_ctx._schema_cache_lock_holders == {}
+        assert len(app_ctx._schema_cache_locks) == 0
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("status_code", _BRANCH_GONE_PARAMS)
-    async def test_a_branch_gone_eviction_drops_the_lock_with_the_entry(
+    async def test_a_branch_gone_eviction_leaves_no_lock_behind(
         self,
         mock_ctx: MagicMock,
         app_ctx: AppContext,
@@ -967,7 +959,6 @@ class TestPerBranchLock:
         mock_client.schema._fetch.return_value = schema
         mock_client._get.return_value = _make_response(json_body={"main": "H1"})
         assert await get_cached_branch_schema(mock_ctx, "a") is schema
-        assert "a" in app_ctx._schema_cache_locks  # the entry keeps it
 
         app_ctx.schema_cache["a"] = _past_window_entry(schema, now=schema_cache._now(), branch="a")
         mock_client._get.return_value = _make_response(status_code=status_code)
@@ -976,8 +967,7 @@ class TestPerBranchLock:
             await get_cached_branch_schema(mock_ctx, "a")
 
         assert "a" not in app_ctx.schema_cache
-        assert "a" not in app_ctx._schema_cache_locks
-        assert app_ctx._schema_cache_lock_holders == {}
+        assert len(app_ctx._schema_cache_locks) == 0
 
     @pytest.mark.anyio
     async def test_a_404_from_summary_is_a_transient_failure_not_a_deleted_branch(
@@ -1089,11 +1079,11 @@ class TestCacheIsBoundedByBranchCount:
         assert list(app_ctx.schema_cache) == branches
 
     @pytest.mark.anyio
-    async def test_an_evicted_branch_also_loses_its_lock(
+    async def test_an_evicted_branch_leaves_no_lock_behind(
         self,
         mock_client: MagicMock,
     ) -> None:
-        """``_branch_lock`` keeps a lock while its branch has an entry, so eviction must drop it too."""
+        """Neither a stored entry nor its eviction keeps a lock: locks exist only while in use."""
         ctx, app_ctx = _ctx_with_cap(1)
 
         def fetch(branch: str) -> Any:
@@ -1102,13 +1092,12 @@ class TestCacheIsBoundedByBranchCount:
         mock_client.schema._fetch.side_effect = fetch
 
         await get_cached_branch_schema(ctx, "a")
-        assert "a" in app_ctx._schema_cache_locks  # kept for the entry's revalidations
+        assert "a" not in app_ctx._schema_cache_locks
 
         await get_cached_branch_schema(ctx, "b")
 
         assert list(app_ctx.schema_cache) == ["b"]
-        assert "a" not in app_ctx._schema_cache_locks
-        assert app_ctx._schema_cache_lock_holders == {}
+        assert len(app_ctx._schema_cache_locks) == 0
 
     @pytest.mark.anyio
     async def test_a_branch_with_a_read_in_flight_is_never_the_victim(
@@ -1270,7 +1259,7 @@ class TestUS2Revalidation:
 
         assert result is new_schema
         assert app_ctx.schema_cache["main"].schema_hash == "H2"
-        assert app_ctx.schema_cache["main"].graphql_sdl == "new-sdl"
+        assert app_ctx.schema_cache["main"].graphql_sdl is None  # filled on the next SDL read
         mock_client.schema._fetch.assert_awaited_once()
         mock_metrics.record_schema_cache_event.assert_any_call("hash_diff")
 
@@ -2154,6 +2143,7 @@ class TestAuthErrorsAreCallerScoped:
             schema_hash="H1",
             graphql_sdl=None,
             fetched_at_monotonic=schema_cache._now(),
+            last_attempt_monotonic=schema_cache._now(),
             consecutive_failures=2,
         )
         _fail_sdl(mock_client, make_error())
@@ -2201,6 +2191,7 @@ class TestAuthErrorsAreCallerScoped:
             schema_hash="H1",
             graphql_sdl=None,
             fetched_at_monotonic=schema_cache._now(),
+            last_attempt_monotonic=schema_cache._now(),
             consecutive_failures=2,
         )
         _fail_sdl(mock_client, status_code)
@@ -2619,7 +2610,7 @@ class TestPassthroughProbesRunOutsideTheBranchLock:
 
         assert len(entered) == 5, f"probes in flight: {len(entered)} — they are serializing"
         assert not any(task.done() for task in tasks)  # all five parked on their own probe, none served yet
-        assert not app_ctx._schema_cache_lock_holders  # no reader took or queued on the branch lock
+        assert len(app_ctx._schema_cache_locks) == 0  # no reader took or queued on the branch lock
 
         gate.set()
         results = await asyncio.gather(*tasks)
@@ -2628,7 +2619,7 @@ class TestPassthroughProbesRunOutsideTheBranchLock:
         assert all(caller.schema.cache["main"] is schema for caller in callers)  # each primed for its request
         assert all(_summary_probes(caller) == 1 for caller in callers)
         assert all(caller.schema._fetch.await_count == 0 for caller in callers)  # hash matched: no refetch
-        assert not app_ctx._schema_cache_lock_holders
+        assert len(app_ctx._schema_cache_locks) == 0
 
     @pytest.mark.anyio
     @pytest.mark.parametrize("auth_mode", _PASSTHROUGH_AUTH_MODES)
@@ -2653,7 +2644,7 @@ class TestPassthroughProbesRunOutsideTheBranchLock:
         assert passthrough_ctx.schema_cache["main"] is entry  # same object: counters and timestamps untouched
         assert entry.consecutive_failures == 0
         bogus.schema.set_cache.assert_not_called()
-        assert not passthrough_ctx._schema_cache_lock_holders
+        assert len(passthrough_ctx._schema_cache_locks) == 0
         events = [c.args[0] for c in mock_metrics.record_schema_cache_event.call_args_list]
         assert "revalidate_failure" not in events
 
@@ -2756,7 +2747,7 @@ class TestPassthroughProbesRunOutsideTheBranchLock:
         original = schema_cache._revalidate_under_lock
 
         async def recording_revalidate(**kwargs: Any) -> Any:
-            held.append(app_ctx._schema_cache_lock_holders.get("main", 0))
+            held.append(app_ctx._schema_cache_locks.users("main"))
             return await original(**kwargs)
 
         with patch.object(schema_cache, "_revalidate_under_lock", recording_revalidate):
@@ -2855,7 +2846,7 @@ class TestCircuitBreak:
 
         assert result is new_schema
         assert app_ctx.schema_cache["main"].consecutive_failures == 0
-        assert app_ctx.schema_cache["main"].graphql_sdl == "new-sdl"
+        assert app_ctx.schema_cache["main"].graphql_sdl is None  # filled on the next SDL read
 
     @pytest.mark.anyio
     async def test_broken_entry_throttles_recovery_probes(
@@ -3414,20 +3405,18 @@ class TestGraphQLSDL:
         )
 
     @pytest.mark.anyio
-    async def test_sdl_failure_on_cold_fetch_still_serves_the_structured_schema(
+    async def test_a_cold_fetch_does_not_fetch_the_sdl(
         self,
         mock_ctx: MagicMock,
         app_ctx: AppContext,
         mock_client: MagicMock,
-        caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """An outage of ``/schema.graphql`` alone must not take down get_schema, get_nodes or the write tools."""
+        """The structured read costs one round-trip; an outage of ``/schema.graphql`` cannot affect it."""
         schema = _make_branch_schema(schema_hash="H1", kinds=["InfraDevice"])
         mock_client.schema._fetch.return_value = schema
         _fail_sdl(mock_client, httpx.codes.BAD_GATEWAY)
 
-        with caplog.at_level("WARNING", logger="infrahub_mcp.schema_cache"):
-            result = await get_cached_branch_schema(mock_ctx)
+        result = await get_cached_branch_schema(mock_ctx)
 
         assert result is schema
         entry = app_ctx.schema_cache["main"]
@@ -3435,8 +3424,7 @@ class TestGraphQLSDL:
         assert entry.graphql_sdl is None
         assert entry.consecutive_failures == 0
         mock_client.schema.set_cache.assert_called_once_with(schema=schema, branch="main")
-        assert sum("schema_cache_sdl_fetch_failure" in r.message for r in caplog.records) == 1
-        assert not any("schema_cache_cold_fetch_failure" in r.message for r in caplog.records)
+        mock_client.sdl_get.assert_not_awaited()
 
     @pytest.mark.anyio
     async def test_sdl_only_failure_does_not_arm_the_cold_failure_throttle(
@@ -3479,7 +3467,7 @@ class TestGraphQLSDL:
         assert first == second == "schema { Query }"
         assert app_ctx.schema_cache["main"].graphql_sdl == "schema { Query }"
         assert app_ctx.schema_cache["main"].schema is schema  # the fill amended the entry, it did not replace it
-        assert mock_client.sdl_get.await_count == 2  # one failed cold attempt + one lazy fill
+        assert mock_client.sdl_get.await_count == 1  # one lazy fill; the cold fetch never asked for it
         mock_client.schema._fetch.assert_awaited_once()
 
     @pytest.mark.anyio
@@ -3496,6 +3484,7 @@ class TestGraphQLSDL:
             schema_hash="H1",
             graphql_sdl=None,
             fetched_at_monotonic=schema_cache._now(),
+            last_attempt_monotonic=schema_cache._now(),
         )
         app_ctx.schema_cache["main"] = entry
         _fail_sdl(mock_client, httpx.ConnectError("still down"))
@@ -3551,6 +3540,7 @@ class TestGraphQLSDL:
             schema_hash="H1",
             graphql_sdl=None,
             fetched_at_monotonic=schema_cache._now(),
+            last_attempt_monotonic=schema_cache._now(),
         )
         release = asyncio.Event()
 
@@ -3569,6 +3559,36 @@ class TestGraphQLSDL:
         assert mock_client.sdl_get.await_count == 1
 
     @pytest.mark.anyio
+    async def test_the_lazy_fill_confirms_the_snapshot_so_the_sdl_cannot_describe_a_newer_schema(
+        self,
+        mock_ctx: MagicMock,
+        app_ctx: AppContext,
+        mock_client: MagicMock,
+        clock: _FakeClock,
+    ) -> None:
+        """Inside the skip-window the cached schema may predate a change; the fill must not pair it with a newer SDL."""
+        old = _make_branch_schema(schema_hash="H1")
+        app_ctx.schema_cache["main"] = CachedSchemaEntry(
+            branch="main",
+            schema=old,
+            schema_hash="H1",
+            graphql_sdl=None,
+            fetched_at_monotonic=clock.now - 20,  # inside the 30 s skip-window
+            last_attempt_monotonic=clock.now - 20,  # past the forced-probe debounce
+        )
+        new = _make_branch_schema(schema_hash="H2")
+        mock_client._get.return_value = _make_response(json_body={"main": "H2"})  # changed upstream meanwhile
+        mock_client.schema._fetch.return_value = new
+        _set_sdl(mock_client, "new-sdl")
+
+        assert await get_cached_graphql_sdl(mock_ctx) == "new-sdl"
+
+        entry = app_ctx.schema_cache["main"]
+        assert entry.schema is new  # the SDL is stored with the schema it describes
+        assert entry.graphql_sdl == "new-sdl"
+        assert _summary_probes(mock_client) == 1
+
+    @pytest.mark.anyio
     async def test_failed_lazy_fill_throttles_further_sdl_reads(
         self,
         mock_ctx: MagicMock,
@@ -3584,6 +3604,7 @@ class TestGraphQLSDL:
             schema_hash="H1",
             graphql_sdl=None,
             fetched_at_monotonic=clock.now,
+            last_attempt_monotonic=clock.now,
         )
         _fail_sdl(mock_client, httpx.ConnectError("still down"))
 
@@ -3613,6 +3634,7 @@ class TestGraphQLSDL:
             schema_hash="H1",
             graphql_sdl=None,
             fetched_at_monotonic=clock.now,
+            last_attempt_monotonic=clock.now,
         )
         _fail_sdl(mock_client, httpx.codes.SERVICE_UNAVAILABLE)
 
@@ -3645,6 +3667,7 @@ class TestGraphQLSDL:
             schema_hash="H1",
             graphql_sdl=None,
             fetched_at_monotonic=clock.now,
+            last_attempt_monotonic=clock.now,
         )
         _fail_sdl(mock_client, httpx.ConnectError("down"))
         with pytest.raises(httpx.ConnectError, match="down"):
@@ -3652,6 +3675,7 @@ class TestGraphQLSDL:
 
         clock.advance(31)  # past the 30 s throttle, still inside the 60 s skip-window
         _set_sdl(mock_client, "schema { Query }")
+        mock_client._get.return_value = _make_response(json_body={"main": "H1"})
 
         first = await get_cached_graphql_sdl(mock_ctx)
         second = await get_cached_graphql_sdl(mock_ctx)
@@ -3659,7 +3683,8 @@ class TestGraphQLSDL:
         assert first == second == "schema { Query }"
         assert app_ctx.schema_cache["main"].graphql_sdl == "schema { Query }"
         assert mock_client.sdl_get.await_count == 2  # one failed fill + one successful fill
-        assert _summary_probes(mock_client) == 0  # the structured schema never left the skip-window
+        # One probe confirms the 31 s old snapshot before the fresh SDL is paired with it.
+        assert _summary_probes(mock_client) == 1
 
     @pytest.mark.anyio
     async def test_ttl_zero_disables_the_sdl_fill_throttle(
@@ -3702,6 +3727,7 @@ class TestGraphQLSDL:
             schema_hash="H1",
             graphql_sdl=None,
             fetched_at_monotonic=clock.now,
+            last_attempt_monotonic=clock.now,
         )
         _fail_sdl(mock_client, httpx.ConnectError("down"))
         with pytest.raises(httpx.ConnectError, match="down"):
@@ -3997,25 +4023,6 @@ class TestEntryRemoval:
         assert stored.consecutive_failures == 1
         assert stored.fetched_at_monotonic == refreshed.fetched_at_monotonic
         assert not stored.circuit_break_recorded
-
-    @pytest.mark.anyio
-    async def test_lock_free_branch_gone_drops_the_unheld_lock(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        ctx, app_ctx = _ctx_for_auth_mode("token-passthrough")
-        app_ctx.schema_cache["main"] = _within_window_entry(
-            _make_branch_schema(schema_hash="H1"), now=schema_cache._now()
-        )
-        # Kept since the entry's last revalidation; nobody holds or waits on it now.
-        app_ctx._schema_cache_locks["main"] = asyncio.Lock()
-        _patch_fresh_client_per_call(monkeypatch, configure=_summary_answers(httpx.codes.BAD_REQUEST))
-
-        with pytest.raises(BranchNotFoundError):
-            await get_cached_branch_schema(ctx)
-
-        assert "main" not in app_ctx.schema_cache
-        assert "main" not in app_ctx._schema_cache_locks
 
     @pytest.mark.anyio
     async def test_eviction_releases_the_lifespan_clients_copy(

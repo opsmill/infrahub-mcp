@@ -66,7 +66,7 @@ schema hash returned from ``GET /api/schema/summary``:
   default, ``0`` disables the bound) and evicts the least recently used one
   past that. Branch names are caller input and the default ``branch_pattern``
   mints one per session, so without a bound a long-lived server keeps one
-  full ``BranchSchema`` — and its SDL — for every session it ever served. An
+  full ``BranchSchema`` for every session it ever served. An
   eviction costs only a cold fetch on that branch's next read; a branch with
   a fetch in flight is never the victim. This reverses ADR 0010's rejection
   of eviction (see :func:`_evict_lru`).
@@ -84,12 +84,12 @@ schema hash returned from ``GET /api/schema/summary``:
   successful or failed — and honour the failure throttle above, so a tool
   call resolving several unknown kinds, or a burst of misses queued behind
   one probe, costs one ``/summary`` round-trip rather than one per kind.
-- The GraphQL SDL (``GET /schema.graphql``) is fetched together with the
-  structured schema so the two describe the same upstream state, but its
-  failure is not fatal: the entry is stored with ``graphql_sdl=None`` and
-  the structured-schema tools proceed, while ``infrahub://graphql-schema``
-  fills the SDL lazily on its next read and fails alone if that fails too.
-  A failed fill is throttled like any other probe: further SDL reads inside
+- The GraphQL SDL (``GET /schema.graphql``) is not fetched with the
+  structured schema. Its only reader, ``infrahub://graphql-schema``, fills
+  it lazily under a separate per-branch lock, so a slow or failing SDL
+  endpoint never holds up the structured-schema tools, and branches nobody
+  reads the SDL of never store one. A failed fill fails that resource alone
+  and is throttled like any other probe: further SDL reads inside
   ``min(schema_cache_ttl, 30 s)`` fail fast without contacting upstream. A
   rejected credential on that fill is caller-scoped like everywhere else:
   the SDL is fetched through ``client._get`` with ``raise_for_status()``,
@@ -101,11 +101,9 @@ See ``specs/archive/20260504-203256-schema-cache/`` for the full design.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import math
 import time
-from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 from urllib.parse import urlencode
@@ -118,7 +116,7 @@ from infrahub_mcp.constants import AUTH_MODE_BASIC_PASSTHROUGH, AUTH_MODE_TOKEN_
 from infrahub_mcp.utils import AppContext, get_app_ctx, get_default_branch, resolve_client
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from contextlib import AbstractAsyncContextManager
     from typing import Any, NoReturn
 
     from fastmcp import Context
@@ -160,12 +158,12 @@ class CachedSchemaEntry:
     for why the cold path does not probe ``/summary`` for the hash itself.
     """
     graphql_sdl: str | None
-    """Raw GraphQL SDL for the branch, or ``None`` when only its fetch failed.
+    """Raw GraphQL SDL for the branch, or ``None`` until something reads it.
 
-    The SDL is fetched together with ``schema`` so both come from the same
-    upstream state, but it is the one field allowed to be absent: it has a
-    single reader, :func:`get_cached_graphql_sdl`, which fills it lazily
-    under the branch's cache lock. ``schema`` itself is never optional — every
+    The SDL has a single reader, :func:`get_cached_graphql_sdl`, which fills
+    it lazily (:func:`_fill_graphql_sdl`). A fetch or refetch of ``schema``
+    therefore stores ``None`` here instead of downloading the SDL that most
+    branches are never asked for. ``schema`` itself is never optional — every
     structured-schema tool depends on it.
     """
     fetched_at_monotonic: float
@@ -426,57 +424,19 @@ def _is_forced_probe_debounced(entry: CachedSchemaEntry, *, now: float) -> bool:
     return _within_window(entry.last_attempt_monotonic, window_seconds=_FORCED_REVALIDATE_DEBOUNCE_SECONDS, now=now)
 
 
-@asynccontextmanager
-async def _branch_lock(app_ctx: AppContext, branch: str) -> AsyncGenerator[None]:
-    """Hold *branch*'s cache lock for the block, creating it on first use.
+def _branch_lock(app_ctx: AppContext, branch: str) -> AbstractAsyncContextManager[None]:
+    """Hold *branch*'s structured-schema lock for the block.
 
-    The structured read (:func:`_ensure_entry`) and the lazy SDL fill
-    (:func:`_fill_graphql_sdl`) for one branch take this same lock, so every
-    writer of that branch's entry holds it. Different branches hold different
-    locks: the lock is held across the upstream call, up to its timeout, and
-    a single cache-wide lock let one branch's cold fetch or probe queue every
-    other branch's lock-path reads — healthy ones included — behind it.
-
-    A lock lives as long as it is of use. Every holder and waiter is counted
-    in ``AppContext._schema_cache_lock_holders`` from before it awaits the
-    lock until after it has released it; when the last one leaves and the
-    branch has no entry in ``schema_cache``, the lock goes too. So the lock
-    of a branch with an entry is kept for that entry's revalidations, a lock
-    somebody still waits on is kept for them, and the lock of a branch with
-    neither — an unknown branch, a branch-gone eviction, a failed cold fetch
-    — leaves nothing behind. An entry can also disappear from under a kept
-    lock, which no holder is then left to notice: :func:`_evict_lru` drops
-    the lock along with the entry for that reason, and only ever evicts a
-    branch nobody holds or waits on. The branch name is caller input, so without
-    that rule the map grew by one lock per distinct name ever asked for.
-    Single-flight is intact: a lock is only dropped once nobody holds or
-    waits on it, so two readers of one branch can never sit on two locks
-    and fetch it twice.
-
-    No guard lock, as in ``utils._session_lock``: there is no ``await``
-    between the lookup and the count increment, nor between the release
-    (``asyncio.Lock.__aexit__`` does not suspend) and the decrement and drop,
-    and asyncio runs one task at a time on the loop, so neither step can
-    interleave with another reader of the same branch.
+    :func:`_ensure_entry` holds it across the upstream fetch or probe, so the
+    full fetch of a branch is single-flight. Different branches use different
+    locks, and the lazy SDL fill uses a separate one
+    (``AppContext._schema_sdl_locks``), so neither another branch's fetch nor
+    a slow ``/schema.graphql`` holds up this branch's structured reads. The
+    lock exists only while a task holds or waits for it
+    (:class:`~infrahub_mcp.keyed_locks.KeyedLocks`), so branch names, which
+    are caller input, leave nothing behind.
     """
-    locks = app_ctx._schema_cache_locks  # noqa: SLF001
-    holders = app_ctx._schema_cache_lock_holders  # noqa: SLF001
-    lock = locks.get(branch)
-    if lock is None:
-        lock = asyncio.Lock()
-        locks[branch] = lock
-    holders[branch] = holders.get(branch, 0) + 1
-    try:
-        async with lock:
-            yield
-    finally:
-        remaining = holders[branch] - 1
-        if remaining:
-            holders[branch] = remaining
-        else:
-            del holders[branch]
-            if branch not in app_ctx.schema_cache:
-                del locks[branch]
+    return app_ctx._schema_cache_locks.hold(branch)  # noqa: SLF001
 
 
 def _touch(app_ctx: AppContext, branch: str) -> None:
@@ -511,16 +471,16 @@ def _evict_lru(app_ctx: AppContext, *, keep: str | None = None) -> None:
     cap far below the concurrency — the cache is left over its bound for now
     rather than the caller being blocked; the next store tries again.
 
-    Evicting goes through :func:`_drop_entry`, which also drops the branch's
-    unheld lock and the shared lifespan client's SDK-cache copy of it.
+    Evicting goes through :func:`_drop_entry`, which also drops the shared
+    lifespan client's SDK-cache copy of the branch.
     """
     cap = app_ctx.config.schema_cache_max_branches
     if not cap:
         return
-    holders = app_ctx._schema_cache_lock_holders  # noqa: SLF001
+    locks = app_ctx._schema_cache_locks  # noqa: SLF001
     while len(app_ctx.schema_cache) > cap:
         victim = next(
-            (branch for branch in app_ctx.schema_cache if branch != keep and not holders.get(branch, 0)),
+            (branch for branch in app_ctx.schema_cache if branch != keep and not locks.in_use(branch)),
             None,
         )
         if victim is None:
@@ -538,26 +498,17 @@ def _drop_entry(app_ctx: AppContext, branch: str) -> None:
     branch-gone entry without the branch lock, so a lock holder probing the
     same branch can find it already gone.
 
-    It also drops:
-
-    - The branch's lock, when nobody holds or waits on it.
-      :func:`_branch_lock` only prunes a lock as its last holder leaves, so an
-      entry removed with nobody on the lock would otherwise leave that lock in
-      the map for the life of the process. Under the lock (holders > 0) it is
-      kept, and :func:`_branch_lock` prunes it on release.
-    - The shared lifespan client's SDK-cache copy. In the shared-client modes
-      :func:`_install_into_client` primes ``app_ctx.client.schema.cache`` with
-      every branch served, and nothing else ever removes one, so the
-      ``BranchSchema`` an eviction releases here would stay referenced there
-      and ``schema_cache_max_branches`` would bound nothing. In the
-      passthrough modes there is no lifespan client and per-request clients
-      die with their request.
+    It also drops the shared lifespan client's SDK-cache copy. In the
+    shared-client modes :func:`_install_into_client` primes
+    ``app_ctx.client.schema.cache`` with every branch served, and nothing
+    else ever removes one, so the ``BranchSchema`` an eviction releases here
+    would stay referenced there and ``schema_cache_max_branches`` would bound
+    nothing. In the passthrough modes there is no lifespan client and
+    per-request clients die with their request.
     """
     app_ctx.schema_cache.pop(branch, None)
     if app_ctx.client is not None:
         app_ctx.client.schema.cache.pop(branch, None)
-    if not app_ctx._schema_cache_lock_holders.get(branch, 0):  # noqa: SLF001
-        app_ctx._schema_cache_locks.pop(branch, None)  # noqa: SLF001
 
 
 def _sweep_cold_failures(app_ctx: AppContext, *, now: float) -> None:
@@ -661,8 +612,7 @@ async def _fetch_graphql_sdl(client: InfrahubClient, branch: str) -> str:
     surfaces it as ``httpx.HTTPStatusError`` instead, so a 401/403 answered
     by this endpoint is caller-scoped through :func:`_is_auth_error` like
     every other probe in this module. A branch-gone 400 is not special
-    here: an SDL-only failure is absorbed by :func:`_full_fetch`, and the
-    lazy fill treats any non-auth error as transient. The body is returned
+    here: the lazy fill treats any non-auth error as transient. The body is returned
     as the SDK would return it.
     """
     response = await _branch_get(client, "/schema.graphql", branch)
@@ -670,48 +620,21 @@ async def _fetch_graphql_sdl(client: InfrahubClient, branch: str) -> str:
     return response.text
 
 
-async def _full_fetch(
-    client: InfrahubClient,
-    branch: str,
-) -> tuple[BranchSchema, str | None]:
-    """Fetch the full BranchSchema and, best-effort, the GraphQL SDL for a branch.
+async def _full_fetch(client: InfrahubClient, branch: str) -> BranchSchema:
+    """Fetch the full ``BranchSchema`` for *branch*.
 
-    Returns a ``(branch_schema, graphql_sdl)`` tuple. The two fetches
-    happen sequentially — they are different endpoints and a small
-    sequence keeps error attribution clear.
+    The GraphQL SDL is not fetched here. It has one reader
+    (``infrahub://graphql-schema``), so :func:`get_cached_graphql_sdl` fills
+    it lazily, and a cold fetch or a refetch after a hash change costs one
+    round-trip instead of two.
 
-    A structured-schema failure propagates: nothing useful can be served
-    without it. An SDL failure does not. ``/schema.graphql`` is a heavier
-    endpoint with exactly one consumer (``infrahub://graphql-schema``), and
-    letting it fail the whole fetch would take down every node and schema
-    tool — and, on a cold cache, arm the cold-failure throttle — for an
-    outage those tools never depend on. The SDL comes back as ``None`` with
-    a WARN log instead, and :func:`get_cached_graphql_sdl` fills it lazily
-    on its next read. The SDL is still fetched *here* on the healthy path
-    rather than only lazily so it stays paired with the structured schema
-    from the same upstream state; a lazy-only SDL could trail a hash flip
-    by up to a skip-window.
-
-    The SDK's public ``client.schema.fetch()`` returns only the kinds
-    dict (``dict[str, MainSchemaTypes]``), not the ``BranchSchema``
-    object that carries the schema hash we need for hash-validated
-    revalidation. ``client.schema._fetch()`` is the inner method that
-    returns the full ``BranchSchema`` — same protected-member precedent
-    as the ``client._get`` calls used elsewhere in this module.
+    The SDK's public ``client.schema.fetch()`` returns only the kinds dict,
+    not the ``BranchSchema`` that carries the schema hash the revalidation
+    compares, so this uses the inner ``client.schema._fetch()``.
     TODO: swap for a public SDK accessor when one lands.
     """
     branch_schema: BranchSchema = await client.schema._fetch(branch=branch)  # noqa: SLF001  # pylint: disable=protected-access
-    graphql_sdl: str | None
-    try:
-        graphql_sdl = await _fetch_graphql_sdl(client, branch)
-    except Exception as exc:  # noqa: BLE001
-        graphql_sdl = None
-        logger.warning(
-            "schema_cache_sdl_fetch_failure branch=%s exception=%r",
-            branch,
-            exc,
-        )
-    return branch_schema, graphql_sdl
+    return branch_schema
 
 
 def _record_circuit_break(metrics: Any, branch: str, threshold: str, failing_for_seconds: float) -> None:
@@ -882,9 +805,9 @@ async def _cold_fetch_under_lock(
     surfaces as ``AuthenticationError`` and the next caller probes with its
     own credential instead of being failed fast by the marker. Every other
     failure — network, timeout, other 4xx, 5xx — is treated uniformly,
-    matching the revalidation path (ADR 0010). An SDL-only failure never
-    reaches this handler: :func:`_full_fetch` absorbs it and the entry is
-    stored with ``graphql_sdl=None``, so the marker is not armed for it.
+    matching the revalidation path (ADR 0010). The SDL is not part of
+    this fetch (see :func:`_full_fetch`), so an SDL failure never arms the
+    marker.
 
     ``/api/schema`` may omit the schema hash (the SDK then reports
     ``BranchSchema.hash == ""``). Such an entry is stored with ``""`` on
@@ -900,7 +823,7 @@ async def _cold_fetch_under_lock(
     costs exactly one extra full refetch, and the pairing is self-correcting.
     """
     try:
-        branch_schema, graphql_sdl = await _full_fetch(client, branch)
+        branch_schema = await _full_fetch(client, branch)
     except BranchNotFoundError:
         raise
     except Exception as exc:
@@ -925,7 +848,7 @@ async def _cold_fetch_under_lock(
         # past-window probe mismatches "" and the refetch stores its own
         # pre-fetch hash instead (see _revalidate_under_lock).
         schema_hash=branch_schema.hash or "",
-        graphql_sdl=graphql_sdl,
+        graphql_sdl=None,
         fetched_at_monotonic=now,
         consecutive_failures=0,
         last_attempt_monotonic=now,
@@ -948,10 +871,8 @@ async def _revalidate_under_lock(
     ``consecutive_failures`` and clear ``failing_since_monotonic`` (cache is
     current; any failure streak is over).
 
-    On hash differ: full refetch and replace the entry. Only a
-    structured-schema failure counts as a failed refetch below; an SDL-only
-    failure keeps the fresh structured schema and stores the entry with
-    ``graphql_sdl=None`` for :func:`get_cached_graphql_sdl` to fill later.
+    On hash differ: full refetch and replace the entry. The new entry's
+    SDL is ``None`` until :func:`get_cached_graphql_sdl` fills it.
 
     On 400 from ``/summary`` (branch gone): evict the entry and
     raise the public :class:`~infrahub_sdk.exceptions.BranchNotFoundError`.
@@ -993,7 +914,7 @@ async def _revalidate_under_lock(
 
     # Hash differs — full refetch.
     try:
-        branch_schema, graphql_sdl = await _full_fetch(client, branch)
+        branch_schema = await _full_fetch(client, branch)
     except BranchNotFoundError:
         # Deleted between the probe and the refetch (the SDK maps the 400 from
         # /api/schema to this). That is the probe's branch-gone answer arriving
@@ -1013,7 +934,7 @@ async def _revalidate_under_lock(
         branch=branch,
         schema=branch_schema,
         schema_hash=branch_schema.hash or upstream_hash,
-        graphql_sdl=graphql_sdl,
+        graphql_sdl=None,
         fetched_at_monotonic=now,
         consecutive_failures=0,
         last_attempt_monotonic=now,
@@ -1625,44 +1546,39 @@ def _raise_if_sdl_fill_throttled(entry: CachedSchemaEntry, *, config: ServerConf
 async def _fill_graphql_sdl(*, app_ctx: AppContext, client: InfrahubClient, branch: str) -> str:
     """Fetch and store the SDL for an entry whose ``graphql_sdl`` is ``None``.
 
-    Runs under the branch's cache lock — the one :func:`_ensure_entry` takes
-    for *branch* — so a burst of ``infrahub://graphql-schema`` reads behind
-    a missing SDL costs one upstream fetch, and re-reads the entry first
-    because a waiter ahead in the queue may have filled it. Not every writer
-    holds that lock: :func:`_validate_caller_outside_lock` stores a
-    hash-match refresh of the entry without it, so the entry stored when the
-    fetch returns may be a refreshed copy of the one read here. The result is
-    therefore stored on whatever entry is current, provided it still carries
-    the same ``BranchSchema`` snapshot the SDL was fetched for; a replaced
-    snapshot (a hash-diff refetch) or an evicted entry is left alone, so
-    nothing is resurrected or paired with the wrong schema.
+    Runs under the branch's SDL lock (``AppContext._schema_sdl_locks``), not
+    its structured-schema lock, so a slow ``/schema.graphql`` never holds up
+    the structured reads that every node and schema tool depends on. The SDL
+    lock makes a burst of ``infrahub://graphql-schema`` reads cost one
+    upstream fetch: the entry is re-read under it because a waiter ahead in
+    the queue may have filled it.
+
+    The entry can change while the fetch runs (a hash-match refresh, a
+    refetch, an eviction). The result is stored on the current entry only if
+    it still carries the ``BranchSchema`` snapshot that was current when the
+    fetch started (:func:`_same_snapshot`), so nothing is resurrected or
+    paired with a schema replaced meanwhile. The SDL can be newer than that
+    snapshot when the schema changed inside the skip-window; the next probe
+    then detects the hash change and the refetch clears the SDL again.
 
     A failure propagates to the caller — the SDL resource fails on its own —
-    and is deliberately not counted toward ``consecutive_failures`` or the
-    breaker: the structured schema was just served successfully, so this
-    says nothing about its freshness. It is stamped on the entry
-    (``graphql_sdl_last_failure_monotonic``) instead, so that for the next
+    and is not counted toward ``consecutive_failures`` or the breaker: the
+    structured schema was just served, so the failure says nothing about its
+    freshness. It is stamped on the entry
+    (``graphql_sdl_last_failure_monotonic``) instead, so for the next
     ``min(schema_cache_ttl, 30 s)`` further SDL reads fail fast without
     contacting upstream. The stamp is checked before taking the lock and
-    again under it, mirroring :func:`_ensure_entry`, so readers queued behind
-    a failing fill observe its outcome instead of repeating it. A rejected
-    credential is kept off that stamp: :func:`_fetch_graphql_sdl` goes
-    through ``client._get``, whose ``login()`` (``basic-passthrough``) raises
-    ``HTTPStatusError`` 401/403 or ``AuthenticationError`` when the password
-    or the refresh is refused, and calls ``raise_for_status()`` on the
-    answer, so a 401/403 from ``/schema.graphql`` itself
-    (``token-passthrough``, where ``login()`` returns early) takes the same
-    shape. :func:`_is_auth_error` classifies both and
-    :func:`_raise_auth_error` surfaces them to the caller with the entry
-    untouched, so one caller's bad credential does not fail everyone's SDL
-    reads fast. Every other failure — a network error, a 5xx, a branch-gone
-    400 — is stamped and throttled as an outage.
+    again under it, so readers queued behind a failing fill observe its
+    outcome instead of repeating it. A rejected credential
+    (:func:`_is_auth_error`) is raised to that caller through
+    :func:`_raise_auth_error` and stamps nothing, so one caller's bad
+    credential does not fail everyone's SDL reads.
     """
     config = app_ctx.config
     entry = app_ctx.schema_cache.get(branch)
     if entry is not None:
         _raise_if_sdl_fill_throttled(entry, config=config, now=_now())
-    async with _branch_lock(app_ctx, branch):
+    async with app_ctx._schema_sdl_locks.hold(branch):  # noqa: SLF001
         entry = app_ctx.schema_cache.get(branch)
         if entry is not None:
             if entry.graphql_sdl is not None:
@@ -1707,9 +1623,9 @@ async def get_cached_graphql_sdl(
     """Return the cached GraphQL SDL for *branch* (default branch when None).
 
     Shares the same hash gate as :func:`get_cached_branch_schema`; the
-    SDL is invalidated together with the structured schema. When the
-    entry's SDL is absent — its fetch failed while the structured schema
-    succeeded — it is filled here under the branch's cache lock; a failure of that
+    SDL is invalidated together with the structured schema. The SDL is not
+    fetched with the structured schema; the first read after each fetch or
+    refetch fills it here, under the branch's SDL lock. A failure of that
     fill raises for this resource only and throttles further fills for
     ``min(schema_cache_ttl, 30 s)``, during which reads of this resource
     fail fast without contacting upstream — unless the fill failed on the
@@ -1733,6 +1649,16 @@ async def get_cached_graphql_sdl(
         return await _fetch_graphql_sdl(client, resolved_branch)
 
     entry = await _ensure_entry(ctx=ctx, client=client, branch=branch, force_revalidate=False)
+    if entry.graphql_sdl is not None:
+        return entry.graphql_sdl
+    # The fill fetches the SDL as it is upstream now. Confirm the structured
+    # snapshot is still current first, so the two cannot describe different
+    # schema states: an entry inside its skip-window may predate a change.
+    # The forced probe is debounced, so an entry fetched moments ago (the
+    # usual case) is not probed again. A throttled fill fails first, so it
+    # costs no probe either.
+    _raise_if_sdl_fill_throttled(entry, config=app_ctx.config, now=_now())
+    entry = await _ensure_entry(ctx=ctx, client=client, branch=entry.branch, force_revalidate=True)
     if entry.graphql_sdl is not None:
         return entry.graphql_sdl
     return await _fill_graphql_sdl(app_ctx=app_ctx, client=client, branch=entry.branch)

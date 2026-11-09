@@ -376,8 +376,8 @@ class TestSessionStateLifecycle:
         assert get_session_branch(ctx) == "mcp/session-active"
         assert "session:0" not in app_ctx._session_branches  # noqa: SLF001
 
-    async def test_lock_trim_skips_locks_in_use(self) -> None:
-        """Past the limit, unused locks are dropped even when the oldest lock is in use."""
+    async def test_only_locks_in_use_are_kept(self) -> None:
+        """An unused lock is dropped as soon as its last user leaves; a held one stays."""
         app_ctx = AppContext(client=MagicMock(), config=ServerConfig(auth_mode="none"))
         locks = app_ctx._session_locks  # noqa: SLF001
         async with _session_lock(app_ctx, "busy"):
@@ -385,9 +385,9 @@ class TestSessionStateLifecycle:
                 async with _session_lock(app_ctx, f"session:{index}"):
                     pass
 
-            assert len(locks) == _MAX_SESSION_ENTRIES
+            assert len(locks) == 1
             assert "busy" in locks
-        assert app_ctx._session_lock_users == {}  # noqa: SLF001
+        assert len(locks) == 0
 
     async def test_lock_with_waiters_is_not_dropped_after_release(self) -> None:
         """A lock whose waiter has not resumed yet stays in the map.
@@ -408,12 +408,8 @@ class TestSessionStateLifecycle:
         waiter_task = asyncio.create_task(waiter())
         try:
             await asyncio.sleep(0)
-            # Fill the map so that "key" is the least recently used lock.
-            for index in range(_MAX_SESSION_ENTRIES - 1):
-                async with _session_lock(app_ctx, f"session:{index}"):
-                    pass
-            assert next(iter(locks)) == "key"
-            key_lock = locks["key"]
+            key_lock = locks.get("key")
+            assert key_lock is not None
 
             await holder.aclose()
             # The holder released the lock; the waiter has not resumed yet.
