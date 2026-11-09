@@ -1,0 +1,58 @@
+dev/constitution.md
+  s_4bed0fbe4f82f1::t_19462a608620dd 63,211-215,217-218
+.agents/commands/pr.md
+  s_4bed0fbe4f82f1::t_dad6deade0c771 159,161-163,167-168
+  s_4bed0fbe4f82f1::t_bdc275149f1bf3 24,28,31,35,38,42,44,56,60,63,67,70,82,86,88,92,94,98,118,130,160,175,179,189,194,198,202,204,209,218,223,229
+  s_4bed0fbe4f82f1::t_0655f327fac4cc 164-166
+.github/instructions/python.instructions.md
+  s_4bed0fbe4f82f1::t_38686ddd302465 7,22,24-25
+.github/file-filters.yml
+  s_4bed0fbe4f82f1::t_c4cfbcb8cfdbc1 24-25
+README.md
+  s_4bed0fbe4f82f1::t_64aa151b9abb5f 44
+  s_4bed0fbe4f82f1::t_562403e56c68d9 46,58
+dev/adr/0004-tag-based-read-only-mode.md
+  s_4bed0fbe4f82f1::t_4cc6d550960341 15
+dev/knowledge/architecture.md
+  s_4bed0fbe4f82f1::t_b6a82fee1ce9e2 17-19,76-79,82-87,103,120-125,145-147,167-173
+dev/adr/0001-context-nuggets-pattern.md
+  s_4bed0fbe4f82f1::t_4cc6d550960341 45-48
+specs/002-traversal-tools/tasks.md
+  s_4bed0fbe4f82f1::t_2aca5774fd3921 29,39-40,51,62,73,81
+specs/002-traversal-tools/spec.md
+  s_4bed0fbe4f82f1::t_2aca5774fd3921 5
+specs/001-infrahub-testcontainers/spec.md
+  s_4bed0fbe4f82f1::t_2aca5774fd3921 5
+tasks.py
+  s_4bed0fbe4f82f1::t_c4cfbcb8cfdbc1 25,34,43,52
+.github/instructions/tooling.instructions.md
+  s_4bed0fbe4f82f1::t_38686ddd302465 8-9
+specs/003-towncrier-release-process/spec.md
+  s_4bed0fbe4f82f1::t_b17ea240fa52c6 5
+AGENTS.md
+  s_4bed0fbe4f82f1::t_b489d08c06589e 9-10,16,18,24-27,41-42,49,55
+  s_4bed0fbe4f82f1::t_b570934d983de2 59
+  s_4bed0fbe4f82f1::t_5f10715bfbc15c 23
+specs/003-towncrier-release-process/tasks.md
+  s_4bed0fbe4f82f1::t_2aca5774fd3921 69
+dev/guidelines/python.md
+  s_4bed0fbe4f82f1::t_19462a608620dd 10,12,75-77
+dev/adr/0002-middleware-stack-ordering.md
+  s_4bed0fbe4f82f1::t_31cf1d82a73560 6,21,23,27-34,36,49,54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3a9d86726855fc4f3ce34c0205b80575646ddf9a",
+  "prompts": {},
+  "sessions": {
+    "s_4bed0fbe4f82f1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b10ffb8a-8448-4729-821f-ed0086e7f99a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
