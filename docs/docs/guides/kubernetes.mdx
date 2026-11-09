@@ -164,7 +164,19 @@ mcp:
     baseUrl: "https://mcp.example.com"
 ```
 
-The chart sets `INFRAHUB_MCP_OIDC_BASE_URL` from this value. The identity provider settings go in `mcp.oidc.configUrl`, `mcp.oidc.clientId` and `mcp.oidc.clientSecret`; [Set up authentication](../getting-started/authentication.mdx) describes what each one must contain. Clients then connect to `https://mcp.example.com/mcp`.
+The chart sets `INFRAHUB_MCP_OIDC_BASE_URL` from this value. The identity provider settings go in `mcp.oidc.configUrl` and `mcp.oidc.clientId`; [Set up authentication](../getting-started/authentication.mdx) describes what each one must contain. Clients then connect to `https://mcp.example.com/mcp`.
+
+If your identity provider issues a client secret, store it in a Kubernetes Secret, in the same way as the API token, and reference that Secret:
+
+```yaml
+mcp:
+  oidc:
+    clientSecret:
+      existingSecret: "infrahub-mcp-oidc"
+      existingSecretKey: "INFRAHUB_MCP_OIDC_CLIENT_SECRET"
+```
+
+When `existingSecret` is set, the chart uses it instead of `mcp.oidc.clientSecret.value`. A client secret in `mcp.oidc.clientSecret.value` is written into the pod specification as plain text. Leave both empty when the client uses PKCE without a client secret.
 
 ## Install the chart
 
