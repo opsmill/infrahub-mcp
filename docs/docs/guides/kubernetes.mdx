@@ -59,7 +59,7 @@ A client can connect and list the tools without a token. The MCP server checks t
 - With no token, every tool call fails with `Authentication required: no Infrahub API token in request header.`
 - With an invalid token, tool calls that query Infrahub fail with the `401 Unauthorized` response from Infrahub.
 
-For the other modes (`basic-passthrough` and `oidc`) and their required configuration, see [Set up authentication](../getting-started/authentication.mdx).
+For the other modes (`basic-passthrough` and `oidc`) and their required configuration, see [Set up authentication](../getting-started/authentication.mdx). The `oidc` mode also needs a dedicated hostname for the MCP server, as described in [Expose the server on /mcp](#expose-the-server-on-mcp).
 
 ## Provide a shared API token from a Secret
 
@@ -99,7 +99,7 @@ Clients then see only the tools that read data. A client that calls a write tool
 
 The chart defines a `ClusterIP` service on port `8001`. To reach the MCP server from outside the cluster, expose it with an Ingress or with a Gateway API `HTTPRoute`. Enable only one of them: when both are enabled, the install fails.
 
-Both default to the path prefix `/mcp`. Set the hostname to the hostname of your Infrahub ingress so that clients reach Infrahub at `/` and the MCP server at `/mcp` on the same host.
+Both default to the path prefix `/mcp`. In the `none` and passthrough modes, set the hostname to the hostname of your Infrahub ingress so that clients reach Infrahub at `/` and the MCP server at `/mcp` on the same host.
 
 <Tabs>
 <TabItem value="ingress" label="Ingress" default>
@@ -136,6 +136,20 @@ gatewayApi:
 
 </TabItem>
 </Tabs>
+
+This shared hostname does not work in `oidc` mode. In that mode the MCP server serves the OAuth discovery, authorization, token, client registration and callback endpoints at the root of the host, outside `/mcp`, so on the Infrahub host those requests reach Infrahub instead. Give the MCP server its own hostname and route the whole host to it:
+
+```yaml
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  hostname: mcp.example.com
+  path: /
+  pathType: Prefix
+  tls: true
+```
+
+With Gateway API, set `httpRoute.hostnames` to `mcp.example.com` and `httpRoute.path` to `/`. Set `INFRAHUB_MCP_OIDC_BASE_URL` to the same host, `https://mcp.example.com`, as described in [Set up authentication](../getting-started/authentication.mdx). Clients then connect to `https://mcp.example.com/mcp`.
 
 ## Install the chart
 
