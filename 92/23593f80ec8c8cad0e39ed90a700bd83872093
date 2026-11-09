@@ -1,0 +1,21 @@
+dev/knowledge/architecture.md
+  s_03148743a2ae79::t_dc47987b8f84c2 89-91
+docs/docs/references/configuration.mdx
+  s_03148743a2ae79::t_9e149189b2ca74 181
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9223593f80ec8c8cad0e39ed90a700bd83872093",
+  "prompts": {},
+  "sessions": {
+    "s_03148743a2ae79": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "33f236c0-7958-4bb1-b970-49127033241a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
