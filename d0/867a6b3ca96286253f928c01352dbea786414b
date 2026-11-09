@@ -1,0 +1,19 @@
+.agents/commands/speckit.extract.md
+  s_49a51a4d0c7bfa::t_18aeacbe34f09a 1-205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d0867a6b3ca96286253f928c01352dbea786414b",
+  "prompts": {},
+  "sessions": {
+    "s_49a51a4d0c7bfa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5e7d51f1-c81d-40a7-9a00-6ff7ac07a921",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Pol Michel <polmichel29@gmail.com>"
+    }
+  }
+}
