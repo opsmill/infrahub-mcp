@@ -34,8 +34,10 @@ asyncio.run(main())
 
 
 def _server_prompts(read_only: bool) -> dict[str, Any]:
+    # Drop inherited Infrahub settings (credentials, auth mode, transport) so a
+    # developer's exported environment cannot change how the child server starts.
     env = {
-        **os.environ,
+        **{key: value for key, value in os.environ.items() if not key.startswith("INFRAHUB_")},
         "INFRAHUB_ADDRESS": "http://infrahub.invalid",
         "INFRAHUB_API_TOKEN": "unused",
         "INFRAHUB_MCP_READ_ONLY": "true" if read_only else "false",
