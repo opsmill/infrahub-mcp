@@ -13,7 +13,7 @@ dependencies = [
     # untransformed error as-is; ToolResultErrorHandlingMiddleware relies on it.
     "fastmcp>=4.1.0",
     "mcp>=2.0",
-    "infrahub-sdk>=1.22.0",
+    "infrahub-sdk==1.24.0",
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.6,<3",
     "python-dotenv>=1.2.4,<2",
