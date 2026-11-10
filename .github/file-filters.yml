@@ -41,3 +41,12 @@ unit_tests_all:
   - *ci_config
   - *github_workflows
   - "docs/docs/release-notes/**"
+
+# Inputs of the end-to-end suite that runs against a real Infrahub container:
+# the server code, the suite and its fixtures (including the YAML schema), and
+# the locked infrahub-testcontainers version that picks the Infrahub image.
+integration_tests_all:
+  - *mcp_all
+  - *ci_config
+  - "tests/integration/**"
+  - "uv.lock"
