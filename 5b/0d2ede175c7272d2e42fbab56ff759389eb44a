@@ -1,0 +1,27 @@
+tests/integration/conftest.py
+  s_99f9b77c51e7c5::t_e2cce1ca028d1d 13-14
+.github/workflows/ci.yml
+  s_99f9b77c51e7c5::t_a65283cf65244e 257-287
+  s_99f9b77c51e7c5::t_d0bd7640778c3d 254
+  s_99f9b77c51e7c5::t_bd6a773a608aa7 35
+.github/file-filters.yml
+  s_99f9b77c51e7c5::t_091ba9bb5a9e63 44-52
+changelog/+ci-integration-tests.housekeeping.md
+  s_99f9b77c51e7c5::t_d819d039f41067 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5b0d2ede175c7272d2e42fbab56ff759389eb44a",
+  "prompts": {},
+  "sessions": {
+    "s_99f9b77c51e7c5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2ca759d2-7b34-4350-8c72-15f21dfdd90a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Benoit Kohler <benoit+claude@opsmill.com>"
+    }
+  }
+}
