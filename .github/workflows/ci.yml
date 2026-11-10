@@ -32,6 +32,7 @@ jobs:
       documentation: ${{ steps.changes.outputs.documentation_all }}
       python: ${{ steps.changes.outputs.python_all }}
       unit_tests: ${{ steps.changes.outputs.unit_tests_all }}
+      integration_tests: ${{ steps.changes.outputs.integration_tests_all }}
       yaml: ${{ steps.changes.outputs.yaml_all }}
     steps:
       - name: "Check out repository code"
@@ -250,6 +251,37 @@ jobs:
       - name: Install dependencies
         run: "uv sync --all-groups"
       # Default addopts exclude `integration`, keeping unit and transport tests Docker-free.
-      # The Docker-gated integration suite (`uv run pytest -m integration`) is opt-in.
+      # The Docker-gated integration suite runs in the python-integration-tests job.
       - name: "Run unit tests"
         run: "uv run pytest"
+
+  python-integration-tests:
+    if: needs.files-changed.outputs.integration_tests == 'true'
+    needs: ["files-changed", "prepare-environment"]
+    # ubuntu-latest ships a running Docker engine, which infrahub-testcontainers
+    # uses to start one Infrahub stack for the whole session.
+    runs-on: "ubuntu-latest"
+    timeout-minutes: 30
+    steps:
+      - name: "Check out repository code"
+        uses: "actions/checkout@v7"
+        with:
+          submodules: true
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ needs.prepare-environment.outputs.PYTHON_VERSION }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ needs.prepare-environment.outputs.UV_VERSION }}
+      - name: Install dependencies
+        run: "uv sync --all-groups"
+      # The Infrahub image tag defaults to the locked infrahub-testcontainers
+      # version (tests/integration/conftest.py); print it so a failure can be
+      # reproduced locally with INFRAHUB_TESTING_IMAGE_VER=<version>.
+      - name: "Show Infrahub image version"
+        run: 'uv run python -c "from infrahub_testcontainers import __version__; print(f''Infrahub image: {__version__}'')"'
+      # `-m integration` overrides the `-m 'not integration'` in the default addopts.
+      - name: "Run integration tests"
+        run: "uv run pytest tests/integration -m integration --tb=short"

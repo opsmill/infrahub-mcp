@@ -10,9 +10,8 @@ Design (see specs/001-infrahub-testcontainers/):
   transport) so the ASGI auth/OIDC layer is bypassed while FastMCP-level
   middleware (ReadOnly, audit, ...) still runs (research D2).
 
-NOTE: This harness was authored against the verified package APIs but has not
-yet been executed end-to-end (Docker run deferred). Items marked ``RUNTIME``
-below are the assumptions to confirm on the first ``uv run pytest -m integration``.
+CI runs this suite in the ``python-integration-tests`` job of
+``.github/workflows/ci.yml`` (``uv run pytest tests/integration -m integration``).
 """
 
 from __future__ import annotations
