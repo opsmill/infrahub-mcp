@@ -47,6 +47,18 @@ KEEP_ENV = "INFRAHUB_TESTCONTAINERS_KEEP"
 #: Max seconds to wait for the Infrahub API to answer after the stack starts.
 READINESS_TIMEOUT_S = 240
 
+#: Socket the Docker SDK falls back to when ``DOCKER_HOST`` is unset.
+DEFAULT_DOCKER_SOCKET = Path("/var/run/docker.sock")
+
+# docker/compose#13899: `up --wait` fails on a project containing a zero-replica
+# service, reporting it as a missing dependency. The compose file packaged with
+# infrahub-testcontainers declares `task-manager-background-svc` with
+# `replicas: ${INFRAHUB_TESTING_TASKMGR_BACKGROUND_SVC_REPLICAS:-0}`, so the
+# default trips it on affected Compose versions. One replica is harmless: nothing
+# depends on that service. `setdefault` so an explicit value still wins. Same
+# workaround as the infrahub-demo-* repositories; drop it once Compose ships the fix.
+os.environ.setdefault("INFRAHUB_TESTING_TASKMGR_BACKGROUND_SVC_REPLICAS", "1")
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _disable_dotenv_loading() -> Iterator[None]:
@@ -66,6 +78,34 @@ def _disable_dotenv_loading() -> Iterator[None]:
             del os.environ["INFRAHUB_MCP_ENV_FILE"]
         else:
             os.environ["INFRAHUB_MCP_ENV_FILE"] = previous
+
+
+def _use_docker_cli_context() -> None:
+    """Point the Docker SDK at the engine the ``docker`` CLI uses.
+
+    The CLI follows the active Docker context (OrbStack, Colima, Docker Desktop,
+    Rancher Desktop); the Python Docker SDK used by testcontainers reads only
+    ``DOCKER_HOST`` and otherwise falls back to ``/var/run/docker.sock``. On a Mac
+    where that link is missing or points to an engine that is no longer installed,
+    ``docker info`` succeeds but the stack fails to start ("Could not register ...
+    with Ryuk"). Copy the context's endpoint into ``DOCKER_HOST`` in that case only:
+    an explicit ``DOCKER_HOST`` or a working default socket (Linux, CI) is left alone.
+    """
+    if os.getenv("DOCKER_HOST") or DEFAULT_DOCKER_SOCKET.exists():
+        return
+    try:
+        result = subprocess.run(
+            ["docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}"],  # noqa: S607 - local docker probe
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return
+    host = result.stdout.strip()
+    if result.returncode == 0 and host:
+        os.environ["DOCKER_HOST"] = host
 
 
 def _docker_available() -> bool:
@@ -111,6 +151,7 @@ def infrahub_container(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str
     Docker-unavailable). Tears the stack down on exit unless ``INFRAHUB_TESTCONTAINERS_KEEP``
     is set (FR-004, edge: Ctrl-C/CI-cancel — pytest finalizers still run).
     """
+    _use_docker_cli_context()
     if not _docker_available():
         pytest.fail(
             "Docker engine not reachable — integration tests require Docker. "
