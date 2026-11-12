@@ -22,7 +22,7 @@ def format_all(context: Context) -> None:
 
 @task
 def lint_yaml(context: Context) -> None:
-    """Run Linter to check all Python files."""
+    """Run yamllint on all YAML files."""
     print(" - Check code with yamllint")
     exec_cmd = "uv run yamllint ."
     with context.cd(MAIN_DIRECTORY_PATH):
@@ -31,7 +31,7 @@ def lint_yaml(context: Context) -> None:
 
 @task
 def lint_mypy(context: Context) -> None:
-    """Run Linter to check all Python files."""
+    """Run mypy type checking on src/infrahub_mcp."""
     print(" - Check code with mypy")
     exec_cmd = "uv run mypy --show-error-codes src/infrahub_mcp"
     with context.cd(MAIN_DIRECTORY_PATH):
@@ -40,7 +40,7 @@ def lint_mypy(context: Context) -> None:
 
 @task
 def lint_pylint(context: Context) -> None:
-    """Run pylint against Emma pages."""
+    """Run pylint on src/infrahub_mcp."""
     print(" - Check code with pylint")
     exec_cmd = "uv run pylint src/infrahub_mcp/**/*.py"
     with context.cd(MAIN_DIRECTORY_PATH):
@@ -49,7 +49,7 @@ def lint_pylint(context: Context) -> None:
 
 @task
 def lint_ruff(context: Context) -> None:
-    """Run Linter to check all Python files."""
+    """Run ruff check on src/ and apply fixes."""
     print(" - Check code with ruff")
     exec_cmd = "uv run ruff check src/ --fix"
     with context.cd(MAIN_DIRECTORY_PATH):

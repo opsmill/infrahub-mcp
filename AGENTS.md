@@ -6,21 +6,25 @@ Connects AI assistants to Infrahub over the open MCP standard, so agents can rea
 
 - **Runtime:** Python 3.13, FastMCP, Infrahub SDK, Pydantic 2, Starlette
 - **Testing:** pytest, pytest-asyncio
-- **Linting:** ruff, mypy, pylint, yamllint
-- **Docs:** Docusaurus (`.mdx` in `docs/docs/`), rumdl for markdown linting
+- **Linting:** ruff, ty (CI type checker), mypy (local and pre-commit, `src/` only), pylint, yamllint, Vale (docs prose)
+- **Docs:** Docusaurus (`.mdx` in `docs/docs/`, built with pnpm), rumdl for markdown linting
 - **Package Manager:** uv
 
 ## File Structure
 
 - `src/infrahub_mcp/` — Library source code
-  - `tools/` — MCP tool implementations (gql, nodes, schema, session, write)
+  - `tools/` — MCP tool implementations (gql, nodes, schema, session, traversal, write)
   - `resources/` — MCP resources (branches, schema)
-  - `prompts/` — MCP prompt templates
+  - `prompts/` — MCP prompt templates (the `infrahub_agent` system prompt is in `server.py`)
   - `middleware.py` — Full middleware stack (logging, caching, auth, rate limiting, audit)
   - `server.py` — FastMCP server construction and ASGI app
   - `config.py` — `ServerConfig` via pydantic-settings
   - `auth.py` — OIDC provider factory and identity helpers
-- `tests/` — Test suite
+  - `schema.py`, `traversal.py` — shared schema-fetching and graph-traversal logic used by the tools and resources
+  - `utils.py`, `constants.py` — client and session-branch helpers, shared constants
+  - `_cli.py` — `infrahub-mcp` command-line entry point (`--transport`, `--host`, `--port`)
+- `tests/` — Test suite: `unit/`, `integration/` (opt-in, uses infrahub-testcontainers), `transport/`
+- `development/` — Dockerfile, development docker-compose and Keycloak setup for local OIDC testing
 - `docs/` — User-facing documentation (Docusaurus)
 - `dev/` — Internal developer documentation — see [dev/README.md](dev/README.md)
 - `.agents/` — AI agent commands and skills
@@ -34,25 +38,25 @@ uv sync                          # Install dependencies
 uv run pytest                    # Run full test suite
 
 uv run invoke format             # Auto-format with ruff
-uv run invoke lint               # All linters (yaml, ruff, pylint, mypy)
-uv run invoke lint-ruff          # Ruff only
+uv run invoke lint               # yamllint, ruff (src/, with --fix), mypy (src/), pylint
+uv run invoke lint-ruff          # Ruff on src/ only, applies fixes
 uv run invoke lint-pylint        # Pylint only
 uv run invoke lint-mypy          # MyPy type checking only
 uv run invoke lint-yaml          # Yamllint only
 
 uv run rumdl check docs/docs/    # Check markdown linting
 uv run rumdl fmt docs/docs/      # Auto-fix markdown formatting
-cd docs && npm run build         # Test documentation build
+uv run invoke docs               # Test documentation build (pnpm run build in docs/)
 
 uv run pre-commit run            # Ruff + rumdl on staged files, Mypy on src/
 uv run pre-commit install        # Optional: run those same hooks on every commit
 ```
 
-`ruff` and `mypy` are authoritative for Python syntax, style, and type issues. Do not eyeball Python errors — run `uv run invoke format lint` and rely on the output.
+`ruff` and `ty` are authoritative for Python syntax, style, and type issues: CI runs `uv run ruff check .`, `uv run ruff format --check .` and `uv run ty check .` over the whole repository, while `invoke lint` covers `src/` only. Do not eyeball Python errors — run those commands and rely on the output.
 
 ## Changelog
 
-Every pull request that changes behaviour carries a news fragment in `changelog/`; CI fails the PR without one. `CHANGELOG.md` is assembled from those fragments by towncrier at release time, so entries never collide on a shared file.
+Every pull request that changes behaviour carries a news fragment in `changelog/`. The pull-request check in `.github/workflows/changelog-check.yml` is disabled (its `pull_request` trigger is commented out since 2026-09-16), so no check enforces a fragment per pull request. The **Auto bump version** workflow only refuses to release when `changelog/` holds no fragments at all. `CHANGELOG.md` is assembled from those fragments by towncrier at release time, so entries never collide on a shared file.
 
 - `uv run towncrier create -c "Fixed the thing" 42.fixed.md` — one fragment per change, named `<issue>.<type>.md`. With no issue or PR number, use a descriptive slug prefixed with `+`, e.g. `+schema-cache-ttl.added.md`.
 - Types: `security`, `removed`, `deprecated`, `added`, `changed`, `fixed`, `housekeeping`. Internal and tooling work is `housekeeping`.

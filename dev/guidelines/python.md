@@ -7,9 +7,9 @@ Constitution Principles IV (Type Safety) and VII (Simplicity).
 
 - **Python >= 3.13** required.
 - **Package manager:** `uv` (lock file in `uv.lock`).
-- **Formatter:** ruff format (line length 150).
+- **Formatter:** ruff format (line length 120; the pycodestyle `E501` check allows up to 150).
 - **Linter:** ruff + pylint + yamllint.
-- **Type checker:** mypy (strict mode via `pre-commit`).
+- **Type checker:** `ty` in CI (`uv run ty check .`); mypy on `src/` in pre-commit and `invoke lint-mypy`, with the settings in `[tool.mypy]` (not strict mode).
 - Configuration lives in `pyproject.toml` under `[tool.ruff]`,
   `[tool.mypy]`, and `[tool.pylint]`.
 
@@ -72,7 +72,9 @@ Constitution Principles IV (Type Safety) and VII (Simplicity).
 
 ## Testing Conventions
 
-- Test files mirror source structure: `tests/test_middleware.py`
+- Tests are split into `tests/unit/`, `tests/integration/` (opt-in,
+  infrahub-testcontainers) and `tests/transport/`. Unit test files are
+  named after the module they test: `tests/unit/test_middleware.py`
   tests `src/infrahub_mcp/middleware.py`.
 - Every test is atomic, self-contained, and targets one behavior.
 - Use `@pytest.mark.parametrize` for variants.

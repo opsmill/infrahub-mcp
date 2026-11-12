@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-infrahub-testcontainers`
 **Created**: 2026-05-22
-**Status**: Draft
+**Status**: In progress — integration tests and the `pytest -m integration` flow exist; the CI job (T019–T021) and the follow-up tasks below are open
 **Input**: User description: "I want to use infrahub testcontainers to run integration tests"
 
 ## Clarifications

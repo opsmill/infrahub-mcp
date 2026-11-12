@@ -2,7 +2,7 @@
 
 **Feature Branch**: `003-towncrier-release-process`  
 **Created**: 2026-09-10  
-**Status**: Draft  
+**Status**: Implemented — v1.3.0 was released through this process (#239)  
 **Input**: User description: "Replace the release-drafter based release process with a towncrier-managed changelog, label-driven version bumping, and a reviewable release PR, shaped to match the opsmill-cicd-workflows release-prepare contract for later migration."
 
 ## Context
