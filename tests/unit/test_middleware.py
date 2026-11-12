@@ -19,6 +19,7 @@ import pytest
 from fastmcp import Client, FastMCP
 from fastmcp.exceptions import InsufficientScopeError, ToolError
 from fastmcp.server.auth import AccessToken
+from fastmcp.server.middleware.caching import ResponseCachingMiddleware
 from fastmcp.server.middleware.error_handling import RetryMiddleware
 from fastmcp.server.middleware.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.base import ToolResult
@@ -641,8 +642,9 @@ class TestConfigureMiddleware:
         config = ServerConfig(cache_enabled=True, cache_list_ttl=60, cache_read_ttl=120)
         configure_middleware(mock_mcp, config)
 
-        types = [type(m).__name__ for m in mock_mcp.middleware]
-        assert "ResponseCachingMiddleware" in types
+        # The schema cache subclass _SchemaAwareResponseCachingMiddleware IS-A
+        # ResponseCachingMiddleware; check by isinstance rather than name string.
+        assert any(isinstance(m, ResponseCachingMiddleware) for m in mock_mcp.middleware)
 
     def test_cache_middleware_disabled_by_default(self) -> None:
         mock_mcp = MagicMock()
@@ -823,7 +825,9 @@ class TestConfigureMiddleware:
         types = [type(m).__name__ for m in mock_mcp.middleware]
         assert "RateLimitingMiddleware" in types
         assert "SafeRetryMiddleware" in types
-        assert "ResponseCachingMiddleware" in types
+        # The schema cache subclass _SchemaAwareResponseCachingMiddleware IS-A
+        # ResponseCachingMiddleware; check by isinstance rather than name string.
+        assert any(isinstance(m, ResponseCachingMiddleware) for m in mock_mcp.middleware)
         assert "OTelTracingMiddleware" in types
         assert "DereferenceRefsMiddleware" in types
         assert "PingMiddleware" in types

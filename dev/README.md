@@ -37,6 +37,7 @@ Mark deprecated docs clearly. Don't delete — update with pointers to replaceme
 ## Current Guidelines
 
 - [Python](guidelines/python.md) - Python coding standards, FastMCP patterns, testing conventions
+- [Feature completion](guidelines/feature-completion.md) - Post-implementation checklist: env-var registration, spec→ADR→archive lifecycle, pre-push CI mirror
 
 ## Current Knowledge
 
@@ -53,3 +54,4 @@ Mark deprecated docs clearly. Don't delete — update with pointers to replaceme
 - [0007](adr/0007-per-session-branch-recovery-and-reset.md) - Per-Session Branch Recovery, Reset, and Scoping
 - [0008](adr/0008-graph-traversal-over-schema-depth.md) - Graph Traversal Tools over Recursive Schema-Depth Expansion
 - [0009](adr/0009-session-branch-key-without-mcp-sessions.md) - Session-Branch Key Without MCP Sessions
+- [0010](adr/0010-hash-validated-schema-cache.md) - Hash-Validated Schema Cache for Passthrough Auth Modes
