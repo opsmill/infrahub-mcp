@@ -9,12 +9,24 @@ The Infrahub MCP server is configured entirely through environment variables. Al
 | Variable | Description | Default |
 | --- | --- | --- |
 | `INFRAHUB_ADDRESS` | URL of your Infrahub instance | **required** |
-| `INFRAHUB_API_TOKEN` | API token used by the MCP server to call Infrahub (not needed in `token-passthrough` auth mode) | — |
+| `INFRAHUB_API_TOKEN` | API token used by the MCP server to call Infrahub (not needed in the `token-passthrough` and `basic-passthrough` auth modes) | — |
+| `INFRAHUB_USERNAME` | Infrahub username. Set it together with `INFRAHUB_PASSWORD` instead of `INFRAHUB_API_TOKEN` | — |
+| `INFRAHUB_PASSWORD` | Password for `INFRAHUB_USERNAME` | — |
 | `INFRAHUB_MCP_ENV_FILE` | Path to a `.env` file (`~` is expanded) whose Infrahub connection keys are loaded at startup: `INFRAHUB_ADDRESS`, `INFRAHUB_API_TOKEN`, `INFRAHUB_USERNAME`, `INFRAHUB_PASSWORD`, and nothing else (real env vars win). A missing default file is ignored; set to empty to disable loading | `./.env` |
-| `MCP_HOST` | Bind address for the HTTP server | `0.0.0.0` |
-| `MCP_PORT` | Port for the HTTP server | `8001` |
 
-Username/password authentication against Infrahub is not supported. Use [OIDC](../getting-started/authentication.mdx#oidc) when you need per-user identity.
+Set either `INFRAHUB_API_TOKEN` or both `INFRAHUB_USERNAME` and `INFRAHUB_PASSWORD`. The server refuses to start when you set a token and a password together. All of these credentials are shared by every MCP client; when each user needs their own identity, use [OIDC](../getting-started/authentication.mdx#oidc) or one of the passthrough modes described in [Authentication and authorization](#authentication-and-authorization).
+
+## HTTP listener
+
+The `infrahub-mcp` command takes the bind address and port as command-line flags, not environment variables.
+
+| Flag | Description | Default |
+| --- | --- | --- |
+| `--transport` | `stdio` or `streamable-http` | `stdio` |
+| `--host` | Bind address for the HTTP server | `127.0.0.1` |
+| `--port` | Port for the HTTP server | `8001` |
+
+The [Docker image](../guides/docker.mdx) reads `MCP_HOST` (default `0.0.0.0`) and `MCP_PORT` (default `8001`) and passes them to these flags.
 
 ## Server behavior
 
@@ -23,7 +35,8 @@ Username/password authentication against Infrahub is not supported. Use [OIDC](.
 | `INFRAHUB_MCP_READ_ONLY` | Disable all write operations (`true`, `1`, or `yes`) | `false` |
 | `INFRAHUB_MCP_BRANCH_PATTERN` | Branch naming pattern. Supports `{date}`, `{hex}`, `{user}` placeholders. Fixed names (no placeholders) must not already exist. | `mcp/session-{date}-{hex}` |
 | `INFRAHUB_MCP_MAX_BRANCH_RETRIES` | Max collision retries when generating branch names (1–20) | `5` |
-| `INFRAHUB_MCP_LOG_LEVEL` | Set to `debug` for verbose logging with tracebacks | `info` |
+| `INFRAHUB_MCP_LOG_LEVEL` | Set to `debug` to log tool errors with their tracebacks. `info`, `warning` and `error` behave the same | `info` |
+| `INFRAHUB_MCP_SCHEMA_EXPAND_PEERS` | When `true`, `get_schema` returns one level of each relationship's peer schema inline. The `expand` argument of `get_schema` overrides it per call | `true` |
 
 ## Rate limiting
 
@@ -106,13 +119,14 @@ HTTP transport is required.
 | `INFRAHUB_MCP_OIDC_AUDIENCE`            | No                              |                 | Token audience claim                                                                                                                             |
 | `INFRAHUB_MCP_OIDC_USER_CLAIM`          | No                              | `email`         | JWT claim used for user identity                                                                                                                 |
 | `INFRAHUB_MCP_AUTH_SCOPES_WRITE`        | No                              | `write`         | Scopes required for write operations (comma-separated)                                                                                           |
-| `INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER` | No                              | `Authorization` | HTTP header carrying the Infrahub API token (token-passthrough mode)                                                                             |
+| `INFRAHUB_MCP_TOKEN_PASSTHROUGH_HEADER` | No                              | `Authorization` | HTTP header carrying the per-request credential: the API token in `token-passthrough` mode, the Basic credentials in `basic-passthrough` mode    |
 
 ### Scope-based write authorization
 
-When `INFRAHUB_MCP_AUTH_SCOPES_WRITE` is configured (in either auth mode over HTTP transport),
-tools tagged `write` are filtered from discovery and blocked at call time unless the
-access token contains all required scopes. STDIO connections skip auth checks.
+In `oidc` mode, tools tagged `write` are hidden from discovery and blocked at call time unless the
+access token contains every scope in `INFRAHUB_MCP_AUTH_SCOPES_WRITE`. The check is always on in
+`oidc` mode: with the default value, only users whose token contains the `write` scope can call a write tool.
+The server does not check scopes in the `none`, `token-passthrough` and `basic-passthrough` modes.
 
 ```bash
 # Require "infrahub:write" scope for node_upsert, node_delete, etc.

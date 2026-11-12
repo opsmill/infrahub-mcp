@@ -138,14 +138,14 @@ The server checks the OIDC settings at startup. If a required setting is missing
 
 ### Step 3: Configure write scopes (optional)
 
-By default, any authenticated user can call both read and write tools. To restrict write access to users with a specific scope in their token:
+In `oidc` mode, only users whose token contains the `write` scope can call write tools. That is the default value of `INFRAHUB_MCP_AUTH_SCOPES_WRITE`. To require a different scope, for example one your identity provider already issues:
 
 ```bash
 # Only users whose token contains "infrahub:write" can call write tools
 export INFRAHUB_MCP_AUTH_SCOPES_WRITE=infrahub:write
 ```
 
-When configured, tools tagged `write` (`node_upsert`, `node_delete`, `propose_changes`, `mutate_graphql`) are:
+For users without the required scope, tools tagged `write` (`node_upsert`, `node_delete`, `propose_changes`, `mutate_graphql`, `reset_session_branch`) are:
 
 1. **Hidden from discovery** — users without the required scope never see write tools in `tools/list`.
 2. **Blocked at call time** — even if a client hardcodes a tool name, the call is rejected.
