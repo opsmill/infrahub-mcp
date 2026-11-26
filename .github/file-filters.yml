@@ -21,6 +21,8 @@ mcp_all: &mcp_all
   - "src/**"
   - "docker-compose.yml"
   - "pyproject.toml"
+  - "server.json"
+  - "tasks.py"
 
 yaml_all: &yaml_all
   - "**/*.{yml,yaml}"

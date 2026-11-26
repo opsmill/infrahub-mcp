@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feat/schema-query-depth` (speckit feature `002-traversal-tools`)
 **Created**: 2026-06-24
-**Status**: Draft
+**Status**: Implemented — `find_paths`, `find_reachable` and `INFRAHUB_MCP_SCHEMA_EXPAND_PEERS` are on `stable`
 **Input**: User description: "Replace/improve the schema query-depth idea using Infrahub 1.10's transversal (graph traversal) query. Add traversal MCP tools and slim schema expansion to a single level."
 
 ## User Scenarios & Testing *(mandatory)*

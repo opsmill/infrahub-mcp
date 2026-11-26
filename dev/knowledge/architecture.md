@@ -14,8 +14,9 @@ The server is built on **FastMCP** and follows its composition pattern:
 2. `create_auth_provider()` builds an OIDC proxy if `auth_mode=oidc`.
 3. `FastMCP(...)` is constructed with name, version, auth provider,
    and lifespan.
-4. Sub-applications are mounted (tools, resources, prompts).
-5. `configure_middleware(mcp, config)` attaches the middleware stack.
+4. `configure_middleware(mcp, config)` attaches the middleware stack.
+5. Sub-applications are mounted (resources, prompts, read tools, then
+   write tools unless read-only mode is on).
 6. ASGI middleware wraps the app for HTTP-level concerns.
 
 ### Lifespan
@@ -72,8 +73,18 @@ via `configure_middleware()`.
 - `DereferenceRefsMiddleware` — JSON Schema `$ref` resolution
 - `AuthMiddleware` — OAuth scope enforcement
 
+The full order (17 layers, outermost first) and which layers are
+conditional are recorded in
+[ADR 0002](../adr/0002-middleware-stack-ordering.md).
+
 **Custom middleware:**
 
+- `RequestIdMiddleware` — sets the request ID used for log and audit
+  correlation (outermost layer)
+- `OTelTracingMiddleware` — OpenTelemetry spans, when
+  `INFRAHUB_MCP_OTEL_ENABLED` is on
+- `TokenPassthroughMiddleware` — rejects requests without forwarded
+  credentials in the passthrough auth modes (fail-closed)
 - `ToolResultErrorHandlingMiddleware` — subclass of `ErrorHandlingMiddleware`
   that keeps `tools/call` errors as tool results: a `ToolError`, invalid
   arguments and an OIDC scope denial return a tool result with
@@ -89,7 +100,7 @@ via `configure_middleware()`.
   the error says the change was applied and the tool must not be called
   again
 - `ReadOnlyMiddleware` — blocks tools tagged `"write"` in read-only mode
-- `AuditMiddleware` — structured audit log with request IDs
+- `AuditMiddleware` — structured log of every tool call and resource read, with request IDs
 - `InfrahubConnectionMiddleware` — translates Infrahub SDK connection and
   authentication exceptions, including ones wrapped in a `ToolError`, to
   messages with a remediation hint: an `isError` result on `tools/call`,
@@ -106,11 +117,12 @@ Tools live in `src/infrahub_mcp/tools/`, each as a sub-application:
 
 | Module | Purpose |
 | -------- | --------- |
-| `gql.py` | Raw GraphQL queries and mutations |
-| `nodes.py` | Typed node CRUD (get, search, list) |
-| `schema.py` | Schema introspection tools |
-| `session.py` | Branch/session management |
-| `write.py` | Write operations (upsert, delete, propose) |
+| `gql.py` | Read-only GraphQL queries (`query_graphql`) |
+| `nodes.py` | Node reads (`get_nodes`, `search_nodes`) |
+| `schema.py` | Schema introspection (`get_schema`) |
+| `session.py` | Session state (`get_session_info`) |
+| `traversal.py` | Graph traversal (`find_paths`, `find_reachable`) |
+| `write.py` | Writes (`node_upsert`, `node_delete`, `mutate_graphql`, `propose_changes`, `reset_session_branch`) |
 
 Write tools are tagged `"write"` so `ReadOnlyMiddleware` and
 `AuthMiddleware` can enforce access control.
@@ -130,7 +142,9 @@ Prompts in `src/infrahub_mcp/prompts/`:
 
 | Module | Purpose |
 | -------- | --------- |
-| `prompts.py` | System prompts and workflow guides |
+| `prompts.py` | Workflow prompts (`answer_infra_question`, `make_infra_change`, `explore_schema`) |
+
+The `infrahub_agent` system prompt is defined in `server.py`.
 
 ## Authentication Modes
 
@@ -150,12 +164,13 @@ each request creates its own client with the forwarded credentials.
 
 HTTP-level middleware in `server.py` (wraps the FastMCP ASGI app):
 
-- **`CredentialsPassthroughMiddleware`** — extracts Bearer/Basic
-  credentials from the configured HTTP header and sets them in
-  `ContextVar` for downstream use.
-- **`OAuthDiscoveryInterceptMiddleware`** — intercepts
-  `/.well-known/oauth-authorization-server` requests and returns
-  OIDC metadata.
+- **`_CredentialsPassthroughASGI`** (passthrough modes only) — extracts
+  Bearer/Basic credentials from the configured HTTP header and sets them
+  in `ContextVar` for downstream use.
+- **`_OAuthDiscoveryInterceptASGI`** (every mode except `oidc`) —
+  answers OAuth/OIDC discovery probes (`/.well-known/...` paths and
+  `/register`) with a JSON 404 "OAuth is not enabled on this server", so
+  MCP clients get parseable JSON instead of a plain-text 404.
 
 ## Configuration
 

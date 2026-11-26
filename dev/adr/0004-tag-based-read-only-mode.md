@@ -12,7 +12,7 @@ The server has a growing set of write tools (node_upsert, node_delete, propose_c
 
 ## Decision
 
-Write tools are tagged with the `"write"` string. `ReadOnlyMiddleware` uses FastMCP's `restrict_tag()` to filter by tag. Three-layer defense-in-depth:
+Write tools are tagged with the `"write"` string. `ReadOnlyMiddleware` checks each tool's tags itself and filters or blocks the tools tagged `"write"`. (FastMCP's `restrict_tag()` is used only by `AuthMiddleware`, for OIDC write scopes.) Three-layer defense-in-depth:
 
 1. **Tool hiding** (`on_list_tools()`): Filters tools tagged `"write"` from tool listings — agents cannot discover them
 2. **Call rejection** (`on_call_tool()`): Blocks execution of tagged write tools — catches direct invocation bypasses

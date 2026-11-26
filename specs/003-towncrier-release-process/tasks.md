@@ -66,7 +66,7 @@ description: "Task list for the towncrier-based release process"
 - [x] T014 Revert the simulation so no assembled changelog or consumed fragment is committed.
 - [x] T015 [P] `yamllint` across `.github/workflows/`.
 - [x] T016 [P] `rumdl` across changed Markdown.
-- [ ] T017 **Cannot be done pre-merge**: `auto-bump.yml` and `release-publish.yml` only trigger on `stable`, so the release path gets its first real exercise on the next release. Watch that run.
+- [x] T017 **Cannot be done pre-merge**: `auto-bump.yml` and `release-publish.yml` only trigger on `stable`, so the release path gets its first real exercise on the next release. Watch that run.
 
 ---
 
