@@ -10,7 +10,8 @@ from infrahub_sdk.types import Order
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from infrahub_mcp.schema import get_valid_kinds_summary
+from infrahub_mcp.schema import get_peer_schemas, get_valid_kinds_summary
+from infrahub_mcp.schema_cache import get_cached_kind
 from infrahub_mcp.utils import _log_and_raise_error, convert_node_to_dict, get_client, get_node_label
 
 if TYPE_CHECKING:
@@ -84,7 +85,7 @@ async def _get_total_count(
         return -1
 
 
-async def _validate_filters(  # noqa: PLR0913, PLR0917
+async def _validate_filters(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # noqa: PLR0913, PLR0917
     ctx: Context,
     client: "InfrahubClient",
     schema: MainSchemaTypesAPI,
@@ -96,7 +97,9 @@ async def _validate_filters(  # noqa: PLR0913, PLR0917
 
     Args:
         ctx: MCP context for logging and error reporting.
-        client: Infrahub SDK client.
+        client: The request's SDK client, handed to the schema-cache reads so
+            the peer-kind lookups go through — and prime — the same client
+            that runs the query afterwards.
         schema: Schema for the kind being queried.
         kind: Kind name (used in error messages).
         branch: Branch name.
@@ -113,14 +116,15 @@ async def _validate_filters(  # noqa: PLR0913, PLR0917
             remediation=(f"Remove reserved key(s) and check infrahub://schema/{kind} for valid filter names."),
         )
 
-    # Build the valid filter set from the schema (same logic as schema detail)
+    # Build the valid filter set from the schema (same logic as schema detail).
+    peer_schemas = await get_peer_schemas(ctx, schema, branch=branch, client=client)
+
     valid_filters: set[str] = {f"{attr.name}__value" for attr in schema.attributes}
     for rel in schema.relationships:
-        try:
-            rel_schema = await client.schema.get(kind=rel.peer, branch=branch)
-            valid_filters.update(f"{rel.name}__{attr.name}__value" for attr in rel_schema.attributes)
-        except SchemaNotFoundError:
+        rel_schema = peer_schemas.get(rel.peer)
+        if rel_schema is None:
             continue
+        valid_filters.update(f"{rel.name}__{attr.name}__value" for attr in rel_schema.attributes)
     invalid_keys = set(filters.keys()) - valid_filters - _RESERVED_FILTER_KEYS
     if invalid_keys:
         sorted_valid = ", ".join(sorted(valid_filters))
@@ -233,9 +237,9 @@ async def get_nodes(  # pylint: disable=too-many-arguments,too-many-positional-a
     )
 
     try:
-        schema = await client.schema.get(kind=kind, branch=branch)
+        schema = await get_cached_kind(ctx, kind=kind, branch=branch, client=client)
     except SchemaNotFoundError:
-        valid = await get_valid_kinds_summary(client, branch=branch)
+        valid = await get_valid_kinds_summary(ctx, branch=branch, client=client)
         await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",
@@ -359,9 +363,9 @@ async def search_nodes(
     await ctx.info(f"Searching {kind} nodes: request_id={req_id!r}, branch={branch!r}, query_len={len(query)}")
 
     try:
-        schema = await client.schema.get(kind=kind, branch=branch)
+        schema = await get_cached_kind(ctx, kind=kind, branch=branch, client=client)
     except SchemaNotFoundError:
-        valid = await get_valid_kinds_summary(client, branch=branch)
+        valid = await get_valid_kinds_summary(ctx, branch=branch, client=client)
         await _log_and_raise_error(
             ctx=ctx,
             error=f"Schema not found for kind: {kind}.",

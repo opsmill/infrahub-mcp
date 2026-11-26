@@ -499,6 +499,23 @@ class TestGetClientPassthrough:
         assert config.username == "alice"
         assert config.password == "s3cret"  # noqa: S105
 
+    def test_creates_fresh_client_per_call_basic(self, infrahub_env: None, basic_passthrough_ctx: MagicMock) -> None:
+        """Each get_client() call creates a new InfrahubClient in basic-passthrough mode.
+
+        The schema cache relies on this: it treats a passthrough client whose
+        SDK schema cache holds a branch as one whose credential Infrahub has
+        already accepted during this request (``_caller_is_validated``). A
+        client reused across requests would let a later caller skip that check.
+        """
+        set_passthrough_basic(("alice", "s3cret"))
+        with patch("infrahub_mcp.utils.InfrahubClient") as mock_cls:
+            mock_cls.side_effect = [MagicMock(), MagicMock()]
+            first = get_client(basic_passthrough_ctx)
+            second = get_client(basic_passthrough_ctx)
+
+        assert first is not second
+        assert mock_cls.call_count == 2
+
     @pytest.mark.parametrize("mode", ["token-passthrough", "basic-passthrough"])
     def test_raises_without_infrahub_address(self, mode: str) -> None:
         config = ServerConfig(auth_mode=cast("AuthMode", mode))

@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
 
 from infrahub_sdk.exceptions import SchemaNotFoundError
 from opentelemetry import trace
@@ -20,18 +21,50 @@ def _record(event: str) -> None:
         stream.write(f"{event}\n")
 
 
+_DEFAULT_BRANCH = "main"
+_DEFAULT_LABEL = "Widget — 東京"
+
+
+def _widget(label: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        kind="TestWidget",
+        namespace="Test",
+        label=label,
+        attributes=[SimpleNamespace(name="name", kind="Text", optional=False)],
+        relationships=[],
+    )
+
+
+class _Response:
+    def __init__(self, *, payload: dict[str, object] | None = None, text: str = "") -> None:
+        self.status_code = 200
+        self._payload = payload or {}
+        self.text = text
+
+    def json(self) -> dict[str, object]:
+        return self._payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+
 class _Schema:
+    """Model the SDK schema surface the server reads, including the internals the schema cache uses."""
+
+    def __init__(self) -> None:
+        self.cache: dict[str, SimpleNamespace] = {}
+
+    def set_cache(self, schema: SimpleNamespace, branch: str) -> None:
+        self.cache[branch] = schema
+
     async def get(self, kind: str, branch: str | None = None) -> SimpleNamespace:
-        await asyncio.sleep(0)
-        if kind != "TestWidget":
+        nodes = await self.all(branch=branch)
+        if kind not in nodes:
             raise SchemaNotFoundError(kind)
-        return SimpleNamespace(
-            kind=kind,
-            namespace="Test",
-            label="Widget — 東京",
-            attributes=[SimpleNamespace(name="name", kind="Text", optional=False)],
-            relationships=[],
-        )
+        return nodes[kind]
+
+    async def _fetch(self, branch: str) -> SimpleNamespace:
+        return SimpleNamespace(hash=f"hash-{branch}", nodes=await self.all(branch=branch))
 
     async def all(self, branch: str | None = None) -> dict[str, SimpleNamespace]:
         if branch == "slow":
@@ -42,7 +75,7 @@ class _Schema:
                 _record("slow-cleaned")
         # Yield so simultaneous requests can overlap at the SDK boundary.
         await asyncio.sleep(0)
-        label = branch or "Widget"
+        label = _DEFAULT_LABEL if branch in {None, _DEFAULT_BRANCH} else branch
         if branch and branch.startswith("trace-"):
             span_context = trace.get_current_span().get_span_context()
             label = json.dumps(
@@ -52,12 +85,29 @@ class _Schema:
                     "tracestate": span_context.trace_state.to_header(),
                 }
             )
-        return {"TestWidget": SimpleNamespace(namespace="Test", label=label)}
+        return {"TestWidget": _widget(label)}
+
+
+class _Branches:
+    async def all(self) -> dict[str, SimpleNamespace]:
+        return {_DEFAULT_BRANCH: SimpleNamespace(name=_DEFAULT_BRANCH, is_default=True)}
 
 
 class _SDK:
+    address = "http://infrahub.test"
+
     def __init__(self) -> None:
         self.schema = _Schema()
+        self.branch = _Branches()
+
+    async def _get(self, url: str) -> _Response:
+        """Answer the schema cache's ``/api/schema/summary`` and ``/schema.graphql`` reads."""
+        await asyncio.sleep(0)
+        parsed = urlsplit(url)
+        branch = parse_qs(parsed.query).get("branch", [_DEFAULT_BRANCH])[0]
+        if parsed.path == "/api/schema/summary":
+            return _Response(payload={"main": f"hash-{branch}"})
+        return _Response(text="type Query { TestWidget: String }")
 
     async def get_version(self) -> str:
         return "test-version"

@@ -3,13 +3,11 @@ import re
 import secrets
 import string
 from collections import OrderedDict
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from itertools import islice
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
@@ -29,6 +27,10 @@ from infrahub_mcp.auth import (
 )
 from infrahub_mcp.config import ServerConfig, env_get
 from infrahub_mcp.constants import AUTH_MODE_BASIC_PASSTHROUGH, AUTH_MODE_TOKEN_PASSTHROUGH
+from infrahub_mcp.keyed_locks import KeyedLocks
+
+if TYPE_CHECKING:
+    from infrahub_mcp.schema_cache import CachedSchemaEntry
 
 CURRENT_DIRECTORY = Path(__file__).parent.resolve()
 
@@ -37,16 +39,26 @@ _UNWRITABLE_STATUSES = frozenset({BranchStatus.MERGED, BranchStatus.DELETING})
 
 
 @dataclass
-class AppContext:
+class AppContext:  # pylint: disable=too-many-instance-attributes  # context aggregate, not behaviour
     """Application context shared for the lifetime of the MCP server process.
 
     The active session branch is tracked **per caller**, not process-wide: the
     branch name and its lock are keyed by the string from ``_session_key``
-    (authenticated caller and MCP session id, else the server process). The maps
-    keep at most ``_MAX_SESSION_ENTRIES`` keys and drop the least recently used
-    key first, so memory stays bounded. A lock that a task holds or waits for is
-    never dropped. A reset/recovery for one key never disturbs another.
-    ``default_branch`` stays instance-wide.
+    (authenticated caller and MCP session id, else the server process). The
+    branch map keeps at most ``_MAX_SESSION_ENTRIES`` keys and drops the least
+    recently used key first; the lock map holds only the keys a task holds or
+    waits for (see :class:`~infrahub_mcp.keyed_locks.KeyedLocks`). A
+    reset/recovery for one key never disturbs another. ``default_branch``
+    stays instance-wide.
+
+    The schema cache (``schema_cache``) is process-wide and keyed by branch
+    name, and so are its locks: ``_schema_cache_locks`` serializes each
+    branch's structured-schema fetches and ``_schema_sdl_locks`` each
+    branch's GraphQL SDL fetches, so one branch's upstream call never holds
+    up another branch's reads, and a slow SDL fetch never holds up a
+    structured read. The cache itself is bounded by
+    ``ServerConfig.schema_cache_max_branches`` and evicts its least recently
+    used branch past that count.
     """
 
     client: InfrahubClient | None
@@ -54,9 +66,62 @@ class AppContext:
     default_branch: str | None = field(default=None)
     _default_branch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     _session_branches: OrderedDict[str, str] = field(default_factory=OrderedDict)
-    _session_locks: OrderedDict[str, asyncio.Lock] = field(default_factory=OrderedDict)
-    # Number of tasks holding or waiting for each key's lock; a key is absent when unused.
-    _session_lock_users: dict[str, int] = field(default_factory=dict)
+    _session_locks: KeyedLocks = field(default_factory=KeyedLocks)
+    schema_cache: OrderedDict[str, "CachedSchemaEntry"] = field(default_factory=OrderedDict)
+    """Branch name → that branch's cached schema snapshot, in least-recently-used order.
+
+    Bounded by ``ServerConfig.schema_cache_max_branches``: every write goes
+    through ``schema_cache._store_entry`` and every read served from cache
+    marks its branch as used, so once the map is over the cap the
+    least-recently-used branch is evicted. An eviction is not a correctness
+    event — the next read of that branch cold-fetches it again — but it is
+    what keeps the map finite when ``branch_pattern`` mints a fresh branch
+    per session. ``0`` disables the bound.
+    """
+    schema_cache_cold_failures: dict[str, float] = field(default_factory=dict)
+    """Branch name → monotonic time of the last failed *cold* schema fetch.
+
+    A branch listed here fails fast for ``min(schema_cache_ttl, 30 s)`` after
+    the failure instead of taking the cache lock and probing again; the next
+    successful cold fetch removes it. Kept apart from ``schema_cache`` so
+    ``CachedSchemaEntry.schema`` stays non-optional for every reader.
+    """
+    _schema_cache_locks: KeyedLocks = field(default_factory=KeyedLocks)
+    """Per-branch locks serializing the structured-schema fetch and revalidation of that branch.
+
+    Held by ``schema_cache._ensure_entry`` across the upstream call, up to
+    its timeout. One lock per branch rather than one for the whole cache: a
+    single lock let one branch's cold fetch or probe queue every other
+    branch's reads behind that timeout.
+    """
+    _schema_sdl_locks: KeyedLocks = field(default_factory=KeyedLocks)
+    """Per-branch locks serializing the lazy GraphQL SDL fetch of that branch.
+
+    Separate from ``_schema_cache_locks`` so that a slow ``/schema.graphql``
+    never holds up a structured-schema read of the same branch.
+    """
+
+
+def get_app_ctx(ctx: Context) -> AppContext:
+    """Return the :class:`AppContext` carried by the current request's lifespan context."""
+    if ctx.request_context is None:
+        msg = "request_context must not be None"
+        raise RuntimeError(msg)
+    app_ctx: AppContext = ctx.request_context.lifespan_context
+    return app_ctx
+
+
+def resolve_client(ctx: Context, client: InfrahubClient | None) -> InfrahubClient:
+    """Return *client* when the caller passed one, otherwise resolve one via :func:`get_client`.
+
+    In the passthrough auth modes :func:`get_client` builds a fresh
+    ``InfrahubClient`` on every call, so a caller that already holds this
+    request's client passes it rather than letting the read resolve another:
+    the read then reuses a credential Infrahub has already accepted, instead
+    of costing another ``/summary`` probe. In the shared-client modes both
+    spellings name the same lifespan client.
+    """
+    return client if client is not None else get_client(ctx)
 
 
 def get_client(ctx: Context) -> InfrahubClient:
@@ -70,10 +135,7 @@ def get_client(ctx: Context) -> InfrahubClient:
 
     In other modes, returns the shared lifespan client.
     """
-    if ctx.request_context is None:
-        msg = "request_context must not be None"
-        raise RuntimeError(msg)
-    app_ctx: AppContext = ctx.request_context.lifespan_context
+    app_ctx = get_app_ctx(ctx)
 
     if app_ctx.config.auth_mode in {AUTH_MODE_TOKEN_PASSTHROUGH, AUTH_MODE_BASIC_PASSTHROUGH}:
         address = env_get("INFRAHUB_ADDRESS")
@@ -109,11 +171,7 @@ def get_client(ctx: Context) -> InfrahubClient:
 
 def get_config(ctx: Context) -> ServerConfig:
     """Return the server configuration for the current request."""
-    if ctx.request_context is None:
-        msg = "request_context must not be None"
-        raise RuntimeError(msg)
-    app_ctx: AppContext = ctx.request_context.lifespan_context
-    return app_ctx.config
+    return get_app_ctx(ctx).config
 
 
 _MAX_SESSION_ENTRIES = 1024
@@ -191,47 +249,14 @@ def _get_cached_session_branch(app_ctx: AppContext, key: str) -> str | None:
     return branch
 
 
-@asynccontextmanager
-async def _session_lock(app_ctx: AppContext, key: str) -> AsyncGenerator[None]:
-    """Hold the per-key branch lock, creating it on first use.
-
-    Each task that holds or waits for the lock is counted in ``_session_lock_users``.
-    Only locks with no such task are dropped past ``_MAX_SESSION_ENTRIES``, oldest
-    first. ``asyncio.Lock.locked()`` is not enough: it is ``False`` between a
-    ``release()`` and the woken waiter resuming, and dropping the lock then would
-    give a new task for the same key a second, unrelated lock.
-    """
-    # No await until ``async with lock``: the event loop runs this lookup, count and
-    # trim without switching tasks, so no separate guard lock is needed.
-    locks = app_ctx._session_locks  # noqa: SLF001
-    users = app_ctx._session_lock_users  # noqa: SLF001
-    lock = locks.get(key)
-    if lock is None:
-        lock = asyncio.Lock()
-        locks[key] = lock
-    locks.move_to_end(key)
-    users[key] = users.get(key, 0) + 1
-    excess = len(locks) - _MAX_SESSION_ENTRIES
-    if excess > 0:
-        for unused_key in list(islice((k for k in locks if k not in users), excess)):
-            del locks[unused_key]
-    try:
-        async with lock:
-            yield
-    finally:
-        remaining = users[key] - 1
-        if remaining:
-            users[key] = remaining
-        else:
-            del users[key]
+def _session_lock(app_ctx: AppContext, key: str) -> AbstractAsyncContextManager[None]:
+    """Hold the per-key session-branch lock for the block."""
+    return app_ctx._session_locks.hold(key)  # noqa: SLF001
 
 
 def get_session_branch(ctx: Context) -> str | None:
     """Return the calling session's active branch, or ``None`` if none is set."""
-    if ctx.request_context is None:
-        msg = "request_context must not be None"
-        raise RuntimeError(msg)
-    app_ctx: AppContext = ctx.request_context.lifespan_context
+    app_ctx = get_app_ctx(ctx)
     return _get_cached_session_branch(app_ctx, _session_key(ctx))
 
 
@@ -359,10 +384,7 @@ async def get_default_branch(ctx: Context) -> str:
     pay the round-trip once per session. Falls back to ``main`` if the server
     does not advertise a default branch.
     """
-    if ctx.request_context is None:
-        msg = "request_context must not be None"
-        raise RuntimeError(msg)
-    app_ctx: AppContext = ctx.request_context.lifespan_context
+    app_ctx = get_app_ctx(ctx)
     async with app_ctx._default_branch_lock:  # noqa: SLF001
         if app_ctx.default_branch is None:
             client = get_client(ctx)
@@ -412,10 +434,7 @@ async def get_or_create_session_branch(ctx: Context) -> str:
     is provisioned automatically — the caller is warned, naming both the old and
     new branch — so writes recover without a server restart.
     """
-    if ctx.request_context is None:
-        msg = "request_context must not be None"
-        raise RuntimeError(msg)
-    app_ctx: AppContext = ctx.request_context.lifespan_context
+    app_ctx = get_app_ctx(ctx)
     key = _session_key(ctx)
     async with _session_lock(app_ctx, key):
         current = _get_cached_session_branch(app_ctx, key)
@@ -444,10 +463,7 @@ async def recover_if_session_branch_stale(ctx: Context) -> str | None:
     also contains "read-only"). Returns ``"<branch> <reason>"`` when the cached branch
     was stale and has now been cleared, or ``None`` when it is still writable.
     """
-    if ctx.request_context is None:
-        msg = "request_context must not be None"
-        raise RuntimeError(msg)
-    app_ctx: AppContext = ctx.request_context.lifespan_context
+    app_ctx = get_app_ctx(ctx)
     key = _session_key(ctx)
     async with _session_lock(app_ctx, key):
         branch = _get_cached_session_branch(app_ctx, key)
@@ -472,10 +488,7 @@ async def reset_or_switch_session_branch(ctx: Context, branch: str | None) -> di
     the key, such as two conversations of one caller without an MCP session, see
     the change too.
     """
-    if ctx.request_context is None:
-        msg = "request_context must not be None"
-        raise RuntimeError(msg)
-    app_ctx: AppContext = ctx.request_context.lifespan_context
+    app_ctx = get_app_ctx(ctx)
     key = _session_key(ctx)
     async with _session_lock(app_ctx, key):
         previous = _get_cached_session_branch(app_ctx, key)

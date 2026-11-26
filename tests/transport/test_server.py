@@ -147,9 +147,9 @@ async def test_protocol_round_trip(connected: Connection) -> None:
     assert {"get_schema", "get_session_info", "query_graphql"} <= tools
     assert "node_delete" not in tools
     result = await client.call_tool("get_schema", {})
-    assert json.loads(result.content[0].text) == {"TestWidget": "Widget"}  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+    assert json.loads(result.content[0].text) == {"TestWidget": "Widget — 東京"}  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
     resource = await client.read_resource("infrahub://schema")
-    assert json.loads(resource[0].text) == {"TestWidget": "Widget"}  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+    assert json.loads(resource[0].text) == {"TestWidget": "Widget — 東京"}  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
     session = await client.call_tool("get_session_info", {})
     assert session.data["has_session_branch"] is False
     prompt = await client.get_prompt("answer_infra_question", {"question": "List widgets"})
@@ -174,7 +174,7 @@ async def test_legacy_handshake_round_trip(connected: Connection) -> None:
     assert "get_schema" in tools
     assert "node_delete" not in tools
     result = await client.call_tool("get_schema", {})
-    assert json.loads(result.content[0].text) == {"TestWidget": "Widget"}  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+    assert json.loads(result.content[0].text) == {"TestWidget": "Widget — 東京"}  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
     untraced = await client.call_tool("get_schema", {"branch": "trace-clean"})
     catalog = json.loads(untraced.content[0].text)  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
     assert json.loads(catalog["TestWidget"]) == {"trace_id": "0" * 32, "span_id": "0" * 16, "tracestate": ""}
@@ -201,7 +201,7 @@ async def test_resource_error_preserves_session(connected: Connection) -> None:
     with pytest.raises(MCPError, match="Schema not found for kind 'MissingWidget'"):
         await client.read_resource("infrahub://schema/MissingWidget")
     resource = await client.read_resource("infrahub://schema")
-    assert json.loads(resource[0].text) == {"TestWidget": "Widget"}  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+    assert json.loads(resource[0].text) == {"TestWidget": "Widget — 東京"}  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
 
 
 @pytest.mark.parametrize("tool_name", ["node_delete", "reset_session_branch"])
@@ -279,7 +279,7 @@ async def test_cancel_cleans_server_work_and_session_remains_usable(connected: C
             await task
         await _wait_for_event(events, "slow-cleaned")
         result = await client.call_tool("get_schema", {})
-        assert json.loads(result.content[0].text) == {"TestWidget": "Widget"}  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+        assert json.loads(result.content[0].text) == {"TestWidget": "Widget — 東京"}  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
     finally:
         if not task.done():
             task.cancel()
