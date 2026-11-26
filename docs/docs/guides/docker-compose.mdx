@@ -14,10 +14,10 @@ When Infrahub runs in Kubernetes, install the MCP server with the `infrahub-mcp`
 From the repository root:
 
 ```bash
-docker build -t infrahub-mcp .
+docker build -f development/Dockerfile -t infrahub-mcp .
 ```
 
-The `Dockerfile` is a two-stage build: Python 3.13 + `uv` installs dependencies into `/opt/venv`, and the runtime stage copies them into a minimal `python:3.13-slim` image running as a non-root `app` user. The container exposes port 8001 and runs `infrahub-mcp --transport streamable-http --host 0.0.0.0 --port 8001` by default.
+The `development/Dockerfile` is a two-stage build: Python 3.13 + `uv` installs dependencies into `/opt/venv`, and the runtime stage copies them into a minimal `python:3.13-slim` image running as a non-root `app` user. The container exposes port 8001 and runs `infrahub-mcp --transport streamable-http --host 0.0.0.0 --port 8001` by default.
 
 ## Run standalone
 
@@ -142,7 +142,7 @@ For per-client setup details (prompts, tool approval, troubleshooting), see the 
 | --- | --- | --- |
 | `INFRAHUB_ADDRESS` | URL of your Infrahub instance | **required** |
 | `INFRAHUB_API_TOKEN` | API token for the MCP server's Infrahub session | — |
-| `INFRAHUB_TIMEOUT` | HTTP request timeout in seconds | `30` |
+| `INFRAHUB_TIMEOUT` | HTTP request timeout in seconds | `60` |
 | `MCP_HOST` | Bind address for the HTTP server | `0.0.0.0` |
 | `MCP_PORT` | Port for the HTTP server | `8001` |
 | `INFRAHUB_MCP_READ_ONLY` | Disable write operations | `false` |

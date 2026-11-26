@@ -41,7 +41,7 @@ A common mistake: filtering on `name` instead of `name__value`. The latter is co
 
 ### 3. Try partial match for human-entered names
 
-`leaf-01` might actually be stored as `leaf-01.example.com` or `LEAF-01`. Use `search_nodes`, which is a convenience wrapper around `get_nodes` with `partial_match=True`:
+`leaf-01` might actually be stored as `leaf-01.example.com` or `LEAF-01`. Use `search_nodes`, which matches the text as a substring against every attribute of the kind:
 
 ```text
 search_nodes(query="leaf-01", kind="DcimDevice", limit=10)

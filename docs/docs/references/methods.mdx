@@ -78,7 +78,7 @@ The response dict contains `nodes`, `count`, `total_count`, `has_more`, `offset`
 - idempotent
 - no destroy
 
-Find nodes by partial name. Performs substring matching against the `name` attribute only (via `name__value` with `partial_match=true`). For other attributes, or combining filters, use `get_nodes` instead.
+Find nodes by part of a value. The query is matched as a substring against every attribute of the kind, through Infrahub's `any__value` filter with `partial_match=true`. It works on generic kinds such as `CoreNode` as well as on concrete kinds. To filter on one attribute, or to combine filters, use `get_nodes` instead.
 
 #### Parameters
 

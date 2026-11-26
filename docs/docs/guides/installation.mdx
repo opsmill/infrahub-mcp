@@ -77,14 +77,14 @@ infrahub-mcp --transport streamable-http --host 0.0.0.0 --port 8001
 
 Set the following environment variables as needed:
 
-| Variable                 | Description                              | Default      |
-| ------------------------ | ---------------------------------------- | ------------ |
-| `INFRAHUB_ADDRESS`       | URL of your Infrahub instance            | **required** |
-| `INFRAHUB_API_TOKEN`     | API token *(or use username + password)* | —            |
-| `MCP_HOST`               | Host for the web server                  | `0.0.0.0`    |
-| `MCP_PORT`               | Port for the web server                  | `8001`       |
-| `INFRAHUB_MCP_READ_ONLY` | Disable write operations                 | `false`      |
-| `INFRAHUB_MCP_LOG_LEVEL` | Set to `debug` for verbose logging       | `info`       |
+| Variable                 | Description                                       | Default      |
+| ------------------------ | ------------------------------------------------- | ------------ |
+| `INFRAHUB_ADDRESS`       | URL of your Infrahub instance                     | **required** |
+| `INFRAHUB_API_TOKEN`     | API token *(or use username + password)*          | —            |
+| `INFRAHUB_MCP_READ_ONLY` | Disable write operations                          | `false`      |
+| `INFRAHUB_MCP_LOG_LEVEL` | Set to `debug` to log tool errors with tracebacks | `info`       |
+
+Set the HTTP bind address and port with the `--host` (default `127.0.0.1`) and `--port` (default `8001`) flags shown above. The server does not read `MCP_HOST` or `MCP_PORT`; only the Docker image uses them.
 
 For the full list of configuration options (rate limiting, caching, auth, observability), see the [Configuration reference](../references/configuration.mdx).
 

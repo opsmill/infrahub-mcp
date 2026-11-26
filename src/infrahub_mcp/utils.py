@@ -8,7 +8,6 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from itertools import islice
-from pathlib import Path
 from typing import Any, NoReturn
 
 from fastmcp import Context
@@ -29,9 +28,6 @@ from infrahub_mcp.auth import (
 )
 from infrahub_mcp.config import ServerConfig, env_get
 from infrahub_mcp.constants import AUTH_MODE_BASIC_PASSTHROUGH, AUTH_MODE_TOKEN_PASSTHROUGH
-
-CURRENT_DIRECTORY = Path(__file__).parent.resolve()
-
 
 _UNWRITABLE_STATUSES = frozenset({BranchStatus.MERGED, BranchStatus.DELETING})
 

@@ -219,7 +219,7 @@ def infrahub_agent() -> str:
         "Use when resources are not available.\n"
         "- **`get_nodes`** — retrieve objects of a given kind, with optional filters. "
         "Pass `include_attributes=True` for full attribute data.\n"
-        "- **`search_nodes`** — find nodes by partial name match.\n"
+        "- **`search_nodes`** — find nodes whose attribute values contain a piece of text.\n"
         "- **`query_graphql`** — execute a read-only GraphQL query.\n"
         '- **`find_paths`** — shortest path(s) between two nodes ("how are these connected?"). '
         "Requires Infrahub 1.10+.\n"
@@ -236,7 +236,7 @@ def infrahub_agent() -> str:
 - **`node_upsert`** — create or update a node. Omit `id`/`hfid` to create; supply one to update.
 - **`node_delete`** — delete a node by `id` or `hfid`.
 - **`mutate_graphql`** — execute a GraphQL mutation.
-- **`propose_changes`** — open a proposed change from your session branch to `main` for human review.
+- **`propose_changes`** — open a proposed change from your session branch to the default branch for human review.
 - **`reset_session_branch`** — reset or switch your session branch: call with no arguments to start \
 fresh (the next write creates a new branch), or pass a branch name to switch to it (created if it \
 matches the configured pattern).
