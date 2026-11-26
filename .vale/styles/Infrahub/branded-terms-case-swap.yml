@@ -6,14 +6,18 @@ ignorecase: false
 action:
   name: replace
 swap:
+  (?<=[a-z] )Artifact[\.!]?\s: artifact
+  (?<=[a-z] )Artifacts[\.!]?\s: artifacts
   (?<![\.|/|#])ansible[\.!]?\s: Ansible
   (?<![\.|/|#])docker[\.!]?\s: Docker
   (?<![\.|/|#])[Dd]ockerhub[\.!]?\s: DockerHub
   (?<![\.|/|#])[Gg]ithub[\.!]?\s: GitHub
   (?<![\.|/|#])[Gg]itlab[\.!]?\s: GitLab
+  (?<![\.|/|#])generator[\.!]?\s: Generator
+  (?<![\.|/|#])generators[\.!]?\s: Generators
   (?:gitpod): GitPod
   (?:grafana): Grafana
-  (?:[^/][Gg]raphql): GraphQL
+  (?:[^/.][Gg]raphql): GraphQL
   (?:[Ii]nflux[Dd]b): InfluxDB
   (?<![\.|/|#])infrahub[\.!]?\s: Infrahub
   (?<![\.|/|#])InfraHub[\.!]?\s: Infrahub
@@ -31,9 +35,16 @@ swap:
   (?:[Oo]pen[Tt]elemetry): OpenTelemetry
   (?<![\.|/|#])opsmill[\.!]?\s: OpsMill
   (?:[Pp]ostgre[Ss]ql): PostgreSQL
+  (?<![\.|/|#])profile[\.!]?\s: Profile
+  (?<![\.|/|#])profiles[\.!]?\s: Profiles
   (?:[^/]prometheus): Prometheus
   (?<![\.|/|#])python[\.!]?\s: Python
   (?<![\.|/|#])[Rr]abbitmq[\.!]?\s: RabbitMQ
+  (?<![\.|/|#])(?:resource [Mm]anager|Resource manager)[\.!]?\s: Resource Manager
+  (?<![\.|/|#])[Rr]esource [Mm]anagers[\.!]?\s: Resource Manager
   (?:[^/]terraform): Terraform
+  (?<![\.|/|#])transformation[\.!]?\s: Transformation
+  (?<![\.|/|#])transformations[\.!]?\s: Transformations
+  (?<![\.|/|#])[Tt]ransforms[\.!]?\s: Transformations
   (?:ubuntu): Ubuntu
   (?:[Vv]s\W?[Cc]ode): VS Code
